@@ -16,7 +16,7 @@ index = index.replace(
 )
 index = index.replace(
     '<canvas id="loadingCanvas" oncontextmenu="event.preventDefault()" width="800" height="600"></canvas>',
-    '<canvas id="loadingCanvas" oncontextmenu="event.preventDefault()" width="960" height="540"></canvas>',
+    '<canvas id="loadingCanvas" oncontextmenu="event.preventDefault()" width="1920" height="1080"></canvas>',
 )
 index = index.replace("canvas.scrollWidth", "canvas.width")
 index = index.replace("canvas.scrollHeight", "canvas.height")

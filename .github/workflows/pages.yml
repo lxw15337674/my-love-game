@@ -42,8 +42,8 @@ jobs:
             t.version = "11.4"
             t.console = false
             t.window.title = "心核幸存者"
-            t.window.width = 960
-            t.window.height = 540
+            t.window.width = 1920
+            t.window.height = 1080
             t.window.resizable = false
             t.window.vsync = 1
           end
