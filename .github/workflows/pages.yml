@@ -34,9 +34,12 @@ jobs:
           cp main.lua conf.lua build/game-src/
           cp -R assets build/game-src/assets
 
-      - name: Build love.js package
+      - name: Build with rozenmad love-web-builder
         run: |
-          npx --yes love.js@11.4.1 -c -t "心核幸存者" -m 67108864 build/game-src dist
+          git clone --depth 1 https://github.com/rozenmad/love-web-builder.git build/love-web-builder
+          cd build/love-web-builder
+          python3 build.py ../game-src ../../dist --name "心核幸存者" --memory 67108864
+          cd ../..
           touch dist/.nojekyll
 
       - name: Patch love.js runtime for GitHub Pages
@@ -46,20 +49,36 @@ jobs:
 
           love_js = Path('dist/love.js')
           s = love_js.read_text(errors='ignore')
-          old = 'Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");FS.syncfs(true,function(err){if(err){Module["printErr"](err)}else{Module.removeRunDependency("IDBFS_sync")}});window.addEventListener("beforeunload",function(event){FS.syncfs(false,function(err){if(err){Module["printErr"](err)}})})'
-          new = 'var __idbfsDone=false;function __finishIDBFS(err){if(err){Module["printErr"](err)}if(!__idbfsDone){__idbfsDone=true;Module.removeRunDependency("IDBFS_sync")}}Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");setTimeout(function(){__finishIDBFS("IDBFS sync timeout; continuing without persistent save cache")},1500);FS.syncfs(true,function(err){__finishIDBFS(err)});window.addEventListener("beforeunload",function(event){FS.syncfs(false,function(err){if(err){Module["printErr"](err)}})})'
-          if old not in s:
-              raise SystemExit('IDBFS patch target not found in dist/love.js')
-          love_js.write_text(s.replace(old, new, 1))
+          idbfs_patterns = [
+              'Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");FS.syncfs(true,function(err){if(err){Module["printErr"](err)}else{Module.removeRunDependency("IDBFS_sync")}});window.addEventListener("beforeunload",function(event){FS.syncfs(false,function(err){if(err){Module["printErr"](err)}})})',
+              'Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");FS.syncfs(true,(err=>{err?Module["printErr"](err):Module.removeRunDependency("IDBFS_sync")}));window.addEventListener("beforeunload",(function(event){FS.syncfs(false,(function(err){err&&Module["printErr"](err)}))}))',
+          ]
+          idbfs_replacement = 'var __idbfsDone=false;function __finishIDBFS(err){if(err){Module["printErr"](err)}if(!__idbfsDone){__idbfsDone=true;Module.removeRunDependency("IDBFS_sync")}}Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");setTimeout(function(){__finishIDBFS("IDBFS sync timeout; continuing without persistent save cache")},1500);FS.syncfs(true,function(err){__finishIDBFS(err)});window.addEventListener("beforeunload",function(event){FS.syncfs(false,function(err){if(err){Module["printErr"](err)}})})'
+          for old in idbfs_patterns:
+              if old in s:
+                  s = s.replace(old, idbfs_replacement, 1)
+                  break
+          else:
+              print('IDBFS patch target not found; continuing')
+          love_js.write_text(s)
 
           game_js = Path('dist/game.js')
           s = game_js.read_text(errors='ignore')
-          start = s.find('      openDatabase(\n        function(db) {')
-          end = s.find("\n\n      if (Module['setStatus']) Module['setStatus']('Downloading...');", start)
-          if start < 0 or end < 0:
+          candidates = [
+              ('      openDatabase(\n        function(db) {', "\n\n      if (Module['setStatus']) Module['setStatus']('Downloading...');"),
+              ('            openDatabase(\n                function(db) {', "\n\n            if (Module['setStatus']) Module['setStatus']('Downloading...');"),
+          ]
+          for start_marker, end_marker in candidates:
+              start = s.find(start_marker)
+              end = s.find(end_marker, start)
+              if start >= 0 and end >= 0:
+                  indent = start_marker.split('openDatabase')[0]
+                  replacement = indent + "console.info('loading ' + PACKAGE_NAME + ' from remote without IndexedDB cache');\n" + indent + "fetchRemotePackage(REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE, processPackageData, handleError);"
+                  s = s[:start] + replacement + s[end:]
+                  break
+          else:
               raise SystemExit('IndexedDB preload patch target not found in dist/game.js')
-          replacement = "      console.info('loading ' + PACKAGE_NAME + ' from remote without IndexedDB cache');\n      fetchRemotePackage(REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE, processPackageData, handleError);"
-          game_js.write_text(s[:start] + replacement + s[end:])
+          game_js.write_text(s)
           PY
 
       - name: Configure Pages
