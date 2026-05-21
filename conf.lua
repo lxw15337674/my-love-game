@@ -7,7 +7,7 @@ function love.conf(t)
     t.console = false
     t.appendidentity = false
 
-    t.window.title = "Stardrift Promise"
+    t.window.title = "心核幸存者"
     t.window.width = 1280
     t.window.height = 720
     t.window.minwidth = 960
