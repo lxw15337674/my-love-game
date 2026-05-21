@@ -195,22 +195,23 @@ local function drawHeart(x, y, s, mode)
 end
 
 local assetFiles = {
-    player_heartcore = "assets/player_heartcore.png",
-    enemy_splinter = "assets/enemy_splinter.png",
-    enemy_drifter = "assets/enemy_drifter.png",
-    enemy_shell = "assets/enemy_shell.png",
-    enemy_wisp = "assets/enemy_wisp.png",
-    enemy_elite = "assets/enemy_elite.png",
-    boss_heartbreak = "assets/boss_heartbreak.png",
-    pickup_coin = "assets/pickup_coin.png",
-    pickup_xp = "assets/pickup_xp.png",
-    pickup_shield = "assets/pickup_shield.png",
-    projectile_star_needle = "assets/projectile_star_needle.png",
-    projectile_swarm_missile = "assets/projectile_swarm_missile.png",
-    projectile_molten_orb = "assets/projectile_molten_orb.png",
-    projectile_echo_blade = "assets/projectile_echo_blade.png",
-    projectile_arc_bolt = "assets/projectile_arc_bolt.png",
-    projectile_void_orb = "assets/projectile_void_orb.png"
+    player_heartcore = "assets/nano_banana_pro_mapped/player_heartcore.png",
+    enemy_splinter = "assets/nano_banana_pro_mapped/enemy_splinter.png",
+    enemy_drifter = "assets/nano_banana_pro_mapped/enemy_drifter.png",
+    enemy_shell = "assets/nano_banana_pro_mapped/enemy_shell.png",
+    enemy_wisp = "assets/nano_banana_pro_mapped/enemy_wisp.png",
+    enemy_elite = "assets/nano_banana_pro_mapped/enemy_elite.png",
+    boss_heartbreak = "assets/nano_banana_pro_mapped/boss_heartbreak.png",
+    pickup_coin = "assets/nano_banana_pro_mapped/pickup_coin.png",
+    pickup_xp = "assets/nano_banana_pro_mapped/pickup_xp.png",
+    pickup_shield = "assets/nano_banana_pro_mapped/pickup_shield.png",
+    projectile_star_needle = "assets/nano_banana_pro_mapped/projectile_star_needle.png",
+    projectile_swarm_missile = "assets/nano_banana_pro_mapped/projectile_swarm_missile.png",
+    projectile_molten_orb = "assets/nano_banana_pro_mapped/projectile_molten_orb.png",
+    projectile_echo_blade = "assets/nano_banana_pro_mapped/projectile_echo_blade.png",
+    projectile_arc_bolt = "assets/nano_banana_pro_mapped/projectile_arc_bolt.png",
+    projectile_void_orb = "assets/nano_banana_pro_mapped/projectile_void_orb.png",
+    arena_background = "assets/backgrounds/robot_war_arena.png"
 }
 
 local function loadImages()
@@ -218,7 +219,11 @@ local function loadImages()
     for key, path in pairs(assetFiles) do
         local ok, img = pcall(love.graphics.newImage, path)
         if ok and img then
-            img:setFilter("linear", "linear")
+            if key == "arena_background" then
+                img:setFilter("linear", "linear")
+            else
+                img:setFilter("nearest", "nearest")
+            end
             Game.images[key] = img
         end
     end
@@ -231,6 +236,46 @@ local function drawSprite(name, x, y, size, rotation, alpha)
     local scale = size / math.max(img:getWidth(), img:getHeight())
     love.graphics.draw(img, x, y, rotation or 0, scale, scale, img:getWidth() / 2, img:getHeight() / 2)
     return true
+end
+
+local function drawProjectile(b)
+    local rot = math.atan2(b.vy, b.vx)
+    love.graphics.push()
+    love.graphics.translate(b.x, b.y)
+    love.graphics.rotate(rot)
+
+    if b.aura then
+        color(b.color, 0.20)
+        love.graphics.circle("line", 0, 0, b.aura)
+        color(b.color, 0.85)
+        love.graphics.circle("fill", 0, 0, 11)
+        love.graphics.setColor(1, 1, 1, 0.75)
+        love.graphics.circle("fill", -3, -3, 4)
+    elseif b.splash then
+        color(b.color, 0.92)
+        love.graphics.circle("fill", 0, 0, 9)
+        love.graphics.setColor(1, 0.92, 0.45, 0.88)
+        love.graphics.circle("fill", 0, 0, 4)
+        color(b.color, 0.35)
+        love.graphics.circle("line", 0, 0, 14)
+    elseif b.element == "arc" then
+        color(b.color, 0.95)
+        love.graphics.setLineWidth(3)
+        love.graphics.line(-14, -3, -4, 4, 4, -4, 14, 2)
+        love.graphics.setColor(1, 1, 1, 0.8)
+        love.graphics.setLineWidth(1)
+        love.graphics.line(-14, -3, -4, 4, 4, -4, 14, 2)
+        love.graphics.setLineWidth(1)
+    else
+        color(b.color, 0.32)
+        love.graphics.rectangle("fill", -17, -5, 26, 10, 5, 5)
+        color(b.color, 1)
+        love.graphics.polygon("fill", -10, -6, 14, 0, -10, 6)
+        love.graphics.setColor(1, 1, 1, 0.85)
+        love.graphics.line(-8, 0, 10, 0)
+    end
+
+    love.graphics.pop()
 end
 
 local function addText(x, y, text, c)
@@ -264,10 +309,11 @@ local function spawnEnemy(def)
     def = def or chooseEnemyDef()
     local side = rnd(1, 4)
     local x, y
-    if side == 1 then x, y = -40, rnd(40, Game.h - 40)
-    elseif side == 2 then x, y = Game.w + 40, rnd(40, Game.h - 40)
-    elseif side == 3 then x, y = rnd(40, Game.w - 40), -40
-    else x, y = rnd(40, Game.w - 40), Game.h + 40 end
+    local marginTop, marginBottom = 160, 92
+    if side == 1 then x, y = -58, rnd(marginTop, Game.h - marginBottom)
+    elseif side == 2 then x, y = Game.w + 58, rnd(marginTop, Game.h - marginBottom)
+    elseif side == 3 then x, y = rnd(110, Game.w - 110), -58
+    else x, y = rnd(110, Game.w - 110), Game.h + 58 end
     local scale = 1 + (Game.wave - 1) * 0.18
     Game.enemies[#Game.enemies + 1] = {
         name = def.name, x = x, y = y, r = def.r,
@@ -682,7 +728,7 @@ end
 
 function love.load()
     love.window.setTitle("Heartcore Survivor Prototype")
-    love.graphics.setDefaultFilter("linear", "linear")
+    love.graphics.setDefaultFilter("nearest", "nearest")
     love.math.setRandomSeed(os.time())
     Game.w, Game.h = love.graphics.getDimensions()
     Game.fonts = {tiny = love.graphics.newFont(13), small = love.graphics.newFont(17), normal = love.graphics.newFont(22), big = love.graphics.newFont(36), title = love.graphics.newFont(60)}
@@ -727,19 +773,32 @@ end
 
 local function drawBackground()
     love.graphics.clear(C.bgA)
-    for i = 0, 18 do
-        local t = i / 18
-        love.graphics.setColor(C.bgA[1] + (C.bgB[1] - C.bgA[1]) * t, C.bgA[2] + (C.bgB[2] - C.bgA[2]) * t, C.bgA[3] + (C.bgB[3] - C.bgA[3]) * t, 1)
-        love.graphics.rectangle("fill", 0, Game.h * t, Game.w, Game.h / 18 + 1)
+
+    local bg = Game.images.arena_background
+    if bg then
+        local iw, ih = bg:getWidth(), bg:getHeight()
+        local scale = math.max(Game.w / iw, Game.h / ih)
+        local dw, dh = iw * scale, ih * scale
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.draw(bg, (Game.w - dw) / 2, (Game.h - dh) / 2, 0, scale, scale)
+
+        -- Keep the generated map atmospheric but below gameplay objects.
+        love.graphics.setColor(0.015, 0.018, 0.040, 0.30)
+        love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
+        love.graphics.setColor(0.02, 0.04, 0.08, 0.18)
+        love.graphics.rectangle("fill", Game.w * 0.18, Game.h * 0.18, Game.w * 0.64, Game.h * 0.64, 28, 28)
+    else
+        for i = 0, 18 do
+            local t = i / 18
+            love.graphics.setColor(C.bgA[1] + (C.bgB[1] - C.bgA[1]) * t, C.bgA[2] + (C.bgB[2] - C.bgA[2]) * t, C.bgA[3] + (C.bgB[3] - C.bgA[3]) * t, 1)
+            love.graphics.rectangle("fill", 0, Game.h * t, Game.w, Game.h / 18 + 1)
+        end
     end
+
     for _, s in ipairs(Game.stars) do
-        love.graphics.setColor(0.75, 0.86, 1, 0.28 + math.sin(s.phase) * 0.16)
+        love.graphics.setColor(0.75, 0.86, 1, 0.045 + math.sin(s.phase) * 0.025)
         love.graphics.circle("fill", s.x, s.y, s.r)
     end
-    love.graphics.setColor(0.20, 0.48, 0.95, 0.10)
-    love.graphics.circle("fill", Game.w * 0.18, Game.h * 0.70, 220)
-    love.graphics.setColor(0.80, 0.20, 0.58, 0.10)
-    love.graphics.circle("fill", Game.w * 0.82, Game.h * 0.22, 190)
 end
 
 local function panel(x, y, w, h)
@@ -800,30 +859,31 @@ end
 
 local function drawWorld()
     for _, item in ipairs(Game.pickups) do
-        local size = item.kind == "xp" and 26 or 28
-        if not drawSprite(item.sprite, item.x, item.y + math.sin(item.t) * 2, size, 0, 0.95) then
+        local size = item.kind == "xp" and 30 or 32
+        if item.kind == "xp" then color(C.green, 0.24) else color(C.gold, 0.24) end
+        love.graphics.circle("fill", item.x, item.y + math.sin(item.t) * 2, size * 0.42)
+        if not drawSprite(item.sprite, item.x, item.y + math.sin(item.t) * 2, size, 0, 0.98) then
             if item.kind == "xp" then color(C.green) else color(C.gold) end
             love.graphics.circle("fill", item.x, item.y + math.sin(item.t) * 2, item.r)
         end
     end
 
     for _, b in ipairs(Game.bullets) do
-        if b.aura then
-            color(b.color, 0.22)
-            love.graphics.circle("line", b.x, b.y, b.aura)
-        end
-        local rot = math.atan2(b.vy, b.vx)
-        local size = b.aura and 46 or (b.splash and 34 or 28)
-        if not drawSprite(b.sprite, b.x, b.y, size, rot, 0.95) then
-            color(b.color, 0.90)
-            love.graphics.circle("fill", b.x, b.y, b.r)
-        end
+        drawProjectile(b)
     end
 
     for _, e in ipairs(Game.enemies) do
-        love.graphics.setColor(e.color[1], e.color[2], e.color[3], e.boss and 0.16 or 0.08)
-        love.graphics.circle("fill", e.x, e.y, e.r * 1.55)
-        local size = e.boss and e.r * 3.15 or math.max(42, e.r * 3.95)
+        if e.x < 18 or e.x > Game.w - 18 or e.y < 138 or e.y > Game.h - 18 then
+            local wx = clamp(e.x, 24, Game.w - 24)
+            local wy = clamp(e.y, 145, Game.h - 24)
+            color(e.color, 0.82)
+            love.graphics.polygon("fill", wx, wy - 8, wx + 8, wy + 8, wx - 8, wy + 8)
+        end
+        love.graphics.setColor(e.color[1], e.color[2], e.color[3], e.boss and 0.28 or 0.20)
+        love.graphics.circle("fill", e.x, e.y, e.r * 2.15)
+        love.graphics.setColor(0.02, 0.025, 0.045, 0.72)
+        love.graphics.circle("line", e.x, e.y, e.r * 1.75)
+        local size = e.boss and e.r * 3.55 or math.max(62, e.r * 5.20)
         if not drawSprite(e.sprite, e.x, e.y, size, 0, 0.96) then
             color(e.color)
             if e.boss then
@@ -839,9 +899,9 @@ local function drawWorld()
 
     local p = Game.player
     if not (p.invuln > 0 and math.floor(p.invuln * 16) % 2 == 0) then
-        love.graphics.setColor(C.cyan[1], C.cyan[2], C.cyan[3], 0.055)
+        love.graphics.setColor(C.cyan[1], C.cyan[2], C.cyan[3], 0.020)
         love.graphics.circle("fill", p.x, p.y, p.pickup)
-        if not drawSprite("player_heartcore", p.x, p.y, 72, 0, 1) then
+        if not drawSprite("player_heartcore", p.x, p.y, 96, 0, 1) then
             color(C.pink)
             drawHeart(p.x, p.y + 2, 0.78)
         end
