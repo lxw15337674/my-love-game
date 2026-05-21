@@ -39,6 +39,29 @@ jobs:
           npx --yes love.js@11.4.1 -c -t "心核幸存者" -m 67108864 build/game-src dist
           touch dist/.nojekyll
 
+      - name: Patch love.js runtime for GitHub Pages
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          love_js = Path('dist/love.js')
+          s = love_js.read_text(errors='ignore')
+          old = 'Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");FS.syncfs(true,function(err){if(err){Module["printErr"](err)}else{Module.removeRunDependency("IDBFS_sync")}});window.addEventListener("beforeunload",function(event){FS.syncfs(false,function(err){if(err){Module["printErr"](err)}})})'
+          new = 'var __idbfsDone=false;function __finishIDBFS(err){if(err){Module["printErr"](err)}if(!__idbfsDone){__idbfsDone=true;Module.removeRunDependency("IDBFS_sync")}}Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");setTimeout(function(){__finishIDBFS("IDBFS sync timeout; continuing without persistent save cache")},1500);FS.syncfs(true,function(err){__finishIDBFS(err)});window.addEventListener("beforeunload",function(event){FS.syncfs(false,function(err){if(err){Module["printErr"](err)}})})'
+          if old not in s:
+              raise SystemExit('IDBFS patch target not found in dist/love.js')
+          love_js.write_text(s.replace(old, new, 1))
+
+          game_js = Path('dist/game.js')
+          s = game_js.read_text(errors='ignore')
+          start = s.find('      openDatabase(\n        function(db) {')
+          end = s.find("\n\n      if (Module['setStatus']) Module['setStatus']('Downloading...');", start)
+          if start < 0 or end < 0:
+              raise SystemExit('IndexedDB preload patch target not found in dist/game.js')
+          replacement = "      console.info('loading ' + PACKAGE_NAME + ' from remote without IndexedDB cache');\n      fetchRemotePackage(REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE, processPackageData, handleError);"
+          game_js.write_text(s[:start] + replacement + s[end:])
+          PY
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
