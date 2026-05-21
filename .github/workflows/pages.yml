@@ -34,24 +34,20 @@ jobs:
         run: |
           rm -rf build dist
           mkdir -p build/game-src
-          cp conf.lua main.lua build/game-src/
+          cp main.lua build/game-src/
           cp -R assets build/game-src/assets
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('build/game-src/conf.lua')
-          s = p.read_text(encoding='utf-8')
-          replacements = {
-              't.window.width = 1280': 't.window.width = 960',
-              't.window.height = 720': 't.window.height = 540',
-              't.window.resizable = true': 't.window.resizable = false',
-              't.window.msaa = 4': 't.window.msaa = 0',
-              't.window.highdpi = true': 't.window.highdpi = false',
-              't.window.usedpiscale = true': 't.window.usedpiscale = false',
-          }
-          for old, new in replacements.items():
-              s = s.replace(old, new)
-          p.write_text(s, encoding='utf-8')
-          PY
+          cat > build/game-src/conf.lua <<'LUA'
+          function love.conf(t)
+            t.identity = "heartcore_survivor"
+            t.version = "11.4"
+            t.console = false
+            t.window.title = "心核幸存者"
+            t.window.width = 960
+            t.window.height = 540
+            t.window.resizable = false
+            t.window.vsync = 1
+          end
+          LUA
 
       - name: Build web version with love.js
         run: |
