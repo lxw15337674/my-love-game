@@ -2,8 +2,7 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -17,104 +16,62 @@ concurrency:
 
 jobs:
   build:
+    name: Build Love2D web export
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: '3.12'
-
-      - name: Install makelove
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install 'setuptools<81' makelove
-
-      - name: Build love.js package with makelove
-        run: |
-          rm -rf build dist
-          makelove --force lovejs
-          python - <<'PY'
-          from pathlib import Path
-          from zipfile import ZipFile
-          import shutil
-
-          build_dir = Path('build/makelove/lovejs')
-          zips = sorted(build_dir.glob('*-lovejs.zip'))
-          if not zips:
-              raise SystemExit('makelove did not produce a lovejs zip')
-
-          extract_dir = Path('build/makelove-unpacked')
-          shutil.rmtree(extract_dir, ignore_errors=True)
-          extract_dir.mkdir(parents=True, exist_ok=True)
-          with ZipFile(zips[0]) as zf:
-              zf.extractall(extract_dir)
-
-          roots = [p for p in extract_dir.iterdir() if p.is_dir()]
-          if len(roots) != 1:
-              raise SystemExit(f'expected one extracted app directory, got {roots}')
-
-          shutil.rmtree('dist', ignore_errors=True)
-          shutil.copytree(roots[0], 'dist')
-          Path('dist/.nojekyll').write_text('')
-          PY
-
-      - name: Patch love.js runtime for GitHub Pages
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          love_js = Path('dist/love.js')
-          s = love_js.read_text(errors='ignore')
-          idbfs_patterns = [
-              'Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");FS.syncfs(true,function(err){if(err){Module["printErr"](err)}else{Module.removeRunDependency("IDBFS_sync")}});window.addEventListener("beforeunload",function(event){FS.syncfs(false,function(err){if(err){Module["printErr"](err)}})})',
-              'Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");FS.syncfs(true,(err=>{err?Module["printErr"](err):Module.removeRunDependency("IDBFS_sync")}));window.addEventListener("beforeunload",(function(event){FS.syncfs(false,(function(err){err&&Module["printErr"](err)}))}))',
-          ]
-          idbfs_replacement = 'var __idbfsDone=false;function __finishIDBFS(err){if(err){Module["printErr"](err)}if(!__idbfsDone){__idbfsDone=true;Module.removeRunDependency("IDBFS_sync")}}Module.addRunDependency("IDBFS_sync");FS.mkdir("/home/web_user/love");FS.mount(IDBFS,{},"/home/web_user/love");setTimeout(function(){__finishIDBFS("IDBFS sync timeout; continuing without persistent save cache")},1500);FS.syncfs(true,function(err){__finishIDBFS(err)});window.addEventListener("beforeunload",function(event){FS.syncfs(false,function(err){if(err){Module["printErr"](err)}})})'
-          for old in idbfs_patterns:
-              if old in s:
-                  s = s.replace(old, idbfs_replacement, 1)
-                  break
-          else:
-              print('IDBFS patch target not found; continuing')
-          love_js.write_text(s)
-
-          game_js = Path('dist/game.js')
-          s = game_js.read_text(errors='ignore')
-          candidates = [
-              ('      openDatabase(\n        function(db) {', "\n\n      if (Module['setStatus']) Module['setStatus']('Downloading...');"),
-              ('            openDatabase(\n                function(db) {', "\n\n            if (Module['setStatus']) Module['setStatus']('Downloading...');"),
-          ]
-          for start_marker, end_marker in candidates:
-              start = s.find(start_marker)
-              end = s.find(end_marker, start)
-              if start >= 0 and end >= 0:
-                  indent = start_marker.split('openDatabase')[0]
-                  replacement = indent + "console.info('loading ' + PACKAGE_NAME + ' from remote without IndexedDB cache');\n" + indent + "fetchRemotePackage(REMOTE_PACKAGE_NAME, REMOTE_PACKAGE_SIZE, processPackageData, handleError);"
-                  s = s[:start] + replacement + s[end:]
-                  break
-          else:
-              raise SystemExit('IndexedDB preload patch target not found in dist/game.js')
-          game_js.write_text(s)
-          PY
+          node-version: 22
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - name: Prepare clean game source
+        run: |
+          rm -rf build dist
+          mkdir -p build/game-src
+          cp conf.lua main.lua build/game-src/
+          cp -R assets build/game-src/assets
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('build/game-src/conf.lua')
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+              't.window.width = 1280': 't.window.width = 960',
+              't.window.height = 720': 't.window.height = 540',
+              't.window.resizable = true': 't.window.resizable = false',
+              't.window.msaa = 4': 't.window.msaa = 0',
+              't.window.highdpi = true': 't.window.highdpi = false',
+              't.window.usedpiscale = true': 't.window.usedpiscale = false',
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Build web version with love.js
+        run: |
+          npx --yes love.js@11.4.1 build/game-src dist -c -t "心核幸存者" -m 134217728
+          ./scripts/patch-web-export.py dist
+          touch dist/.nojekyll
+
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: dist
 
   deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
-      - name: Deploy to GitHub Pages
+      - name: Deploy Pages artifact
         id: deployment
         uses: actions/deploy-pages@v4
