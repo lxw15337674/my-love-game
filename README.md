@@ -69,3 +69,13 @@ love .
 
 - `main.lua` - complete prototype loop, rendering, combat, loot, shop, and wave flow
 - `conf.lua` - LÖVE window/module configuration
+
+## Art Assets
+
+Prototype art lives in `assets/`.
+
+- `assets/svg/heartcore_spritesheet.svg` - editable SVG source sheet
+- `assets/heartcore_spritesheet.png` - transparent PNG sheet exported for runtime use
+- `assets/*.png` - individual sprite PNGs loaded by LÖVE
+
+LÖVE does not load SVG files natively in this prototype, so runtime rendering uses PNGs exported from the SVG/vector source.

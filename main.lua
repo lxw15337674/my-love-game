@@ -55,7 +55,8 @@ local Game = {
         weapons = {},
         gear = {}
     },
-    fonts = {}
+    fonts = {},
+    images = {}
 }
 
 local TAU = math.pi * 2
@@ -97,32 +98,38 @@ local brands = {
 
 local weaponDefs = {
     needle = {
+        id = "needle", projectileSprite = "projectile_star_needle",
         name = "Star Needle", brand = "starforge", element = "kinetic", price = 22,
         damage = 9, cooldown = 0.34, speed = 720, count = 1, spread = 0, range = 760,
         desc = "Fast precision shots, +8% crit",
         apply = function(p) p.stats.crit = p.stats.crit + 0.08 end
     },
     swarm = {
+        id = "swarm", projectileSprite = "projectile_swarm_missile",
         name = "Swarm Launcher", brand = "swarm", element = "kinetic", price = 28,
         damage = 4, cooldown = 0.62, speed = 560, count = 5, spread = 0.42, range = 650,
         desc = "Fires many low-damage projectiles"
     },
     molten = {
+        id = "molten", projectileSprite = "projectile_molten_orb",
         name = "Molten Cannon", brand = "molten", element = "burn", price = 34,
         damage = 22, cooldown = 1.10, speed = 420, count = 1, spread = 0, range = 700, splash = 58,
         desc = "Slow explosive burn shots"
     },
     echo = {
+        id = "echo", projectileSprite = "projectile_echo_blade",
         name = "Echo Blade", brand = "echo", element = "arc", price = 32,
         damage = 11, cooldown = 0.54, speed = 620, count = 1, spread = 0, range = 680, bounce = 2,
         desc = "Bounces to nearby enemies"
     },
     coil = {
+        id = "coil", projectileSprite = "projectile_arc_bolt",
         name = "Arc Coil", brand = "echo", element = "arc", price = 36,
         damage = 15, cooldown = 0.88, speed = 0, count = 1, spread = 0, range = 420, chain = 3,
         desc = "Periodic chain lightning"
     },
     void = {
+        id = "void", projectileSprite = "projectile_void_orb",
         name = "Void Orb", brand = "blackbox", element = "void", price = 38,
         damage = 8, cooldown = 1.25, speed = 210, count = 1, spread = 0, range = 620, aura = 48,
         desc = "Slow orb that pulls and damages"
@@ -145,12 +152,12 @@ local itemPool = {
 }
 
 local enemyDefs = {
-    drifter = {name = "Drifting Noise", hp = 18, speed = 78, damage = 9, r = 14, color = C.red, xp = 3, coin = 2},
-    splinter = {name = "Splinter", hp = 12, speed = 130, damage = 7, r = 10, color = C.orange, xp = 2, coin = 1},
-    shell = {name = "Shell Memory", hp = 44, speed = 50, damage = 13, r = 20, color = C.green, armor = 2, xp = 5, coin = 4},
-    wisp = {name = "Arc Wisp", hp = 24, speed = 105, damage = 8, r = 13, color = C.cyan, xp = 4, coin = 3},
-    elite = {name = "Runaway Shade", hp = 190, speed = 64, damage = 18, r = 28, color = C.purple, armor = 3, xp = 16, coin = 12, elite = true},
-    boss = {name = "Heartbreak Core", hp = 3200, speed = 44, damage = 24, r = 46, color = C.pink, armor = 4, xp = 80, coin = 60, boss = true}
+    drifter = {name = "Drifting Noise", sprite = "enemy_drifter", hp = 18, speed = 78, damage = 9, r = 14, color = C.red, xp = 3, coin = 2},
+    splinter = {name = "Splinter", sprite = "enemy_splinter", hp = 12, speed = 130, damage = 7, r = 10, color = C.orange, xp = 2, coin = 1},
+    shell = {name = "Shell Memory", sprite = "enemy_shell", hp = 44, speed = 50, damage = 13, r = 20, color = C.green, armor = 2, xp = 5, coin = 4},
+    wisp = {name = "Arc Wisp", sprite = "enemy_wisp", hp = 24, speed = 105, damage = 8, r = 13, color = C.cyan, xp = 4, coin = 3},
+    elite = {name = "Runaway Shade", sprite = "enemy_elite", hp = 190, speed = 64, damage = 18, r = 28, color = C.purple, armor = 3, xp = 16, coin = 12, elite = true},
+    boss = {name = "Heartbreak Core", sprite = "boss_heartbreak", hp = 3200, speed = 44, damage = 24, r = 46, color = C.pink, armor = 4, xp = 80, coin = 60, boss = true}
 }
 
 local rarityColor = {
@@ -187,6 +194,45 @@ local function drawHeart(x, y, s, mode)
     love.graphics.polygon(mode or "fill", points)
 end
 
+local assetFiles = {
+    player_heartcore = "assets/player_heartcore.png",
+    enemy_splinter = "assets/enemy_splinter.png",
+    enemy_drifter = "assets/enemy_drifter.png",
+    enemy_shell = "assets/enemy_shell.png",
+    enemy_wisp = "assets/enemy_wisp.png",
+    enemy_elite = "assets/enemy_elite.png",
+    boss_heartbreak = "assets/boss_heartbreak.png",
+    pickup_coin = "assets/pickup_coin.png",
+    pickup_xp = "assets/pickup_xp.png",
+    pickup_shield = "assets/pickup_shield.png",
+    projectile_star_needle = "assets/projectile_star_needle.png",
+    projectile_swarm_missile = "assets/projectile_swarm_missile.png",
+    projectile_molten_orb = "assets/projectile_molten_orb.png",
+    projectile_echo_blade = "assets/projectile_echo_blade.png",
+    projectile_arc_bolt = "assets/projectile_arc_bolt.png",
+    projectile_void_orb = "assets/projectile_void_orb.png"
+}
+
+local function loadImages()
+    Game.images = {}
+    for key, path in pairs(assetFiles) do
+        local ok, img = pcall(love.graphics.newImage, path)
+        if ok and img then
+            img:setFilter("linear", "linear")
+            Game.images[key] = img
+        end
+    end
+end
+
+local function drawSprite(name, x, y, size, rotation, alpha)
+    local img = name and Game.images[name]
+    if not img then return false end
+    love.graphics.setColor(1, 1, 1, alpha or 1)
+    local scale = size / math.max(img:getWidth(), img:getHeight())
+    love.graphics.draw(img, x, y, rotation or 0, scale, scale, img:getWidth() / 2, img:getHeight() / 2)
+    return true
+end
+
 local function addText(x, y, text, c)
     Game.damageTexts[#Game.damageTexts + 1] = {x = x, y = y, text = text, color = c or C.white, life = 0.72}
 end
@@ -201,7 +247,7 @@ end
 
 local function toast(text)
     Game.message = text
-    Game.messageTimer = 2.8
+    Game.messageTimer = 2.0
 end
 
 local function chooseEnemyDef()
@@ -228,14 +274,15 @@ local function spawnEnemy(def)
         hp = def.hp * scale, maxHp = def.hp * scale,
         speed = def.speed + Game.wave * 2,
         damage = def.damage, armor = def.armor or 0,
-        color = def.color, xp = def.xp, coin = def.coin,
+        color = def.color, xp = def.xp, coin = def.coin, sprite = def.sprite,
         elite = def.elite, boss = def.boss,
         burn = 0, slow = 0, corrosion = 0
     }
 end
 
 local function spawnPickup(kind, x, y, value)
-    Game.pickups[#Game.pickups + 1] = {kind = kind, x = x, y = y, r = kind == "xp" and 5 or 6, value = value or 1, t = rnd() * TAU}
+    local sprite = kind == "xp" and "pickup_xp" or "pickup_coin"
+    Game.pickups[#Game.pickups + 1] = {kind = kind, x = x, y = y, r = kind == "xp" and 5 or 6, value = value or 1, t = rnd() * TAU, sprite = sprite}
 end
 
 local function nearestEnemy(x, y, range)
@@ -408,7 +455,7 @@ local function fireProjectile(w, target, angle)
         x = p.x, y = p.y, vx = math.cos(angle) * w.speed * p.stats.projectileSpeed, vy = math.sin(angle) * w.speed * p.stats.projectileSpeed,
         r = w.splash and 7 or 4, damage = dmg, element = w.element, range = w.range * p.stats.range,
         traveled = 0, pierce = (w.pierce or 0) + p.stats.pierce, bounce = (w.bounce or 0) + p.stats.bounce,
-        splash = w.splash, aura = w.aura, color = elements[w.element].color, crit = crit, target = target
+        splash = w.splash, aura = w.aura, color = elements[w.element].color, sprite = w.projectileSprite, crit = crit, target = target
     }
 end
 
@@ -639,6 +686,7 @@ function love.load()
     love.math.setRandomSeed(os.time())
     Game.w, Game.h = love.graphics.getDimensions()
     Game.fonts = {tiny = love.graphics.newFont(13), small = love.graphics.newFont(17), normal = love.graphics.newFont(22), big = love.graphics.newFont(36), title = love.graphics.newFont(60)}
+    loadImages()
     for _ = 1, 130 do
         Game.stars[#Game.stars + 1] = {x = rnd() * Game.w, y = rnd() * Game.h, r = rnd(7, 21) / 10, speed = rnd(8, 38), phase = rnd() * TAU}
     end
@@ -752,36 +800,55 @@ end
 
 local function drawWorld()
     for _, item in ipairs(Game.pickups) do
-        if item.kind == "xp" then color(C.green) else color(C.gold) end
-        love.graphics.circle("fill", item.x, item.y + math.sin(item.t) * 2, item.r)
-    end
-    for _, b in ipairs(Game.bullets) do
-        color(b.color, 0.90)
-        if b.aura then love.graphics.circle("line", b.x, b.y, b.aura) end
-        love.graphics.circle("fill", b.x, b.y, b.r)
-    end
-    for _, e in ipairs(Game.enemies) do
-        love.graphics.setColor(e.color[1], e.color[2], e.color[3], e.boss and 0.34 or 0.18)
-        love.graphics.circle("fill", e.x, e.y, e.r * 1.75)
-        color(e.color)
-        if e.boss then
-            love.graphics.rectangle("fill", e.x - e.r, e.y - e.r, e.r * 2, e.r * 2, 10, 10)
-        elseif e.elite then
-            love.graphics.polygon("fill", e.x, e.y - e.r, e.x + e.r, e.y, e.x, e.y + e.r, e.x - e.r, e.y)
-        else
-            love.graphics.circle("fill", e.x, e.y, e.r)
+        local size = item.kind == "xp" and 26 or 28
+        if not drawSprite(item.sprite, item.x, item.y + math.sin(item.t) * 2, size, 0, 0.95) then
+            if item.kind == "xp" then color(C.green) else color(C.gold) end
+            love.graphics.circle("fill", item.x, item.y + math.sin(item.t) * 2, item.r)
         end
-        if e.hp < e.maxHp then bar(e.x - e.r, e.y - e.r - 10, e.r * 2, 4, e.hp / e.maxHp, C.red) end
     end
+
+    for _, b in ipairs(Game.bullets) do
+        if b.aura then
+            color(b.color, 0.22)
+            love.graphics.circle("line", b.x, b.y, b.aura)
+        end
+        local rot = math.atan2(b.vy, b.vx)
+        local size = b.aura and 46 or (b.splash and 34 or 28)
+        if not drawSprite(b.sprite, b.x, b.y, size, rot, 0.95) then
+            color(b.color, 0.90)
+            love.graphics.circle("fill", b.x, b.y, b.r)
+        end
+    end
+
+    for _, e in ipairs(Game.enemies) do
+        love.graphics.setColor(e.color[1], e.color[2], e.color[3], e.boss and 0.16 or 0.08)
+        love.graphics.circle("fill", e.x, e.y, e.r * 1.55)
+        local size = e.boss and e.r * 3.15 or math.max(42, e.r * 3.95)
+        if not drawSprite(e.sprite, e.x, e.y, size, 0, 0.96) then
+            color(e.color)
+            if e.boss then
+                love.graphics.rectangle("fill", e.x - e.r, e.y - e.r, e.r * 2, e.r * 2, 10, 10)
+            elseif e.elite then
+                love.graphics.polygon("fill", e.x, e.y - e.r, e.x + e.r, e.y, e.x, e.y + e.r, e.x - e.r, e.y)
+            else
+                love.graphics.circle("fill", e.x, e.y, e.r)
+            end
+        end
+        if e.hp < e.maxHp then bar(e.x - e.r, e.y - e.r - 13, e.r * 2, 4, e.hp / e.maxHp, C.red) end
+    end
+
     local p = Game.player
     if not (p.invuln > 0 and math.floor(p.invuln * 16) % 2 == 0) then
-        love.graphics.setColor(C.cyan[1], C.cyan[2], C.cyan[3], 0.18)
+        love.graphics.setColor(C.cyan[1], C.cyan[2], C.cyan[3], 0.055)
         love.graphics.circle("fill", p.x, p.y, p.pickup)
-        color(C.pink)
-        drawHeart(p.x, p.y + 2, 0.78)
-        color(C.cyan, 0.88)
-        love.graphics.circle("line", p.x, p.y, p.r + 5)
+        if not drawSprite("player_heartcore", p.x, p.y, 72, 0, 1) then
+            color(C.pink)
+            drawHeart(p.x, p.y + 2, 0.78)
+        end
+        color(C.cyan, 0.58)
+        love.graphics.circle("line", p.x, p.y, p.r + 14)
     end
+
     for _, q in ipairs(Game.particles) do color(q.color, clamp(q.life / q.max, 0, 1)); love.graphics.circle("fill", q.x, q.y, q.r) end
     for _, t in ipairs(Game.damageTexts) do color(t.color, clamp(t.life / 0.72, 0, 1)); love.graphics.setFont(Game.fonts.tiny); love.graphics.print(t.text, t.x, t.y) end
 end
@@ -859,10 +926,11 @@ function love.draw()
     drawWorld()
     drawHud()
     if Game.messageTimer > 0 then
-        panel(Game.w / 2 - 260, Game.h - 72, 520, 44)
+        local toastY = 132
+        panel(Game.w / 2 - 260, toastY, 520, 40)
         love.graphics.setFont(Game.fonts.small)
         color(C.white)
-        love.graphics.printf(Game.message, Game.w / 2 - 250, Game.h - 60, 500, "center")
+        love.graphics.printf(Game.message, Game.w / 2 - 250, toastY + 11, 500, "center")
     end
     if Game.state == "gameover" then drawEnd("HEART BROKEN", "Build failed. The void was less kind than you hoped.", C.red) end
     if Game.state == "victory" then drawEnd("RUN CLEARED", "Heartcore stable. The void retreats.", C.gold) end
