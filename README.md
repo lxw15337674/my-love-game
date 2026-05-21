@@ -70,6 +70,34 @@ love .
 - `main.lua` - complete prototype loop, rendering, combat, loot, shop, and wave flow
 - `conf.lua` - LÖVE window/module configuration
 
+## AI Art Generation
+
+Right Code draw API integration is available through `tools/generate_rightcode_art.py`.
+
+The script uses the OpenAI-style endpoint documented by Right Code:
+
+- Base URL: `https://www.right.codes/draw`
+- Endpoint: `POST /v1/images/generations`
+- Default model: `gpt-image-2`
+
+Secrets are read from environment variables only. Do not put real API keys in git.
+
+```bash
+cp .env.example .env
+# edit .env locally, then:
+export RIGHTCODE_API_KEY=...
+python3 tools/generate_rightcode_art.py \
+  --output assets/generated/heartcore_generated.png
+```
+
+Dry-run without calling the API:
+
+```bash
+python3 tools/generate_rightcode_art.py --dry-run
+```
+
+The generated image is written to `assets/generated/`, with a sidecar JSON metadata file for reproducibility.
+
 ## Art Assets
 
 Prototype art lives in `assets/`.
