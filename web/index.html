@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>心核幸存者 Web 试玩版</title>
+  <link rel="icon" href="data:,">
+  <style>
+    html,body{margin:0;height:100%;background:#070914;color:#eef3ff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;overflow:hidden}
+    #game{display:block;width:100vw;height:100vh;background:#070914;touch-action:none}
+    #hint{position:fixed;left:14px;bottom:10px;color:#95a3c9;font-size:12px;opacity:.75;pointer-events:none}
+  </style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hint">方向键/WASD 移动 · 自动射击 · 商店：1-4 购买，R 刷新，Enter 下一波</div>
+<script>
+(() => {
+'use strict';
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+let W = 1280, H = 720, scale = 1;
+function resize(){ W = innerWidth; H = innerHeight; canvas.width = W * DPR; canvas.height = H * DPR; ctx.setTransform(DPR,0,0,DPR,0,0); scale = Math.min(W/1280,H/720); }
+addEventListener('resize', resize); resize();
+
+const C = {pink:'#ff4f87', cyan:'#45d8ff', gold:'#ffd166', red:'#ff4058', green:'#4cff8d', purple:'#a874ff', orange:'#ff8938', white:'#eef3ff', muted:'#93a1c9'};
+const imgPaths = {
+  bg:'assets/backgrounds/robot_war_arena.png', player:'assets/nano_banana_pro_mapped/player_heartcore.png',
+  splinter:'assets/nano_banana_pro_mapped/enemy_splinter.png', drifter:'assets/nano_banana_pro_mapped/enemy_drifter.png',
+  shell:'assets/nano_banana_pro_mapped/enemy_shell.png', wisp:'assets/nano_banana_pro_mapped/enemy_wisp.png', elite:'assets/nano_banana_pro_mapped/enemy_elite.png', boss:'assets/nano_banana_pro_mapped/boss_heartbreak.png',
+  coin:'assets/nano_banana_pro_mapped/pickup_coin.png', xp:'assets/nano_banana_pro_mapped/pickup_xp.png'
+};
+const images = {}; Object.entries(imgPaths).forEach(([k,p])=>{ const im=new Image(); im.src=p; images[k]=im; });
+const keys = new Set();
+addEventListener('keydown', e => { keys.add(e.key.toLowerCase()); if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Enter'].includes(e.key)) e.preventDefault(); handleKey(e); });
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+canvas.addEventListener('pointerdown', () => { if (G.state === 'menu') reset(); });
+
+const weapons = [
+  {id:'needle', name:'星针', brand:'星铸', color:C.gold, price:22, dmg:9, cd:.34, speed:720, count:1, spread:0, desc:'发射 1 枚高速精准弹，暴击率 ↑8%', stat:p=>p.crit+=.08},
+  {id:'swarm', name:'蜂群发射器', brand:'蜂群', color:C.green, price:28, dmg:4, cd:.62, speed:560, count:5, spread:.42, desc:'发射 5 枚扩散弹体，适合清小怪'},
+  {id:'molten', name:'熔火炮', brand:'熔火', color:C.orange, price:34, dmg:22, cd:1.1, speed:420, count:1, spread:0, splash:58, desc:'发射 1 枚慢速爆燃弹，命中后范围伤害'},
+  {id:'echo', name:'回声刃', brand:'回声', color:C.cyan, price:32, dmg:11, cd:.54, speed:620, count:1, spread:0, bounce:2, desc:'命中后最多弹射 2 次'},
+  {id:'coil', name:'电弧线圈', brand:'回声', color:C.cyan, price:36, dmg:15, cd:.88, speed:0, count:1, spread:0, chain:3, desc:'周期性连锁电击 3 个目标'},
+  {id:'void', name:'虚空球', brand:'黑箱', color:C.purple, price:38, dmg:8, cd:1.25, speed:210, count:1, spread:0, aura:50, desc:'发射牵引球，持续压制附近敌人'}
+];
+const items = [
+  {name:'校准透镜', type:'强化', rarity:'稀有', price:18, desc:'伤害 ↑10%，暴击 ↑4%', buy:p=>{p.damage*=1.10;p.crit+=.04}},
+  {name:'脉冲节拍器', type:'强化', rarity:'稀有', price:20, desc:'射速 ↑14%，伤害 ↓4%', buy:p=>{p.fireRate*=1.14;p.damage*=.96}},
+  {name:'拾荒者戒环', type:'强化', rarity:'普通', price:14, desc:'拾取范围 ↑30，幸运 ↑1', buy:p=>{p.pickup+=30;p.luck++}},
+  {name:'轻型心壳', type:'护盾', rarity:'稀有', price:24, desc:'护盾 ↑20，移速 ↑8%', buy:p=>{p.maxShield+=20;p.shield+=20;p.speed+=20}},
+  {name:'重型心甲', type:'护甲', rarity:'稀有', price:24, desc:'生命 ↑30，移速 ↓5%', buy:p=>{p.maxHp+=30;p.hp+=30;p.speed-=13}},
+  {name:'弹射棱镜', type:'模组', rarity:'史诗', price:42, desc:'弹射 ↑1，射程 ↑8%', buy:p=>{p.bounce++;p.range*=1.08}},
+  {name:'空尖核心', type:'模组', rarity:'史诗', price:44, desc:'穿透 ↑1，弹速 ↑12%', buy:p=>{p.pierce++;p.projSpeed*=1.12}},
+  {name:'修补凝胶', type:'强化', rarity:'普通', price:16, desc:'最大生命 ↑18，立即治疗 25', buy:p=>{p.maxHp+=18;p.hp=Math.min(p.maxHp,p.hp+25)}}
+];
+const enemyDefs = [
+  {k:'splinter', name:'裂片', hp:12, speed:132, dmg:7, r:12, xp:2, coin:1, color:C.orange},
+  {k:'drifter', name:'漂移噪声', hp:18, speed:82, dmg:9, r:16, xp:3, coin:2, color:C.red},
+  {k:'wisp', name:'电弧游魂', hp:24, speed:106, dmg:8, r:15, xp:4, coin:3, color:C.cyan},
+  {k:'shell', name:'壳层记忆', hp:44, speed:52, dmg:13, r:22, xp:5, coin:4, color:C.green},
+  {k:'elite', name:'失控阴影', hp:190, speed:66, dmg:18, r:31, xp:16, coin:12, color:C.purple, elite:true}
+];
+const bossDef = {k:'boss', name:'碎心核心', hp:3200, speed:44, dmg:24, r:52, xp:80, coin:60, color:C.pink, boss:true};
+const G = {state:'menu', time:0, wave:1, maxWave:10, waveTime:30, kills:0, coins:0, xp:0, xpNeed:16, level:1, enemies:[], bullets:[], pickups:[], texts:[], particles:[], shop:[], locked:[false,false,false,false], refresh:0, msg:'', msgT:0};
+let P;
+function player(){return {x:W/2,y:H/2,r:22,hp:110,maxHp:110,shield:45,maxShield:45,speed:255,pickup:92,damage:1,fireRate:1,crit:.05,range:1,pierce:0,bounce:0,projSpeed:1,luck:0,weapons:[{...weapons[0], lvl:1, timer:0}]};}
+function reset(){ Object.assign(G,{state:'playing',time:0,wave:1,waveTime:30,kills:0,coins:16,xp:0,xpNeed:16,level:1,enemies:[],bullets:[],pickups:[],texts:[],particles:[],shop:[],locked:[false,false,false,false],refresh:0,msg:'第 1 波：存活 30 秒',msgT:2}); P=player(); }
+function enterShop(){G.state='shop';G.refresh=0;rollShop();toast('商店开启：认真构筑');}
+function startWave(){G.state='playing';G.waveTime=30;G.enemies=[];G.bullets=[];G.pickups=[];toast(`第 ${G.wave} 波：存活 30 秒`); if(G.wave===10) spawn(bossDef);}
+function toast(s){G.msg=s;G.msgT=2.2;}
+function rnd(a=1,b){ if(b===undefined)return Math.random()*a; return a+Math.random()*(b-a); }
+function dist(a,b,c,d){return Math.hypot(a-c,b-d)}
+function angle(a,b,c,d){return Math.atan2(d-b,c-a)}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function rollShop(){ for(let i=0;i<4;i++) if(!G.locked[i]) G.shop[i]=shopItem(); }
+function shopItem(){ if(Math.random()<.42){ const w=weapons[(Math.random()*weapons.length)|0]; return {kind:'武器', rarity:'稀有', name:w.name, price:w.price, desc:w.desc, color:w.color, weapon:w}; } const it=items[(Math.random()*items.length)|0]; return {...it, kind:it.type, color:it.rarity==='史诗'?C.purple:it.rarity==='稀有'?C.cyan:C.white}; }
+function buy(i){ const item=G.shop[i]; if(!item)return; if(G.coins<item.price){toast('晶币不足'); return;} G.coins-=item.price; if(item.weapon){ const old=P.weapons.find(w=>w.id===item.weapon.id); if(old){old.lvl++;old.dmg+=Math.max(1,item.weapon.dmg*.28);old.cd*=.94;toast(`${old.name} 升至等级 ${old.lvl}`);} else {P.weapons.push({...item.weapon,lvl:1,timer:0}); item.weapon.stat&&item.weapon.stat(P); toast(`已装备：${item.weapon.name}`);} } else { item.buy(P); toast(`获得：${item.name}`); } G.shop[i]=shopItem(); G.locked[i]=false; }
+function handleKey(e){ if(G.state==='menu' && e.key==='Enter') reset(); else if((G.state==='gameover'||G.state==='victory') && e.key==='Enter') reset(); else if(G.state==='shop'){ if(/[1-4]/.test(e.key)) buy(+e.key-1); if(e.key.toLowerCase()==='r'){const c=3+G.refresh*2;if(G.coins>=c){G.coins-=c;G.refresh++;rollShop();}else toast('晶币不足，无法刷新');} if(e.key==='Enter') {G.wave++; startWave();} } }
+function spawn(def){ const side=(Math.random()*4)|0; let x=side===0?-40:side===1?W+40:rnd(W), y=side===2?-40:side===3?H+40:rnd(H); G.enemies.push({...def,x,y,hp:def.hp*(1+G.wave*.16),maxHp:def.hp*(1+G.wave*.16),slow:0}); }
+function shoot(w){ if(!G.enemies.length)return; let target=G.enemies.reduce((a,e)=> dist(P.x,P.y,e.x,e.y)<dist(P.x,P.y,a.x,a.y)?e:a,G.enemies[0]); let base=angle(P.x,P.y,target.x,target.y); let n=w.count||1; for(let i=0;i<n;i++){let off=(i-(n-1)/2)*(w.spread||0); G.bullets.push({x:P.x,y:P.y,a:base+off,v:(w.speed||0)*P.projSpeed,d:w.dmg*P.damage,r:6,life:(w.range||680)/Math.max(1,w.speed||420),color:w.color,splash:w.splash||0,aura:w.aura||0,bounce:(w.bounce||0)+P.bounce,pierce:P.pierce});} }
+function damage(e,d,crit=false){ e.hp-=d; G.texts.push({x:e.x,y:e.y-e.r,t:(d|0)+(crit?'!':''),life:.7,c:crit?C.gold:e.color}); if(e.hp<=0) kill(e); }
+function kill(e){ G.kills++; G.xp+=e.xp; G.pickups.push({x:e.x,y:e.y,k:'xp',v:e.xp,r:6}); if(Math.random()<.55)G.pickups.push({x:e.x+rnd(-12,12),y:e.y+rnd(-12,12),k:'coin',v:Math.max(1,(e.coin/2)|0),r:7}); if(e.boss)G.state='victory'; while(G.xp>=G.xpNeed){G.xp-=G.xpNeed;G.level++;G.xpNeed=(G.xpNeed*1.28+8)|0;P.maxHp+=5;P.hp=Math.min(P.maxHp,P.hp+12);P.damage*=1.04;toast(`等级 ${G.level}：伤害和生命提升`);} }
+function update(dt){ G.time+=dt; if(G.msgT>0)G.msgT-=dt; G.texts=G.texts.filter(t=>(t.life-=dt)>0); if(G.state!=='playing')return; let dx=(keys.has('a')||keys.has('arrowleft')?-1:0)+(keys.has('d')||keys.has('arrowright')?1:0), dy=(keys.has('w')||keys.has('arrowup')?-1:0)+(keys.has('s')||keys.has('arrowdown')?1:0); if(dx||dy){let l=Math.hypot(dx,dy);P.x=clamp(P.x+dx/l*P.speed*dt,30,W-30);P.y=clamp(P.y+dy/l*P.speed*dt,30,H-30);} G.waveTime-=dt; if(Math.random()<dt*(1.2+G.wave*.45)) spawn(enemyDefs[(Math.random()*Math.min(enemyDefs.length,2+(G.wave/2)|0))|0]); if(G.wave%3===0 && G.waveTime<18 && !G.eliteFlag){spawn(enemyDefs[4]);G.eliteFlag=true;} P.weapons.forEach(w=>{w.timer-=dt;if(w.timer<=0){w.timer=w.cd/Math.max(.2,P.fireRate); if(w.chain){G.enemies.slice(0,w.chain).forEach(e=>damage(e,w.dmg*P.damage));} else shoot(w);}}); G.bullets=G.bullets.filter(b=>{b.x+=Math.cos(b.a)*b.v*dt;b.y+=Math.sin(b.a)*b.v*dt;b.life-=dt;if(b.aura)G.enemies.forEach(e=>{if(dist(b.x,b.y,e.x,e.y)<b.aura+e.r){e.x+=Math.cos(angle(e.x,e.y,b.x,b.y))*30*dt;e.y+=Math.sin(angle(e.x,e.y,b.x,b.y))*30*dt;damage(e,b.d*dt*.8);}}); for(const e of G.enemies){if(dist(b.x,b.y,e.x,e.y)<e.r+8){damage(e,b.d,Math.random()<P.crit); if(b.splash)G.enemies.forEach(o=>{if(o!==e&&dist(e.x,e.y,o.x,o.y)<b.splash)damage(o,b.d*.55)}); if(b.pierce-->0)continue; return false;}} return b.life>0&&b.x>-60&&b.x<W+60&&b.y>-60&&b.y<H+60;}); G.enemies=G.enemies.filter(e=>e.hp>0).map(e=>{let a=angle(e.x,e.y,P.x,P.y);e.x+=Math.cos(a)*e.speed*dt;e.y+=Math.sin(a)*e.speed*dt;if(dist(e.x,e.y,P.x,P.y)<e.r+P.r){P.hp-=e.dmg*dt;if(P.hp<=0)G.state='gameover';}return e;}); G.pickups=G.pickups.filter(it=>{if(dist(P.x,P.y,it.x,it.y)<P.pickup){let a=angle(it.x,it.y,P.x,P.y);it.x+=Math.cos(a)*420*dt;it.y+=Math.sin(a)*420*dt;} if(dist(P.x,P.y,it.x,it.y)<P.r+12){if(it.k==='coin')G.coins+=it.v;else G.xp+=it.v;return false;} return true;}); if(G.waveTime<=0){G.eliteFlag=false;if(G.wave>=G.maxWave)spawn(bossDef);else{G.coins+=10+G.wave*2;enterShop();}} }
+function drawImg(k,x,y,s,rot=0,a=1){const im=images[k]; if(!im||!im.complete||!im.naturalWidth)return false; ctx.save();ctx.globalAlpha=a;ctx.translate(x,y);ctx.rotate(rot);ctx.drawImage(im,-s/2,-s/2,s,s);ctx.restore();return true;}
+function panel(x,y,w,h){ctx.fillStyle='rgba(12,16,34,.82)';round(x,y,w,h,14,true);ctx.strokeStyle='rgba(125,151,215,.35)';round(x+.5,y+.5,w-1,h-1,14,false)}
+function round(x,y,w,h,r,fill){ctx.beginPath();ctx.roundRect(x,y,w,h,r);fill?ctx.fill():ctx.stroke();}
+function bar(x,y,w,h,p,c){ctx.fillStyle='rgba(0,0,0,.35)';round(x,y,w,h,5,true);ctx.fillStyle=c;round(x,y,w*clamp(p,0,1),h,5,true)}
+function draw(){ctx.clearRect(0,0,W,H); if(images.bg.complete) {let iw=images.bg.naturalWidth,ih=images.bg.naturalHeight,s=Math.max(W/iw,H/ih);ctx.drawImage(images.bg,(W-iw*s)/2,(H-ih*s)/2,iw*s,ih*s);} ctx.fillStyle='rgba(5,7,18,.42)';ctx.fillRect(0,0,W,H); if(G.state==='menu'){ctx.textAlign='center';ctx.fillStyle=C.white;ctx.font='700 64px sans-serif';ctx.fillText('心核',W/2,190);ctx.fillStyle=C.pink;ctx.fillText('幸存者',W/2,260);ctx.font='22px sans-serif';ctx.fillStyle=C.muted;ctx.fillText('HTML5 Web 试玩版 / 自动瞄准 / 波次构筑',W/2,330);panel(W/2-250,390,500,110);ctx.fillStyle=C.white;ctx.fillText('按回车或点击开始',W/2,455);return;} if(P){ctx.fillStyle='rgba(255,79,135,.12)';ctx.beginPath();ctx.arc(P.x,P.y,P.pickup,0,7);ctx.fill();drawImg('player',P.x,P.y,86)||(()=>{ctx.fillStyle=C.pink;ctx.beginPath();ctx.arc(P.x,P.y,22,0,7);ctx.fill();})();} G.pickups.forEach(it=>drawImg(it.k,P?it.x:0,it.y,32)||(()=>{ctx.fillStyle=it.k==='coin'?C.gold:C.green;ctx.beginPath();ctx.arc(it.x,it.y,it.r,0,7);ctx.fill();})()); G.enemies.forEach(e=>{ctx.fillStyle=e.color+'44';ctx.beginPath();ctx.arc(e.x,e.y,e.r*1.8,0,7);ctx.fill();drawImg(e.k,e.x,e.y,e.r*3.2)||(()=>{ctx.fillStyle=e.color;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,7);ctx.fill();})();bar(e.x-e.r,e.y-e.r-10,e.r*2,4,e.hp/e.maxHp,e.color)}); G.bullets.forEach(b=>{ctx.strokeStyle=b.color;ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(b.x-Math.cos(b.a)*14,b.y-Math.sin(b.a)*14);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.fillStyle=C.white;ctx.beginPath();ctx.arc(b.x,b.y,4,0,7);ctx.fill();}); G.texts.forEach(t=>{ctx.globalAlpha=t.life/.7;ctx.fillStyle=t.c;ctx.font='16px sans-serif';ctx.fillText(t.t,t.x,t.y-=.4);ctx.globalAlpha=1}); drawHud(); if(G.state==='shop')drawShop(); if(G.msgT>0){panel(W/2-230,128,460,40);ctx.textAlign='center';ctx.fillStyle=C.white;ctx.font='17px sans-serif';ctx.fillText(G.msg,W/2,154);} if(G.state==='gameover'||G.state==='victory'){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(0,0,W,H);panel(W/2-280,220,560,230);ctx.textAlign='center';ctx.fillStyle=G.state==='victory'?C.gold:C.red;ctx.font='42px sans-serif';ctx.fillText(G.state==='victory'?'通关完成':'心核破碎',W/2,295);ctx.fillStyle=C.white;ctx.font='20px sans-serif';ctx.fillText(G.state==='victory'?'心核稳定，虚空退潮。':'构筑失败。虚空可没那么温柔。',W/2,340);ctx.fillStyle=C.muted;ctx.fillText('回车重新开始',W/2,390);}}
+function drawHud(){panel(18,14,420,108);ctx.textAlign='left';ctx.font='22px sans-serif';ctx.fillStyle=C.white;ctx.fillText(`波次 ${G.wave}/${G.maxWave}`,36,42);ctx.fillStyle=C.gold;ctx.fillText(`晶币 ${G.coins}`,165,42);ctx.fillStyle=C.muted;ctx.fillText(`击杀 ${G.kills}`,280,42);bar(36,62,190,12,P.hp/P.maxHp,C.pink);bar(36,82,190,10,P.shield/P.maxShield,C.cyan);ctx.font='13px sans-serif';ctx.fillStyle=C.muted;ctx.fillText(`生命 ${Math.ceil(P.hp)}/${P.maxHp}`,236,70);ctx.fillText(`护盾 ${Math.ceil(P.shield)}/${P.maxShield}`,236,90);panel(W/2-125,14,250,74);ctx.textAlign='center';ctx.font='36px sans-serif';ctx.fillStyle=C.white;ctx.fillText(G.state==='shop'?'商店':String(Math.max(0,Math.ceil(G.waveTime))).padStart(2,'0'),W/2,54);ctx.font='13px sans-serif';ctx.fillStyle=C.muted;ctx.fillText(G.state==='shop'?'构筑阶段':'30 秒生存波次',W/2,76)}
+function drawShop(){panel(70,120,W-140,H-150);ctx.textAlign='center';ctx.font='34px sans-serif';ctx.fillStyle=C.white;ctx.fillText(`商店 / 第 ${G.wave} 波结束`,W/2,165);ctx.font='16px sans-serif';ctx.fillStyle=C.muted;ctx.fillText(`1-4 购买  ·  R 刷新（${3+G.refresh*2} 晶币）  ·  Enter 下一波`,W/2,200);let cw=(W-190)/4;G.shop.forEach((it,i)=>{let x=85+i*(cw+10),y=235;panel(x,y,cw,280);ctx.textAlign='left';ctx.fillStyle=it.color||C.white;ctx.font='13px sans-serif';ctx.fillText(`${it.rarity||'稀有'} / ${it.kind}`,x+14,y+25);ctx.fillStyle=C.white;ctx.font='21px sans-serif';ctx.fillText(it.name,x+14,y+60);ctx.fillStyle=C.muted;ctx.font='15px sans-serif';wrap(it.desc,x+14,y+90,cw-28,22);ctx.fillStyle=G.coins>=it.price?C.gold:C.red;ctx.font='18px sans-serif';ctx.fillText(`晶币 ${it.price}`,x+14,y+240);ctx.textAlign='right';ctx.fillStyle=C.white;ctx.fillText(`购买 ${i+1}`,x+cw-14,y+240);});panel(85,H-125,W-170,95);ctx.textAlign='left';ctx.fillStyle=C.white;ctx.font='17px sans-serif';ctx.fillText('当前构筑',105,H-96);ctx.font='13px sans-serif';ctx.fillStyle=C.muted;ctx.fillText(`伤害 ${Math.round(P.damage*100)}%   射速 ${Math.round(P.fireRate*100)}%   暴击 ${Math.round(P.crit*100)}%   穿透 ${P.pierce}   弹射 ${P.bounce}`,105,H-68);ctx.fillStyle=C.gold;ctx.fillText('武器：'+P.weapons.map(w=>`${w.name} 等级${w.lvl}`).join(' / '),105,H-42)}
+function wrap(t,x,y,w,lh){let line='';for(const ch of t){let test=line+ch;if(ctx.measureText(test).width>w){ctx.fillText(line,x,y);line=ch;y+=lh;}else line=test;}ctx.fillText(line,x,y)}
+let last=performance.now();function loop(now){let dt=Math.min(.033,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
