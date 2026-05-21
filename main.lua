@@ -5,7 +5,7 @@
 local Game = {
     w = 1280,
     h = 720,
-    state = "menu", -- menu, playing, shop, gameover, victory
+    state = "menu", -- menu, playing, levelup, shop, gameover, victory
     time = 0,
     wave = 1,
     waveTime = 30,
@@ -18,6 +18,7 @@ local Game = {
     shopRefresh = 0,
     shop = {},
     locked = {},
+    tempBuffs = {},
     enemies = {},
     bullets = {},
     pickups = {},
@@ -28,13 +29,14 @@ local Game = {
     messageTimer = 0,
     shake = 0,
     autoShotDone = false,
-    selectedCharacter = 1,
     selectedObjective = 1,
     danger = 0,
     freeRefresh = 1,
     levelChoices = {},
+    pendingRewardNextState = nil,
     objectiveProgress = 0,
     objectiveText = "",
+    waveRewards = nil,
     enemyShots = {},
     runStats = {damage = 0, damageByWeapon = {}, coinsEarned = 0, highestWave = 1, rerolls = 0},
     player = {
@@ -57,16 +59,24 @@ local Game = {
             critDamage = 1.65,
             range = 1.00,
             projectileSpeed = 1.00,
-            pierce = 0,
             bounce = 0,
             luck = 0,
             armor = 0,
             dodge = 0.03,
             lifesteal = 0,
-            engineering = 0,
-            harvest = 0
+            harvest = 0,
+            elementChance = 0,
+            elementDamage = 1.00,
+            shieldDamage = 1.00,
+            armorDamage = 1.00,
+            fleshDamage = 1.00,
+            explosiveDamage = 1.00,
+            lowHpDamage = 0,
+            economy = 1.00,
+            rarityLuck = 0
         },
         weapons = {},
+        shieldItem = nil,
         gear = {}
     },
     fonts = {},
@@ -154,31 +164,40 @@ local weaponDefs = {
 local itemPool = {
     {name = "校准透镜", kind = "item", rarity = "rare", price = 18, desc = "伤害 +10%，暴击 +4%", apply = function(p) p.stats.damage = p.stats.damage + 0.10; p.stats.crit = p.stats.crit + 0.04 end},
     {name = "脉冲节拍器", kind = "item", rarity = "rare", price = 20, desc = "射速 +14%，伤害 -4%", apply = function(p) p.stats.fireRate = p.stats.fireRate + 0.14; p.stats.damage = p.stats.damage - 0.04 end},
-    {name = "拾荒者戒环", kind = "item", rarity = "common", price = 14, desc = "拾取范围 +30，幸运 +1", apply = function(p) p.pickup = p.pickup + 30; p.stats.luck = p.stats.luck + 1 end},
+    {name = "结算戒环", kind = "item", rarity = "common", price = 14, desc = "结算金币 +10%，幸运 +1", apply = function(p) p.stats.economy = p.stats.economy + 0.10; p.stats.luck = p.stats.luck + 1 end},
     {name = "轻型心壳", kind = "shield", rarity = "rare", price = 24, desc = "护盾 +20，移速 +8%", apply = function(p) p.maxShield = p.maxShield + 20; p.shield = p.shield + 20; p.speed = p.speed + 20 end},
     {name = "重型心甲", kind = "shield", rarity = "rare", price = 24, desc = "生命 +30，移速 -5%", apply = function(p) p.maxHp = p.maxHp + 30; p.hp = p.hp + 30; p.speed = p.speed - 13 end},
     {name = "弹射棱镜", kind = "mod", rarity = "epic", price = 42, desc = "弹射 +1，射程 +8%", apply = function(p) p.stats.bounce = p.stats.bounce + 1; p.stats.range = p.stats.range + 0.08 end},
-    {name = "空尖核心", kind = "mod", rarity = "epic", price = 44, desc = "穿透 +1，弹速 +12%", apply = function(p) p.stats.pierce = p.stats.pierce + 1; p.stats.projectileSpeed = p.stats.projectileSpeed + 0.12 end},
+    {name = "超导弹芯", kind = "mod", rarity = "epic", price = 44, desc = "弹速 +12%，元素伤害 +10%", apply = function(p) p.stats.projectileSpeed = p.stats.projectileSpeed + 0.12; p.stats.elementDamage = p.stats.elementDamage + 0.10 end},
     {name = "修补凝胶", kind = "item", rarity = "common", price = 16, desc = "最大生命 +18，立即治疗 25", apply = function(p) p.maxHp = p.maxHp + 18; p.hp = math.min(p.maxHp, p.hp + 25) end},
-    {name = "晶币回流器", kind = "relic", rarity = "epic", price = 48, desc = "拾取晶币后短暂提高射速", flag = "coinHaste", apply = function(p) p.gear.coinHaste = true end},
+    {name = "晶币回流器", kind = "relic", rarity = "epic", price = 48, desc = "结算金币 +18%，射速 +5%", apply = function(p) p.stats.economy = p.stats.economy + 0.18; p.stats.fireRate = p.stats.fireRate + 0.05 end},
     {name = "别眨眼", kind = "legend", rarity = "legend", price = 64, desc = "暴击击杀后，下一击必定暴击", flag = "blink", apply = function(p) p.gear.blink = true end},
     {name = "善意有价", kind = "legend", rarity = "legend", price = 68, desc = "护盾破裂释放脉冲，但回复更慢", flag = "shieldBurst", apply = function(p) p.gear.shieldBurst = true; p.shieldRegen = p.shieldRegen - 1 end},
     {name = "回声无尽", kind = "legend", rarity = "legend", price = 66, desc = "弹射 +2，伤害 -6%", flag = "endlessEcho", apply = function(p) p.stats.bounce = p.stats.bounce + 2; p.stats.damage = p.stats.damage - 0.06 end},
     {name = "陶瓷装甲片", kind = "shield", rarity = "common", price = 18, desc = "护甲 +2，移速 -2%", apply = function(p) p.stats.armor = p.stats.armor + 2; p.speed = p.speed - 5 end},
     {name = "神经闪避器", kind = "mod", rarity = "rare", price = 26, desc = "闪避 +7%，生命 -8", apply = function(p) p.stats.dodge = p.stats.dodge + 0.07; p.maxHp = p.maxHp - 8; p.hp = math.min(p.hp, p.maxHp) end},
     {name = "虹吸针管", kind = "relic", rarity = "rare", price = 30, desc = "生命偷取 +3%，暴击 -2%", apply = function(p) p.stats.lifesteal = p.stats.lifesteal + 0.03; p.stats.crit = p.stats.crit - 0.02 end},
-    {name = "工程无人机", kind = "relic", rarity = "epic", price = 46, desc = "工程 +1：周期电击附近敌人", apply = function(p) p.stats.engineering = p.stats.engineering + 1 end},
+    {name = "自动索敌芯片", kind = "relic", rarity = "epic", price = 46, desc = "电弧伤害 +18%，弹射 +1", apply = function(p) p.stats.elementDamage = p.stats.elementDamage + 0.18; p.stats.bounce = p.stats.bounce + 1 end},
     {name = "收获协议", kind = "relic", rarity = "epic", price = 44, desc = "收获 +4：战后额外晶币", apply = function(p) p.stats.harvest = p.stats.harvest + 4 end},
     {name = "赌徒电容", kind = "legend", rarity = "legend", price = 70, desc = "幸运 +6，闪避 +8%，护甲 -2", apply = function(p) p.stats.luck = p.stats.luck + 6; p.stats.dodge = p.stats.dodge + 0.08; p.stats.armor = p.stats.armor - 2 end}
 }
 
+local tempItemPool = {
+    {name = "兴奋剂针剂", kind = "temp", rarity = "common", price = 12, desc = "下一波伤害 +18%", buff = {damage = 0.18}},
+    {name = "战术电池", kind = "temp", rarity = "common", price = 12, desc = "下一波护盾上限 +25，开局满盾", buff = {shield = 25}},
+    {name = "赏金合约", kind = "temp", rarity = "rare", price = 18, desc = "下一波结算晶币 +30%", buff = {economy = 0.30}},
+    {name = "低温弹匣", kind = "temp", rarity = "rare", price = 20, desc = "下一波子弹附带霜冻概率", buff = {elementChance = 0.18, element = "ice"}},
+    {name = "腐蚀涂层", kind = "temp", rarity = "rare", price = 20, desc = "下一波对护甲 +35%", buff = {armorDamage = 0.35}},
+    {name = "过载保险", kind = "temp", rarity = "epic", price = 30, desc = "下一波射速 +22%，护盾回复 -20%", buff = {fireRate = 0.22, shieldRegenMult = -0.20}}
+}
+
 local enemyDefs = {
-    drifter = {name = "漂移噪声", sprite = "enemy_drifter", hp = 18, speed = 78, damage = 9, r = 14, color = C.red, xp = 3, coin = 2, behavior = "chase"},
-    splinter = {name = "裂片", sprite = "enemy_splinter", hp = 12, speed = 130, damage = 7, r = 10, color = C.orange, xp = 2, coin = 1, behavior = "charger"},
-    shell = {name = "壳层记忆", sprite = "enemy_shell", hp = 44, speed = 50, damage = 13, r = 20, color = C.green, armor = 2, xp = 5, coin = 4, behavior = "guard"},
-    wisp = {name = "电弧游魂", sprite = "enemy_wisp", hp = 24, speed = 105, damage = 8, r = 13, color = C.cyan, xp = 4, coin = 3, behavior = "shooter"},
-    elite = {name = "失控阴影", sprite = "enemy_elite", hp = 190, speed = 64, damage = 18, r = 28, color = C.purple, armor = 3, xp = 16, coin = 12, elite = true, behavior = "aura"},
-    boss = {name = "碎心核心", sprite = "boss_heartbreak", hp = 3200, speed = 44, damage = 24, r = 46, color = C.pink, armor = 4, xp = 80, coin = 60, boss = true, behavior = "boss"}
+    drifter = {name = "漂移噪声", sprite = "enemy_drifter", defense = "flesh", hp = 18, speed = 78, damage = 9, r = 14, color = C.red, xp = 3, coin = 2, behavior = "chase"},
+    splinter = {name = "裂片", sprite = "enemy_splinter", defense = "flesh", hp = 12, speed = 130, damage = 7, r = 10, color = C.orange, xp = 2, coin = 1, behavior = "charger"},
+    shell = {name = "壳层记忆", sprite = "enemy_shell", defense = "armor", hp = 44, speed = 50, damage = 13, r = 20, color = C.green, armor = 3, xp = 5, coin = 4, behavior = "guard"},
+    wisp = {name = "电弧游魂", sprite = "enemy_wisp", defense = "shield", hp = 18, shield = 26, shieldRegen = 2.2, speed = 105, damage = 8, r = 13, color = C.cyan, xp = 4, coin = 3, behavior = "shooter"},
+    elite = {name = "坏蛋精英", sprite = "enemy_elite", defense = "shield", hp = 150, shield = 90, shieldRegen = 3.0, speed = 64, damage = 18, r = 28, color = C.purple, armor = 2, xp = 16, coin = 12, elite = true, behavior = "aura"},
+    boss = {name = "碎心核心", sprite = "boss_heartbreak", defense = "armor", hp = 2800, shield = 850, shieldRegen = 4.0, speed = 44, damage = 24, r = 46, color = C.pink, armor = 5, xp = 80, coin = 60, boss = true, behavior = "boss"}
 }
 
 local wavePlans = {
@@ -200,7 +219,7 @@ end
 local affixDefs = {
     bounty = {name = "赏金", kind = "reward", desc = "晶币 +25%", coinMult = 1.25},
     overcharge = {name = "过载", kind = "reward", desc = "伤害 +10%", playerDamage = 1.10},
-    magnet = {name = "磁场", kind = "reward", desc = "经验 +15%", xpMult = 1.15, pickupBonus = 18},
+    magnet = {name = "磁场", kind = "reward", desc = "经验 +15%", xpMult = 1.15},
     calibrate = {name = "校准", kind = "reward", desc = "暴击 +6%", critBonus = 0.06},
     repair = {name = "修复", kind = "reward", desc = "护盾回复 +30%", shieldRegenMult = 1.30},
 
@@ -231,7 +250,7 @@ end
 
 local function currentAffixBonuses()
     local bonus = {
-        coinMult = 1, xpMult = 1, playerDamage = 1, critBonus = 0, pickupBonus = 0,
+        coinMult = 1, xpMult = 1, playerDamage = 1, critBonus = 0,
         shieldRegenMult = 1, enemyHp = 1, enemySpeed = 1, enemyDamage = 1, enemyArmor = 0,
         extraPack = 0, intervalMult = 1
     }
@@ -242,7 +261,6 @@ local function currentAffixBonuses()
             bonus.xpMult = bonus.xpMult * (affix.xpMult or 1)
             bonus.playerDamage = bonus.playerDamage * (affix.playerDamage or 1)
             bonus.critBonus = bonus.critBonus + (affix.critBonus or 0)
-            bonus.pickupBonus = bonus.pickupBonus + (affix.pickupBonus or 0)
             bonus.shieldRegenMult = bonus.shieldRegenMult * (affix.shieldRegenMult or 1)
             bonus.enemyHp = bonus.enemyHp * (affix.enemyHp or 1)
             bonus.enemySpeed = bonus.enemySpeed * (affix.enemySpeed or 1)
@@ -263,12 +281,25 @@ local function affixLabel()
     return "无词缀"
 end
 
-local characterDefs = {
-    {name = "心核原型", weapon = "needle", desc = "均衡机体，稳定上手", hp = 70, shield = 35, speed = 250, coins = 18, stats = {damage = 1, fireRate = 1, crit = 0.06, critDamage = 1.65, range = 1, projectileSpeed = 1, pierce = 0, bounce = 0, luck = 0, armor = 0, dodge = 0.03, lifesteal = 0, engineering = 0, harvest = 0}},
-    {name = "蜂群指挥", weapon = "swarm", desc = "多弹清场，单发偏弱", hp = 62, shield = 28, speed = 262, coins = 20, stats = {damage = 0.90, fireRate = 1.12, crit = 0.04, critDamage = 1.55, range = 0.96, projectileSpeed = 1.05, pierce = 0, bounce = 0, luck = 1, armor = 0, dodge = 0.06, lifesteal = 0, engineering = 0, harvest = 1}},
-    {name = "重壳堡垒", weapon = "molten", desc = "高护甲高生命，移动迟缓", hp = 96, shield = 46, speed = 214, coins = 16, stats = {damage = 1.08, fireRate = 0.88, crit = 0.03, critDamage = 1.70, range = 1, projectileSpeed = 0.96, pierce = 0, bounce = 0, luck = 0, armor = 4, dodge = 0.00, lifesteal = 0, engineering = 0, harvest = 0}},
-    {name = "回声术士", weapon = "echo", desc = "弹射连锁，身板偏脆", hp = 58, shield = 32, speed = 246, coins = 22, stats = {damage = 0.96, fireRate = 1.02, crit = 0.08, critDamage = 1.65, range = 1.08, projectileSpeed = 1, pierce = 0, bounce = 1, luck = 2, armor = -1, dodge = 0.05, lifesteal = 0, engineering = 0, harvest = 0}}
+local basePlayerDef = {
+    name = "心核白板",
+    weapon = "needle",
+    desc = "没有固定职业。每关奖励会把你污染成不同怪物。",
+    hp = 76,
+    shield = 36,
+    speed = 250,
+    coins = 18,
+    stats = {
+        damage = 1.00, fireRate = 1.00, crit = 0.06, critDamage = 1.65,
+        range = 1.00, projectileSpeed = 1.00, bounce = 0,
+        luck = 0, armor = 0, dodge = 0.03, lifesteal = 0, harvest = 0,
+        elementChance = 0, elementDamage = 1.00, shieldDamage = 1.00, armorDamage = 1.00,
+        fleshDamage = 1.00, explosiveDamage = 1.00, lowHpDamage = 0,
+        economy = 1.00, rarityLuck = 0
+    }
 }
+
+local characterDefs = {basePlayerDef}
 
 local objectiveDefs = {
     {name = "生存清剿", desc = "撑到计时结束，稳定推进", mode = "survive"},
@@ -277,21 +308,32 @@ local objectiveDefs = {
 }
 
 local levelRewardPool = {
-    {name = "伤害校准", desc = "伤害 +8%", apply = function(p) p.stats.damage = p.stats.damage + 0.08 end},
-    {name = "射速同步", desc = "射速 +10%", apply = function(p) p.stats.fireRate = p.stats.fireRate + 0.10 end},
-    {name = "生命扩容", desc = "最大生命 +14，治疗 10", apply = function(p) p.maxHp = p.maxHp + 14; p.hp = math.min(p.maxHp, p.hp + 10) end},
-    {name = "护盾增幅", desc = "最大护盾 +12，回复 +1", apply = function(p) p.maxShield = p.maxShield + 12; p.shield = p.shield + 12; p.shieldRegen = p.shieldRegen + 1 end},
-    {name = "护甲叠层", desc = "护甲 +2", apply = function(p) p.stats.armor = p.stats.armor + 2 end},
-    {name = "闪避步态", desc = "闪避 +5%", apply = function(p) p.stats.dodge = p.stats.dodge + 0.05 end},
-    {name = "虹吸回路", desc = "生命偷取 +2%", apply = function(p) p.stats.lifesteal = p.stats.lifesteal + 0.02 end},
-    {name = "拾荒算法", desc = "幸运 +2，拾取 +16", apply = function(p) p.stats.luck = p.stats.luck + 2; p.pickup = p.pickup + 16 end},
-    {name = "工程协议", desc = "工程 +1", apply = function(p) p.stats.engineering = p.stats.engineering + 1 end},
-    {name = "收获模块", desc = "收获 +3", apply = function(p) p.stats.harvest = p.stats.harvest + 3 end},
-    {name = "穿透校准", desc = "穿透 +1", apply = function(p) p.stats.pierce = p.stats.pierce + 1 end},
-    {name = "弹射预案", desc = "弹射 +1", apply = function(p) p.stats.bounce = p.stats.bounce + 1 end}
+    {name = "白板校准", kind = "item", rarity = "common", family = "基础", desc = "伤害 +8%", apply = function(p) p.stats.damage = p.stats.damage + 0.08 end},
+    {name = "脉冲节拍", kind = "item", rarity = "common", family = "基础", desc = "射速 +10%", apply = function(p) p.stats.fireRate = p.stats.fireRate + 0.10 end},
+    {name = "生命扩容", kind = "shield", rarity = "common", family = "生存", desc = "最大生命 +18，治疗 12", apply = function(p) p.maxHp = p.maxHp + 18; p.hp = math.min(p.maxHp, p.hp + 12) end},
+    {name = "护盾增幅", kind = "shield", rarity = "common", family = "护盾", desc = "最大护盾 +16，回复 +1", apply = function(p) p.maxShield = p.maxShield + 16; p.shield = p.shield + 16; p.shieldRegen = p.shieldRegen + 1 end},
+    {name = "陶瓷叠甲", kind = "shield", rarity = "common", family = "护甲", desc = "护甲 +2", apply = function(p) p.stats.armor = p.stats.armor + 2 end},
+    {name = "闪避步态", kind = "mod", rarity = "common", family = "生存", desc = "闪避 +5%", apply = function(p) p.stats.dodge = p.stats.dodge + 0.05 end},
+    {name = "暴击透镜", kind = "mod", rarity = "rare", family = "暴击", desc = "暴击率 +6%，暴伤 +10%", apply = function(p) p.stats.crit = p.stats.crit + 0.06; p.stats.critDamage = p.stats.critDamage + 0.10 end},
+    {name = "弱点猎杀", kind = "mod", rarity = "epic", family = "暴击", desc = "暴击率 +4%，暴击击杀使下一击必暴", flag = "blink", apply = function(p) p.stats.crit = p.stats.crit + 0.04; p.gear.blink = true end},
+    {name = "射程校准", kind = "mod", rarity = "rare", family = "武器", desc = "射程 +12%，弹速 +8%", apply = function(p) p.stats.range = p.stats.range + 0.12; p.stats.projectileSpeed = p.stats.projectileSpeed + 0.08 end},
+    {name = "回声预案", kind = "mod", rarity = "rare", family = "武器", desc = "弹射 +1，电弧伤害 +8%", apply = function(p) p.stats.bounce = p.stats.bounce + 1; p.stats.elementDamage = p.stats.elementDamage + 0.08 end},
+    {name = "燃烧弹芯", kind = "item", rarity = "rare", family = "元素", desc = "元素伤害 +12%，对红血 +15%", apply = function(p) p.stats.elementDamage = p.stats.elementDamage + 0.12; p.stats.fleshDamage = p.stats.fleshDamage + 0.15 end},
+    {name = "电击电容", kind = "item", rarity = "rare", family = "元素", desc = "对护盾 +25%，护盾破裂释放电弧", flag = "shieldBurst", apply = function(p) p.stats.shieldDamage = p.stats.shieldDamage + 0.25; p.gear.shieldBurst = true end},
+    {name = "腐蚀针剂", kind = "item", rarity = "rare", family = "元素", desc = "对护甲 +25%，腐蚀叠层上限提高", apply = function(p) p.stats.armorDamage = p.stats.armorDamage + 0.25; p.gear.deepCorrode = true end},
+    {name = "冰裂准星", kind = "mod", rarity = "epic", family = "元素", desc = "冻结/减速目标更容易被暴击", apply = function(p) p.gear.freezeCrit = true; p.stats.crit = p.stats.crit + 0.03 end},
+    {name = "爆炸协议", kind = "mod", rarity = "epic", family = "爆炸", desc = "爆炸伤害 +22%，击杀小范围爆裂", apply = function(p) p.stats.explosiveDamage = p.stats.explosiveDamage + 0.22; p.gear.killBurst = true end},
+    {name = "追踪电弧", kind = "relic", rarity = "epic", family = "元素", desc = "电弧命中后周期追踪", apply = function(p) p.gear.autoArc = true; p.stats.bounce = p.stats.bounce + 1; p.stats.elementDamage = p.stats.elementDamage + 0.10 end},
+    {name = "护盾回流", kind = "relic", rarity = "epic", family = "护盾", desc = "击杀回复护盾，满盾时伤害 +8%", apply = function(p) p.gear.killShield = true; p.gear.fullShieldDamage = true end},
+    {name = "血线狂热", kind = "relic", rarity = "epic", family = "低血", desc = "生命越低伤害越高，吸血 +2%", apply = function(p) p.stats.lowHpDamage = p.stats.lowHpDamage + 0.45; p.stats.lifesteal = p.stats.lifesteal + 0.02 end},
+    {name = "收获协议", kind = "relic", rarity = "rare", family = "经济", desc = "关卡结算晶币 +15%，收获 +3", apply = function(p) p.stats.economy = p.stats.economy + 0.15; p.stats.harvest = p.stats.harvest + 3 end},
+    {name = "赏金猎犬", kind = "legend", rarity = "legend", family = "经济", desc = "奖励稀有度提高，商店免费刷新 +1", apply = function(p) p.stats.rarityLuck = p.stats.rarityLuck + 2; Game.freeRefresh = Game.freeRefresh + 1 end},
+    {name = "回声无尽", kind = "legend", rarity = "legend", family = "武器", desc = "弹射 +2，伤害 -5%", flag = "endlessEcho", apply = function(p) p.stats.bounce = p.stats.bounce + 2; p.stats.damage = p.stats.damage - 0.05 end},
+    {name = "腐蚀瘟疫", kind = "legend", rarity = "legend", family = "元素", desc = "腐蚀击杀会向附近敌人扩散", apply = function(p) p.gear.corrosionSpread = true; p.stats.armorDamage = p.stats.armorDamage + 0.15 end},
+    {name = "坏心眼弹匣", kind = "legend", rarity = "legend", family = "暴击", desc = "暴击击杀触发弹射爆裂", apply = function(p) p.gear.critRicochet = true; p.stats.critDamage = p.stats.critDamage + 0.18 end}
 }
 
-local function selectedCharacter() return characterDefs[Game.selectedCharacter] or characterDefs[1] end
+local function selectedCharacter() return basePlayerDef end
 local function selectedObjective() return objectiveDefs[Game.selectedObjective] or objectiveDefs[1] end
 
 local rarityColor = {
@@ -300,6 +342,11 @@ local rarityColor = {
     epic = {0.74, 0.40, 1.00},
     legend = {1.00, 0.62, 0.16}
 }
+
+local rarityLabel = {common = "普通", rare = "稀有", epic = "史诗", legend = "传说"}
+local kindLabel = {weapon = "武器", item = "强化", shield = "护盾", mod = "模组", relic = "遗物", legend = "传说", temp = "战术"}
+local rarityPower = {common = 1.00, rare = 1.18, epic = 1.42, legend = 1.78}
+local rarityAffixes = {common = 1, rare = 2, epic = 3, legend = 4}
 
 local function color(c, a)
     love.graphics.setColor(c[1], c[2], c[3], a or c[4] or 1)
@@ -316,6 +363,26 @@ end
 
 local function angleTo(ax, ay, bx, by)
     return math.atan2(by - ay, bx - ax)
+end
+
+local function randf(lo, hi)
+    return lo + rnd() * (hi - lo)
+end
+
+local function rollRarity(luck)
+    luck = luck or 0
+    local r = rnd()
+    local legend = 0.045 + luck * 0.008
+    local epic = 0.16 + luck * 0.014
+    local rare = 0.36 + luck * 0.018
+    if r < legend then return "legend" end
+    if r < legend + epic then return "epic" end
+    if r < legend + epic + rare then return "rare" end
+    return "common"
+end
+
+local function priced(base, rarity)
+    return math.max(8, math.floor(base * (rarityPower[rarity] or 1) + 0.5))
 end
 
 local function drawHeart(x, y, s, mode)
@@ -395,42 +462,66 @@ end
 
 local function drawProjectile(b)
     local rot = math.atan2(b.vy, b.vx)
+    local brand = b.brand or "starforge"
+    local pulse = 0.5 + 0.5 * math.sin((Game.time or 0) * 10 + (b.x + b.y) * 0.015)
     love.graphics.push()
     love.graphics.translate(b.x, b.y)
     love.graphics.rotate(rot)
 
     -- 统一尾迹/外发光：高速战斗里弹体必须先被看见
     love.graphics.setBlendMode("add")
-    color(b.color, 0.30)
-    love.graphics.rectangle("fill", -40, -5, 36, 10, 5, 5)
-    color(b.color, 0.22)
-    love.graphics.circle("fill", 0, 0, b.aura and 19 or 13)
+    color(b.color, brand == "swarm" and 0.22 or 0.30)
+    love.graphics.rectangle("fill", brand == "starforge" and -54 or -40, -5, brand == "starforge" and 50 or 36, 10, 5, 5)
+    color(b.color, 0.18 + pulse * 0.10)
+    love.graphics.circle("fill", 0, 0, b.aura and (20 + pulse * 6) or (12 + pulse * 3))
     love.graphics.setBlendMode("alpha")
 
-    if b.aura then
+    if brand == "blackbox" or b.aura then
         love.graphics.setLineWidth(2)
         color(b.color, 0.42)
         love.graphics.circle("line", 0, 0, b.aura)
+        color(b.color, 0.18 + pulse * 0.18)
+        love.graphics.circle("line", 0, 0, 24 + pulse * 10)
         love.graphics.setLineWidth(1)
         color(b.color, 0.95)
-        love.graphics.circle("fill", 0, 0, 12)
+        love.graphics.circle("fill", 0, 0, 10 + pulse * 3)
         love.graphics.setColor(1, 1, 1, 0.75)
         love.graphics.circle("fill", -3, -3, 4)
-    elseif b.splash then
+    elseif brand == "molten" or b.splash then
         color(b.color, 0.92)
-        love.graphics.circle("fill", 0, 0, 9)
+        love.graphics.circle("fill", 0, 0, 9 + pulse * 3)
         love.graphics.setColor(1, 0.92, 0.45, 0.88)
         love.graphics.circle("fill", 0, 0, 4)
         color(b.color, 0.35)
-        love.graphics.circle("line", 0, 0, 14)
-    elseif b.element == "arc" then
+        love.graphics.circle("line", 0, 0, 14 + pulse * 8)
+        love.graphics.setBlendMode("add")
+        color(C.orange, 0.35)
+        love.graphics.circle("fill", -15, 0, 4 + pulse * 3)
+        love.graphics.setBlendMode("alpha")
+    elseif brand == "echo" or b.element == "arc" then
         color(b.color, 0.95)
         love.graphics.setLineWidth(3)
         love.graphics.line(-14, -3, -4, 4, 4, -4, 14, 2)
+        color(b.color, 0.42)
+        love.graphics.polygon("line", -18, -9, 16, 0, -18, 9)
         love.graphics.setColor(1, 1, 1, 0.8)
         love.graphics.setLineWidth(1)
         love.graphics.line(-14, -3, -4, 4, 4, -4, 14, 2)
         love.graphics.setLineWidth(1)
+    elseif brand == "swarm" then
+        color(b.color, 0.92)
+        love.graphics.polygon("fill", -12, -6, 12, 0, -12, 6)
+        love.graphics.setBlendMode("add")
+        color(C.green, 0.55)
+        love.graphics.circle("fill", -18, 0, 5 + pulse * 2)
+        love.graphics.setBlendMode("alpha")
+    elseif brand == "starforge" then
+        color(C.gold, 0.30)
+        love.graphics.rectangle("fill", -42, -2, 48, 4, 2, 2)
+        color(b.crit and C.gold or b.color, 1)
+        love.graphics.polygon("fill", -18, -4, 18, 0, -18, 4)
+        love.graphics.setColor(1, 1, 1, b.crit and 0.95 or 0.75)
+        love.graphics.line(-20, 0, 18, 0)
     else
         color(b.color, 0.32)
         love.graphics.rectangle("fill", -17, -5, 26, 10, 5, 5)
@@ -497,15 +588,16 @@ local function spawnEnemy(def, opts)
     local dangerScale = 1 + Game.danger * 0.08
     local scale = (opts.scale or 1) * (1 + (Game.wave - 1) * 0.14) * bonus.enemyHp * dangerScale
     local hp = def.hp * scale
+    local shield = (def.shield or 0) * scale
     Game.enemies[#Game.enemies + 1] = {
         name = def.name, x = x, y = y, r = def.r,
-        hp = hp, maxHp = hp,
+        hp = hp, maxHp = hp, shield = shield, maxShield = shield, defense = def.defense or (shield > 0 and "shield" or ((def.armor or 0) > 0 and "armor" or "flesh")), shieldRegen = def.shieldRegen or 0,
         speed = (def.speed + Game.wave * 2) * bonus.enemySpeed * (1 + Game.danger * 0.025),
         damage = def.damage * bonus.enemyDamage * (1 + Game.danger * 0.06), armor = (def.armor or 0) + bonus.enemyArmor,
         color = def.color, xp = def.xp, coin = def.coin, sprite = def.sprite, behavior = def.behavior or "chase",
         elite = def.elite, boss = def.boss,
         shootTimer = rnd() * 1.2, dashTimer = rnd() * 1.6,
-        burn = 0, slow = 0, corrosion = 0
+        burn = 0, slow = 0, corrosion = 0, lastHit = 0
     }
 end
 
@@ -515,11 +607,6 @@ local function spawnPack(plan)
     local bonus = currentAffixBonuses()
     local pack = (plan.pack or 1) + bonus.extraPack
     for _ = 1, pack do spawnEnemy(weightedEnemy(plan), {side = side}) end
-end
-
-local function spawnPickup(kind, x, y, value)
-    local sprite = kind == "xp" and "pickup_xp" or "pickup_coin"
-    Game.pickups[#Game.pickups + 1] = {kind = kind, x = x, y = y, r = kind == "xp" and 5 or 6, value = value or 1, t = rnd() * TAU, sprite = sprite}
 end
 
 local function nearestEnemy(x, y, range)
@@ -551,7 +638,7 @@ local function addWeapon(def)
         playCue("shop"); toast(def.name .. " 合成至等级 " .. found.level)
         return true
     end
-    if #p.weapons >= 6 then
+    if #p.weapons >= 4 then
         toast("武器槽已满：先回收一把")
         return false
     end
@@ -566,9 +653,69 @@ local function addWeapon(def)
     return true
 end
 
+local function equipShield(item)
+    local p = Game.player
+    local old = p.shieldItem
+    if old then
+        p.maxShield = math.max(1, p.maxShield - (old.shieldCap or 0))
+        p.shield = math.min(p.shield, p.maxShield)
+        p.shieldRegen = p.shieldRegen - (old.shieldRegen or 0)
+        p.stats.armor = p.stats.armor - (old.armor or 0)
+        p.maxHp = math.max(1, p.maxHp - (old.hp or 0))
+        p.hp = math.min(p.hp, p.maxHp)
+    end
+    p.shieldItem = item
+    p.maxShield = p.maxShield + (item.shieldCap or 0)
+    p.shield = math.min(p.maxShield, p.shield + (item.shieldCap or 0))
+    p.shieldRegen = p.shieldRegen + (item.shieldRegen or 0)
+    p.stats.armor = p.stats.armor + (item.armor or 0)
+    p.maxHp = p.maxHp + (item.hp or 0)
+    p.hp = math.min(p.maxHp, p.hp + (item.hp or 0))
+    if item.flag then p.gear[item.flag] = true end
+    playCue("shop"); toast("护盾安装：" .. item.name)
+    return true
+end
+
+local function addTempBuff(item)
+    local buff = item.buff or {}
+    Game.tempBuffs[#Game.tempBuffs + 1] = buff
+    playCue("shop"); toast("战术道具已备好：" .. item.name)
+    return true
+end
+
+local weaponAffixRolls = {
+    {text = "高伤", apply = function(w, power) w.damage = math.floor(w.damage * (1.10 + power * 0.08) + 0.5) end},
+    {text = "速射", apply = function(w, power) w.cooldown = w.cooldown / (1.08 + power * 0.05) end},
+    {text = "远射", apply = function(w, power) w.range = w.range * (1.10 + power * 0.05) end},
+    {text = "高速弹", apply = function(w, power) if w.speed > 0 then w.speed = w.speed * (1.12 + power * 0.06) end end},
+    {text = "扩容", apply = function(w, power) if w.count and w.count < 7 then w.count = w.count + 1; w.spread = (w.spread or 0) + 0.06 end end},
+    {text = "弹射", apply = function(w, power) w.bounce = (w.bounce or 0) + 1 end},
+    {text = "爆裂", apply = function(w, power) w.splash = (w.splash or 0) + 22 + math.floor(power * 10) end},
+    {text = "连锁", apply = function(w, power) w.chain = (w.chain or 0) > 0 and (w.chain + 1) or w.chain end}
+}
+
 local function makeWeaponItem(id)
-    local def = weaponDefs[id]
-    local item = {kind = "weapon", id = id, name = def.name, price = def.price, rarity = "rare", desc = brands[def.brand].name .. " / " .. elements[def.element].name .. " / " .. def.desc}
+    local base = weaponDefs[id]
+    local rarity = rollRarity(Game.player.stats.luck + (Game.player.stats.rarityLuck or 0))
+    local power = rarityPower[rarity] or 1
+    local def = {}
+    for k, v in pairs(base) do def[k] = v end
+    def.rolled = true
+    def.damage = math.max(1, math.floor(def.damage * randf(0.84, 1.22) * power + 0.5))
+    def.cooldown = math.max(0.16, def.cooldown / randf(0.88, 1.12))
+    def.range = def.range * randf(0.90, 1.14)
+    if def.speed > 0 then def.speed = def.speed * randf(0.88, 1.18) end
+    local tags = {}
+    for _ = 1, rarityAffixes[rarity] or 1 do
+        local affix = weaponAffixRolls[rnd(1, #weaponAffixRolls)]
+        affix.apply(def, power)
+        tags[#tags + 1] = affix.text
+    end
+    local brand = brands[def.brand]
+    local elem = elements[def.element]
+    def.name = (rarityLabel[rarity] or rarity) .. " " .. base.name
+    def.price = priced(base.price or 24, rarity)
+    local item = {kind = "weapon", id = id, name = def.name, price = def.price, rarity = rarity, desc = brand.name .. " / " .. elem.name .. " / " .. table.concat(tags, "、"), weaponDef = def}
     item.buy = function() return addWeapon(def) end
     return item
 end
@@ -576,25 +723,81 @@ end
 local function cloneItem(src)
     local item = {}
     for k, v in pairs(src) do item[k] = v end
-    item.buy = function() applyItem(item) end
+    if item.kind == "temp" then
+        item.buy = function() return addTempBuff(item) end
+    elseif item.kind == "shield" then
+        item.buy = function() return equipShield(item) end
+    else
+        item.buy = function() applyItem(item) end
+    end
+    return item
+end
+
+local statRolls = {
+    {label = "伤害", desc = function(v) return "伤害 +" .. math.floor(v * 100) .. "%" end, apply = function(p, v) p.stats.damage = p.stats.damage + v end},
+    {label = "射速", desc = function(v) return "射速 +" .. math.floor(v * 100) .. "%" end, apply = function(p, v) p.stats.fireRate = p.stats.fireRate + v end},
+    {label = "暴击", desc = function(v) return "暴击率 +" .. math.floor(v * 100) .. "%" end, apply = function(p, v) p.stats.crit = p.stats.crit + v end},
+    {label = "暴伤", desc = function(v) return "暴击伤害 +" .. math.floor(v * 100) .. "%" end, apply = function(p, v) p.stats.critDamage = p.stats.critDamage + v end},
+    {label = "元素", desc = function(v) return "元素伤害 +" .. math.floor(v * 100) .. "%" end, apply = function(p, v) p.stats.elementDamage = p.stats.elementDamage + v end},
+    {label = "经济", desc = function(v) return "结算金币 +" .. math.floor(v * 100) .. "%" end, apply = function(p, v) p.stats.economy = p.stats.economy + v end},
+    {label = "生命", desc = function(v) return "最大生命 +" .. math.floor(v) end, apply = function(p, v) p.maxHp = p.maxHp + math.floor(v); p.hp = math.min(p.maxHp, p.hp + math.floor(v * 0.5)) end},
+    {label = "护甲", desc = function(v) return "护甲 +" .. math.floor(v) end, apply = function(p, v) p.stats.armor = p.stats.armor + math.floor(v) end}
+}
+
+local function makeStatItem()
+    local rarity = rollRarity(Game.player.stats.luck + (Game.player.stats.rarityLuck or 0))
+    local power = rarityPower[rarity] or 1
+    local count = math.min(3, rarityAffixes[rarity] or 1)
+    local effects, desc = {}, {}
+    for _ = 1, count do
+        local roll = statRolls[rnd(1, #statRolls)]
+        local value = roll.label == "生命" and randf(12, 24) * power or (roll.label == "护甲" and randf(1, 2.4) * power or randf(0.05, 0.12) * power)
+        effects[#effects + 1] = {roll = roll, value = value}
+        desc[#desc + 1] = roll.desc(value)
+    end
+    local item = {kind = rarity == "legend" and "legend" or "item", rarity = rarity, name = (rarityLabel[rarity] or rarity) .. " 构筑芯片", price = priced(18 + count * 8, rarity), desc = table.concat(desc, " / ")}
+    item.buy = function()
+        for _, e in ipairs(effects) do e.roll.apply(Game.player, e.value) end
+        playCue("shop"); toast("获得：" .. item.name)
+        return true
+    end
+    return item
+end
+
+local function makeShieldItem()
+    local rarity = rollRarity(Game.player.stats.luck + (Game.player.stats.rarityLuck or 0))
+    local power = rarityPower[rarity] or 1
+    local cap = math.floor(randf(18, 38) * power)
+    local regen = randf(0.8, 2.0) * power
+    local armor = rarity == "common" and 0 or math.floor(randf(1, 2.8) * power)
+    local flags = {"shieldBurst", "killShield", "fullShieldDamage"}
+    local flag = (rarity == "epic" or rarity == "legend") and flags[rnd(1, #flags)] or nil
+    local special = flag == "shieldBurst" and "破盾脉冲" or (flag == "killShield" and "击杀回盾" or (flag == "fullShieldDamage" and "满盾增伤" or "稳定护盾"))
+    local item = {kind = "shield", rarity = rarity, name = (rarityLabel[rarity] or rarity) .. " " .. special, price = priced(22, rarity), desc = "护盾 +" .. cap .. " / 回复 +" .. string.format("%.1f", regen) .. (armor > 0 and (" / 护甲 +" .. armor) or "") .. (flag and (" / " .. special) or ""), shieldCap = cap, shieldRegen = regen, armor = armor, flag = flag}
+    item.buy = function() return equipShield(item) end
+    return item
+end
+
+local function makeTempItem()
+    local item = cloneItem(tempItemPool[rnd(1, #tempItemPool)])
+    local rarity = rollRarity(Game.player.stats.luck)
+    item.rarity = rarity
+    item.price = priced(item.price or 14, rarity)
+    item.name = (rarityLabel[rarity] or rarity) .. " " .. item.name
     return item
 end
 
 local function randomShopItem()
-    local luck = Game.player.stats.luck
-    if rnd() < 0.48 then
+    local roll = rnd()
+    if roll < 0.34 then
         local keys = {"needle", "swarm", "molten", "echo", "coil", "void"}
         return makeWeaponItem(keys[rnd(1, #keys)])
+    elseif roll < 0.54 then
+        return makeShieldItem()
+    elseif roll < 0.74 then
+        return makeTempItem()
     end
-    local candidates = {}
-    for _, item in ipairs(itemPool) do
-        local weight = 1
-        if item.rarity == "legend" then weight = 0.25 + luck * 0.02 end
-        if item.rarity == "epic" then weight = 0.55 + luck * 0.03 end
-        if rnd() < weight then candidates[#candidates + 1] = item end
-    end
-    if #candidates == 0 then candidates = itemPool end
-    return cloneItem(candidates[rnd(1, #candidates)])
+    return makeStatItem()
 end
 
 local function rollShop(keepLocks)
@@ -628,6 +831,27 @@ local function startWave()
     Game.objectiveProgress = selectedObjective().mode == "charge" and math.min(35, (Game.objectiveProgress or 0) * 0.25) or 0
     Game.objectiveText = selectedObjective().name
     Game.enemies, Game.bullets, Game.pickups = {}, {}, {}
+    Game.pendingRewardNextState = nil
+    Game.waveRewards = {wave = Game.wave, reason = "", kills = 0, xp = 0, coins = 0, harvest = 0, clear = 0}
+    local p = Game.player
+    p.waveDamageBonus = 0
+    p.waveFireRateBonus = 0
+    p.waveElementChance = 0
+    p.waveElement = nil
+    p.waveArmorDamage = 0
+    p.waveEconomyBonus = 0
+    p.waveShieldRegenMult = 0
+    for _, buff in ipairs(Game.tempBuffs or {}) do
+        p.waveDamageBonus = p.waveDamageBonus + (buff.damage or 0)
+        p.waveFireRateBonus = p.waveFireRateBonus + (buff.fireRate or 0)
+        p.waveElementChance = p.waveElementChance + (buff.elementChance or 0)
+        p.waveArmorDamage = p.waveArmorDamage + (buff.armorDamage or 0)
+        p.waveEconomyBonus = p.waveEconomyBonus + (buff.economy or 0)
+        p.waveShieldRegenMult = p.waveShieldRegenMult + (buff.shieldRegenMult or 0)
+        if buff.element then p.waveElement = buff.element end
+        if buff.shield then p.maxShield = p.maxShield + buff.shield; p.shield = p.maxShield; p.tempShieldBonus = (p.tempShieldBonus or 0) + buff.shield end
+    end
+    Game.tempBuffs = {}
     Game.spawnTimer = 0.25
     Game.player.shieldDelay = 0
     toast("第 " .. Game.wave .. " 波：" .. (plan.name or "战斗") .. " / " .. affixLabel())
@@ -651,23 +875,34 @@ local function resetRun()
     Game.kills = 0
     Game.freeRefresh = 1 + math.floor((ch.stats and ch.stats.luck or 0) / 3)
     Game.levelChoices = {}
+    Game.pendingRewardNextState = nil
     Game.objectiveProgress = 0
     Game.objectiveText = ""
     Game.message = ""
     Game.enemyShots = {}
+    Game.waveRewards = nil
     Game.runStats = {damage = 0, damageByWeapon = {}, coinsEarned = 0, highestWave = 1, rerolls = 0}
     Game.player.x, Game.player.y = Game.w / 2, Game.h / 2
     Game.player.hp, Game.player.maxHp = ch.hp, ch.hp
     Game.player.shield, Game.player.maxShield = ch.shield, ch.shield
     Game.player.shieldDelay, Game.player.shieldRegen = 0, 7
-    Game.player.speed, Game.player.pickup = ch.speed, 82
-    Game.player.pickupBonus = 0
+    Game.player.speed, Game.player.pickup = ch.speed, 0
     Game.player.invuln = 0
     Game.player.engineerTimer = 0
+    Game.player.waveDamageBonus = 0
+    Game.player.waveFireRateBonus = 0
+    Game.player.waveElementChance = 0
+    Game.player.waveElement = nil
+    Game.player.waveArmorDamage = 0
+    Game.player.waveEconomyBonus = 0
+    Game.player.waveShieldRegenMult = 0
+    Game.player.tempShieldBonus = 0
     Game.player.stats = {}
     for k, v in pairs(ch.stats) do Game.player.stats[k] = v end
     Game.player.weapons = {}
+    Game.player.shieldItem = nil
     Game.player.gear = {}
+    Game.tempBuffs = {}
     Game.shop, Game.locked = {}, {}
     addWeapon(weaponDefs[ch.weapon or "needle"])
     rollShop(false)
@@ -692,49 +927,110 @@ local function chooseLevelReward(i)
     local reward = Game.levelChoices[i]
     if not reward then return end
     reward.apply(Game.player)
-    toast("升级选择：" .. reward.name)
+    toast("关卡奖励：" .. reward.name)
     Game.levelChoices = {}
-    Game.state = "playing"
+    local nextState = Game.pendingRewardNextState or "shop"
+    Game.pendingRewardNextState = nil
+    if nextState == "victory" then
+        Game.state = "victory"
+    else
+        enterShop()
+    end
+end
+
+local function addCoins(amount, bucket)
+    local mult = (Game.player and Game.player.stats and Game.player.stats.economy or 1) + (Game.player and Game.player.waveEconomyBonus or 0)
+    local gain = math.max(0, math.floor((amount or 0) * mult + 0.5))
+    if gain <= 0 then return 0 end
+    Game.coins = Game.coins + gain
+    Game.runStats.coinsEarned = (Game.runStats.coinsEarned or 0) + gain
+    if Game.waveRewards then
+        Game.waveRewards.coins = (Game.waveRewards.coins or 0) + gain
+        if bucket then Game.waveRewards[bucket] = (Game.waveRewards[bucket] or 0) + gain end
+    end
+    if Game.player and Game.player.gear and Game.player.gear.coinHaste then Game.player.gear.coinHasteTimer = 2.2 end
+    return gain
 end
 
 local function gainXp(n)
     local bonus = currentAffixBonuses()
-    Game.xp = Game.xp + math.max(1, math.floor(n * bonus.xpMult + 0.5))
-    if Game.state ~= "playing" then return end
-    if Game.xp >= Game.xpNeed then
+    local gained = math.max(1, math.floor(n * bonus.xpMult + 0.5))
+    Game.xp = Game.xp + gained
+    if Game.waveRewards then Game.waveRewards.xp = (Game.waveRewards.xp or 0) + gained end
+    local leveled = false
+    while Game.xp >= Game.xpNeed do
         Game.xp = Game.xp - Game.xpNeed
         Game.level = Game.level + 1
         Game.xpNeed = math.floor(Game.xpNeed * 1.25 + 8)
-        generateLevelChoices()
-        Game.state = "levelup"
-        playCue("level"); toast("等级 " .. Game.level .. "：选择一项强化")
+        leveled = true
+    end
+    if leveled and Game.state == "playing" then
+        playCue("level"); toast("等级 " .. Game.level .. "：关卡结束后选择奖励")
     end
 end
 
 local function killEnemy(e)
     local bonus = currentAffixBonuses()
     Game.kills = Game.kills + 1
+    if Game.waveRewards then Game.waveRewards.kills = (Game.waveRewards.kills or 0) + 1 end
     local coinGain = math.max(1, math.floor(e.coin * bonus.coinMult + 0.5))
-    Game.coins = Game.coins + coinGain
-    Game.runStats.coinsEarned = (Game.runStats.coinsEarned or 0) + coinGain
-    spawnPickup("xp", e.x, e.y, e.xp)
-    if rnd() < 0.52 then spawnPickup("coin", e.x + rnd(-14, 14), e.y + rnd(-14, 14), math.max(1, math.floor(e.coin / 2))) end
-    if e.elite and rnd() < 0.72 then spawnPickup("coin", e.x, e.y, e.coin + 8) end
+    addCoins(coinGain)
+    gainXp(e.xp)
+    if rnd() < 0.52 then addCoins(math.max(1, math.floor(e.coin / 2))) end
+    if e.elite and rnd() < 0.72 then addCoins(e.coin + 8) end
+    local p = Game.player
+    if p.gear.killShield then p.shield = math.min(p.maxShield, p.shield + 6 + Game.wave) end
+    if p.gear.killBurst then
+        for _, other in ipairs(Game.enemies) do
+            if other ~= e and distance(e.x, e.y, other.x, other.y) < 90 then damageEnemy(other, 18 * (p.stats.explosiveDamage or 1), "burn", false, "击杀爆裂") end
+        end
+        burst(e.x, e.y, C.orange, 18, 180)
+    end
+    if p.gear.corrosionSpread and (e.corrosion or 0) > 0 then
+        for _, other in ipairs(Game.enemies) do
+            if other ~= e and distance(e.x, e.y, other.x, other.y) < 120 then other.corrosion = math.min(6, (other.corrosion or 0) + 2) end
+        end
+    end
+    if p.gear.critRicochet and e.lastCrit then
+        local other = nearestEnemy(e.x, e.y, 180)
+        if other and other ~= e then damageEnemy(other, 24 * p.stats.damage, "kinetic", true, "暴击弹射") end
+    end
     playCue(e.elite and "elite" or "pickup"); burst(e.x, e.y, e.color, e.boss and 44 or 12, e.boss and 260 or 150)
     if e.boss then Game.state = "victory" end
 end
 
 local function damageEnemy(e, amount, element, crit, source)
+    local p = Game.player
+    local elem = element or "kinetic"
+    local elemMult = elem ~= "kinetic" and (p.stats.elementDamage or 1) or 1
+    local defenseMult = 1
+    if e.shield and e.shield > 0 then
+        defenseMult = elem == "arc" and 1.65 or (p.stats.shieldDamage or 1)
+    elseif e.defense == "armor" then
+        defenseMult = elem == "corrode" and 1.65 or ((p.stats.armorDamage or 1) + (p.waveArmorDamage or 0))
+    elseif e.defense == "flesh" then
+        defenseMult = elem == "burn" and 1.45 or (p.stats.fleshDamage or 1)
+    end
+    if e.slow and e.slow > 0 and p.gear.freezeCrit then defenseMult = defenseMult * 1.18 end
     local armor = math.max(0, (e.armor or 0) - (e.corrosion or 0))
-    local dmg = math.max(1, amount - armor)
-    e.hp = e.hp - dmg
+    local dmg = math.max(1, amount * elemMult * defenseMult - armor)
+    e.lastHit = 1.4
+    e.lastCrit = crit
+    e.lastElement = elem
+    if e.shield and e.shield > 0 then
+        local used = math.min(e.shield, dmg)
+        e.shield = e.shield - used
+        dmg = dmg - used
+        if e.shield <= 0 then burst(e.x, e.y, C.cyan, 12, 160) end
+    end
+    if dmg > 0 then e.hp = e.hp - dmg end
     Game.runStats.damage = (Game.runStats.damage or 0) + dmg
     local src = source or "未知"
     Game.runStats.damageByWeapon[src] = (Game.runStats.damageByWeapon[src] or 0) + dmg
     if Game.player.stats.lifesteal > 0 and rnd() < Game.player.stats.lifesteal then Game.player.hp = math.min(Game.player.maxHp, Game.player.hp + 1) end
-    addText(e.x, e.y - e.r, tostring(math.floor(dmg)) .. (crit and "!" or ""), crit and C.gold or elements[element or "kinetic"].color)
+    addText(e.x, e.y - e.r, tostring(math.floor(dmg)) .. (crit and "!" or ""), crit and C.gold or elements[elem].color)
     if element == "burn" then e.burn = math.max(e.burn or 0, 3.0) end
-    if element == "corrode" then e.corrosion = math.min(5, (e.corrosion or 0) + 1) end
+    if element == "corrode" then e.corrosion = math.min(p.gear.deepCorrode and 8 or 5, (e.corrosion or 0) + 1) end
     if element == "ice" then e.slow = math.max(e.slow or 0, 2.2) end
     if element == "void" then
         for _, other in ipairs(Game.enemies) do
@@ -754,12 +1050,16 @@ local function fireProjectile(w, target, angle)
     local bonus = currentAffixBonuses()
     local crit = rnd() < math.min(0.85, p.stats.crit + bonus.critBonus) or p.gear.nextCrit
     p.gear.nextCrit = false
-    local dmg = w.damage * p.stats.damage * bonus.playerDamage * (crit and p.stats.critDamage or 1)
+    local lowHp = 1 + ((1 - clamp(p.hp / math.max(1, p.maxHp), 0, 1)) * (p.stats.lowHpDamage or 0))
+    local fullShield = (p.gear.fullShieldDamage and p.shield >= p.maxShield) and 1.08 or 1
+    local dmg = w.damage * (p.stats.damage + (p.waveDamageBonus or 0)) * bonus.playerDamage * lowHp * fullShield * (crit and p.stats.critDamage or 1)
+    local elem = w.element
+    if p.waveElement and rnd() < (p.waveElementChance or 0) then elem = p.waveElement end
     Game.bullets[#Game.bullets + 1] = {
         x = p.x, y = p.y, vx = math.cos(angle) * w.speed * p.stats.projectileSpeed, vy = math.sin(angle) * w.speed * p.stats.projectileSpeed,
-        r = w.splash and 7 or 4, damage = dmg, element = w.element, range = w.range * p.stats.range,
-        traveled = 0, pierce = (w.pierce or 0) + p.stats.pierce, bounce = (w.bounce or 0) + p.stats.bounce,
-        splash = w.splash, aura = w.aura, color = elements[w.element].color, sprite = w.projectileSprite, crit = crit, target = target, source = w.name
+        r = w.splash and 7 or 4, damage = dmg, element = elem, range = w.range * p.stats.range,
+        traveled = 0, pierce = (w.pierce or 0), bounce = (w.bounce or 0) + p.stats.bounce,
+        splash = w.splash, aura = w.aura, color = elements[elem].color, sprite = w.projectileSprite, crit = crit, target = target, source = w.name, brand = w.brand
     }
 end
 
@@ -772,9 +1072,12 @@ local function useChainWeapon(w, target)
         if not hit then break end
         local bonus = currentAffixBonuses()
         local crit = rnd() < math.min(0.85, p.stats.crit + bonus.critBonus)
-        local dmg = w.damage * p.stats.damage * bonus.playerDamage * (crit and p.stats.critDamage or 1)
-        if damageEnemy(hit, dmg, w.element, crit, w.name) then used[hit] = true end
-        burst(hit.x, hit.y, elements[w.element].color, 5, 90)
+        local lowHp = 1 + ((1 - clamp(p.hp / math.max(1, p.maxHp), 0, 1)) * (p.stats.lowHpDamage or 0))
+        local fullShield = (p.gear.fullShieldDamage and p.shield >= p.maxShield) and 1.08 or 1
+        local elem = (p.waveElement and rnd() < (p.waveElementChance or 0)) and p.waveElement or w.element
+        local dmg = w.damage * (p.stats.damage + (p.waveDamageBonus or 0)) * bonus.playerDamage * lowHp * fullShield * (crit and p.stats.critDamage or 1)
+        if damageEnemy(hit, dmg, elem, crit, w.name) then used[hit] = true end
+        burst(hit.x, hit.y, elements[elem].color, 5, 90)
         used[hit] = true
         local nextHit, bestD = nil, 170
         for _, e in ipairs(Game.enemies) do
@@ -792,7 +1095,7 @@ local function updateWeapons(dt)
     local haste = p.gear.coinHasteTimer and p.gear.coinHasteTimer > 0 and 1.22 or 1
     for _, w in ipairs(p.weapons) do
         w.timer = (w.timer or 0) - dt
-        local cooldown = w.cooldown / math.max(0.25, p.stats.fireRate * haste)
+        local cooldown = w.cooldown / math.max(0.25, (p.stats.fireRate + (p.waveFireRateBonus or 0)) * haste)
         if w.timer <= 0 then
             local target = nearestEnemy(p.x, p.y, w.range * p.stats.range)
             if target then
@@ -919,16 +1222,16 @@ local function updateEnemyShots(dt)
     end
 end
 
-local function updateEngineering(dt)
+local function updateAutoArc(dt)
     local p = Game.player
-    local eng = p.stats.engineering or 0
-    if eng <= 0 then return end
+    local eng = p.stats.bounce or 0
+    if eng <= 0 or not p.gear.autoArc then return end
     p.engineerTimer = (p.engineerTimer or 0) - dt
     if p.engineerTimer > 0 then return end
     p.engineerTimer = math.max(0.45, 1.15 - eng * 0.06)
     local target = nearestEnemy(p.x, p.y, 420)
     if target then
-        damageEnemy(target, 8 + eng * 5, "arc", false, "工程无人机")
+        damageEnemy(target, 8 + eng * 5, "arc", false, "追踪电弧")
         burst(target.x, target.y, C.cyan, 6, 90)
     end
 end
@@ -979,32 +1282,13 @@ local function updateEnemies(dt)
             e.x = e.x - math.cos(a) * 18
             e.y = e.y - math.sin(a) * 18
         end
+        if e.lastHit and e.lastHit > 0 then e.lastHit = e.lastHit - dt end
+        if e.shield and e.shield < (e.maxShield or 0) and (e.lastHit or 0) <= 0 then
+            e.shield = math.min(e.maxShield, e.shield + (e.shieldRegen or 0) * dt)
+        end
         if e.hp <= 0 then
             killEnemy(e)
             table.remove(Game.enemies, i)
-        end
-    end
-end
-
-local function updatePickups(dt)
-    local p = Game.player
-    for i = #Game.pickups, 1, -1 do
-        local item = Game.pickups[i]
-        item.t = item.t + dt * 4
-        local d = distance(p.x, p.y, item.x, item.y)
-        if d < p.pickup + (p.pickupBonus or 0) then
-            item.x = item.x + (p.x - item.x) * dt * 5.5
-            item.y = item.y + (p.y - item.y) * dt * 5.5
-        end
-        if d < p.r + item.r + 4 then
-            if item.kind == "xp" then gainXp(item.value) end
-            if item.kind == "coin" then
-                Game.coins = Game.coins + item.value
-                Game.runStats.coinsEarned = (Game.runStats.coinsEarned or 0) + item.value
-                playCue("pickup")
-                if p.gear.coinHaste then p.gear.coinHasteTimer = 2.2 end
-            end
-            table.remove(Game.pickups, i)
         end
     end
 end
@@ -1024,7 +1308,6 @@ local function updatePlayer(dt)
     p.y = clamp(p.y + dy * p.speed * dt, 30, Game.h - 24)
     p.invuln = math.max(0, p.invuln - dt)
     local bonus = currentAffixBonuses()
-    p.pickupBonus = bonus.pickupBonus
     if p.shieldDelay > 0 then
         p.shieldDelay = p.shieldDelay - dt
     else
@@ -1034,23 +1317,29 @@ end
 
 local function completeWave(reason)
     local p = Game.player
+    local finishedWave = Game.wave
+    local summary = Game.waveRewards or {wave = finishedWave, kills = 0, xp = 0, coins = 0, harvest = 0, clear = 0}
+    summary.wave = finishedWave
+    summary.reason = reason or "波次完成"
+    Game.waveRewards = summary
     local harvest = math.max(0, p.stats.harvest or 0)
     if harvest > 0 then
         local gain = harvest + math.floor(Game.wave / 2)
-        Game.coins = Game.coins + gain
-        Game.runStats.coinsEarned = (Game.runStats.coinsEarned or 0) + gain
+        addCoins(gain, "harvest")
         toast((reason or "波次完成") .. "：收获 +" .. gain .. " 晶币")
     end
+    generateLevelChoices()
     if Game.wave >= Game.maxWave then
-        Game.state = "victory"
+        Game.pendingRewardNextState = "victory"
+        Game.state = "levelup"
         return
     end
     Game.wave = Game.wave + 1
     Game.runStats.highestWave = math.max(Game.runStats.highestWave or 1, Game.wave)
     local base = 10 + Game.wave * 2 + Game.danger * 2
-    Game.coins = Game.coins + base
-    Game.runStats.coinsEarned = (Game.runStats.coinsEarned or 0) + base
-    enterShop()
+    addCoins(base, "clear")
+    Game.pendingRewardNextState = "shop"
+    Game.state = "levelup"
 end
 
 local function updatePlaying(dt)
@@ -1077,11 +1366,10 @@ local function updatePlaying(dt)
     end
     updatePlayer(dt)
     updateWeapons(dt)
-    updateEngineering(dt)
+    updateAutoArc(dt)
     updateBullets(dt)
     updateEnemyShots(dt)
     updateEnemies(dt)
-    updatePickups(dt)
 
     if obj.mode == "charge" then
         local d = distance(Game.player.x, Game.player.y, Game.w / 2, Game.h / 2)
@@ -1340,21 +1628,6 @@ local function drawWorld()
         love.graphics.circle("line", Game.w / 2, Game.h / 2, 120)
         love.graphics.setBlendMode("alpha")
     end
-    for _, item in ipairs(Game.pickups) do
-        local bobY = item.y + math.sin(item.t) * 2
-        local size = item.kind == "xp" and 32 or 34
-        local c = item.kind == "xp" and C.green or C.gold
-        love.graphics.setBlendMode("add")
-        color(c, 0.26)
-        love.graphics.circle("fill", item.x, bobY, size * 0.62)
-        color(c, 0.40)
-        love.graphics.circle("line", item.x, bobY, size * 0.46)
-        love.graphics.setBlendMode("alpha")
-        if not drawSprite(item.sprite, item.x, bobY, size, 0, 0.98) then
-            color(c)
-            love.graphics.circle("fill", item.x, bobY, item.r + 1)
-        end
-    end
 
     for _, b in ipairs(Game.bullets) do
         drawProjectile(b)
@@ -1416,8 +1689,6 @@ local function drawWorld()
     end
 
     if not (p.invuln > 0 and math.floor(p.invuln * 16) % 2 == 0) then
-        love.graphics.setColor(C.cyan[1], C.cyan[2], C.cyan[3], 0.020)
-        love.graphics.circle("fill", p.x, p.y, p.pickup)
         if not drawSprite("player_heartcore", p.x, p.y, 96, 0, 1) then
             color(C.pink)
             drawHeart(p.x, p.y + 2, 0.78)
@@ -1431,35 +1702,21 @@ local function drawWorld()
 end
 
 local function drawMenu()
-    local ch = selectedCharacter()
     local obj = selectedObjective()
     love.graphics.setFont(Game.fonts.title)
     color(C.white)
     love.graphics.printf("心核幸存者", 0, 58, Game.w, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
-    love.graphics.printf("1-4 选择机体  ·  A/D 选择关卡目标  ·  Q/E 调整危险等级  ·  回车开始", 0, 144, Game.w, "center")
+    love.graphics.printf("A/D 选择关卡目标  ·  Q/E 调整危险等级  ·  回车开始", 0, 144, Game.w, "center")
 
-    local cardW, cardH, gap = 270, 150, 18
-    local startX = Game.w / 2 - (cardW * 4 + gap * 3) / 2
-    for i, cdef in ipairs(characterDefs) do
-        local x = startX + (i - 1) * (cardW + gap)
-        panel(x, 185, cardW, cardH)
-        if i == Game.selectedCharacter then
-            color(C.gold, 0.22)
-            love.graphics.rectangle("fill", x + 6, 191, cardW - 12, cardH - 12, 12, 12)
-            color(C.gold)
-            love.graphics.rectangle("line", x + 5, 190, cardW - 10, cardH - 10, 12, 12)
-        end
-        love.graphics.setFont(Game.fonts.normal)
-        color(i == Game.selectedCharacter and C.gold or C.white)
-        love.graphics.printf(i .. ". " .. cdef.name, x + 12, 206, cardW - 24, "center")
-        love.graphics.setFont(Game.fonts.tiny)
-        color(C.muted)
-        love.graphics.printf(cdef.desc, x + 18, 248, cardW - 36, "center")
-        color(C.white)
-        love.graphics.printf("初始武器：" .. weaponDefs[cdef.weapon].name, x + 18, 292, cardW - 36, "center")
-    end
+    panel(Game.w / 2 - 470, 188, 940, 150)
+    love.graphics.setFont(Game.fonts.big)
+    color(C.gold)
+    love.graphics.printf("统一白板开局", Game.w / 2 - 470, 214, 940, "center")
+    love.graphics.setFont(Game.fonts.small)
+    color(C.white)
+    love.graphics.printf("没有固定角色职业。武器、护盾、永久道具和临时战术道具都由商店随机 roll；每关结束固定三选一，把流派从奖励里长出来。", Game.w / 2 - 410, 268, 820, "center")
 
     panel(Game.w / 2 - 390, 390, 780, 185)
     love.graphics.setFont(Game.fonts.big)
@@ -1474,7 +1731,7 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
-    love.graphics.printf("当前：" .. ch.name .. " / " .. obj.name .. " / 危险 " .. Game.danger, 0, 622, Game.w, "center")
+    love.graphics.printf("当前：白板构筑 / " .. obj.name .. " / 危险 " .. Game.danger, 0, 622, Game.w, "center")
 end
 
 local function drawLevelUp()
@@ -1483,10 +1740,21 @@ local function drawLevelUp()
     panel(Game.w / 2 - 420, 160, 840, 360)
     love.graphics.setFont(Game.fonts.big)
     color(C.gold)
-    love.graphics.printf("等级提升：选择强化", Game.w / 2 - 420, 190, 840, "center")
+    love.graphics.printf("关卡完成：选择奖励", Game.w / 2 - 420, 190, 840, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
-    love.graphics.printf("按 1 / 2 / 3 选择，本波暂停，选完继续。", Game.w / 2 - 420, 252, 840, "center")
+    local wr = Game.waveRewards or {}
+    local settlement = string.format(
+        "第 %d 波结算：%s｜击杀 %d｜经验 +%d｜晶币 +%d",
+        wr.wave or Game.wave,
+        wr.reason or "波次完成",
+        wr.kills or 0,
+        wr.xp or 0,
+        wr.coins or 0
+    )
+    love.graphics.printf(settlement, Game.w / 2 - 420, 246, 840, "center")
+    local detail = string.format("收获 +%d｜通关奖励 +%d｜按 1 / 2 / 3 选择，随后进入商店。", wr.harvest or 0, wr.clear or 0)
+    love.graphics.printf(detail, Game.w / 2 - 420, 274, 840, "center")
     local w, h, gap = 240, 165, 28
     local sx = Game.w / 2 - (w * 3 + gap * 2) / 2
     for i, r in ipairs(Game.levelChoices) do
@@ -1529,9 +1797,6 @@ local function tagPill(text, x, y, bg, fg)
     return tw
 end
 
-local rarityLabel = {common = "普通", rare = "稀有", epic = "史诗", legend = "传说"}
-local kindLabel = {weapon = "武器", item = "强化", shield = "护盾", mod = "模组", relic = "遗物", legend = "传说"}
-
 local function drawShopCard(item, i, x, y, w, h)
     local rarity = item.rarity or "common"
     local rc = rarityColor[rarity] or C.white
@@ -1563,7 +1828,7 @@ local function drawShopCard(item, i, x, y, w, h)
     love.graphics.setFont(Game.fonts.tiny)
 
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
-        local def = weaponDefs[item.id]
+        local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
         local elem = elements[def.element]
         color(brand.color)
@@ -1611,7 +1876,7 @@ local function drawBuildPanel(x, y, w, h)
     local rows = {
         {"伤害", pct(p.stats.damage)}, {"射速", pct(p.stats.fireRate)}, {"暴击", pct(p.stats.crit)},
         {"护甲", p.stats.armor}, {"闪避", pct(p.stats.dodge)}, {"吸血", pct(p.stats.lifesteal)},
-        {"工程", p.stats.engineering}, {"收获", p.stats.harvest}, {"幸运", p.stats.luck}
+        {"元素", pct(p.stats.elementDamage or 1)}, {"经济", pct(p.stats.economy or 1)}, {"幸运", p.stats.luck}
     }
     for i, row in ipairs(rows) do
         local rowY = y + 42 + (i - 1) * 22
@@ -1646,7 +1911,8 @@ local function drawShop()
     local rerollCost = 3 + Game.shopRefresh * 2
     local refreshText = Game.freeRefresh > 0 and ("免费刷新 " .. Game.freeRefresh .. " 次") or ("刷新 " .. rerollCost .. " 晶币")
     color(C.gold)
-    love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/6  ·  " .. refreshText .. "  ·  回车下一波", 70, 150, Game.w - 140, "center")
+    local shieldName = Game.player.shieldItem and Game.player.shieldItem.name or "无护盾"
+    love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  护盾：" .. shieldName .. "  ·  " .. refreshText .. "  ·  回车下一波", 70, 150, Game.w - 140, "center")
     color(C.muted)
     love.graphics.printf("1-4 购买/合成  ·  点按锁定  ·  Shift+R 刷新  ·  E 回收最后武器", 70, 176, Game.w - 140, "center")
 
@@ -1744,7 +2010,6 @@ function love.keypressed(key)
     if key == "escape" then love.event.quit() end
 
     if Game.state == "menu" then
-        if key == "1" or key == "2" or key == "3" or key == "4" then Game.selectedCharacter = tonumber(key); return end
         if key == "a" or key == "left" then Game.selectedObjective = Game.selectedObjective - 1; if Game.selectedObjective < 1 then Game.selectedObjective = #objectiveDefs end; return end
         if key == "d" or key == "right" then Game.selectedObjective = Game.selectedObjective + 1; if Game.selectedObjective > #objectiveDefs then Game.selectedObjective = 1 end; return end
         if key == "q" then Game.danger = math.max(0, Game.danger - 1); return end
