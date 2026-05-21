@@ -838,10 +838,17 @@ local function drawHud()
     panel(Game.w / 2 - 135, 14, 270, 74)
     love.graphics.setFont(Game.fonts.big)
     color(C.white)
-    love.graphics.printf(string.format("%02d", math.max(0, math.ceil(Game.waveTime))), Game.w / 2 - 135, 25, 270, "center")
-    love.graphics.setFont(Game.fonts.tiny)
-    color(C.muted)
-    love.graphics.printf("30s survival wave", Game.w / 2 - 135, 62, 270, "center")
+    if Game.state == "shop" then
+        love.graphics.printf("SHOP", Game.w / 2 - 135, 25, 270, "center")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.muted)
+        love.graphics.printf("Build phase", Game.w / 2 - 135, 62, 270, "center")
+    else
+        love.graphics.printf(string.format("%02d", math.max(0, math.ceil(Game.waveTime))), Game.w / 2 - 135, 25, 270, "center")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.muted)
+        love.graphics.printf("30s survival wave", Game.w / 2 - 135, 62, 270, "center")
+    end
 
     panel(Game.w - 390, 14, 370, 108)
     love.graphics.setFont(Game.fonts.tiny)
@@ -930,32 +937,123 @@ local function drawMenu()
     love.graphics.printf("WASD / arrows move. Weapons auto-fire. Shop after each wave.", Game.w / 2 - 225, 462, 450, "center")
 end
 
+local function statText(label, value)
+    return label .. " " .. value
+end
+
+local function pct(v)
+    return string.format("%d%%", math.floor(v * 100 + 0.5))
+end
+
+local function drawShopCard(item, i, x, y, w, h)
+    local rarity = item.rarity or "common"
+    local rc = rarityColor[rarity] or C.white
+    local affordable = Game.coins >= item.price
+
+    panel(x, y, w, h)
+    color(rc, 0.95)
+    love.graphics.rectangle("fill", x, y, w, 5, 5, 5)
+    if Game.locked[i] then
+        color(C.cyan, 0.32)
+        love.graphics.rectangle("fill", x + 6, y + 6, w - 12, h - 12, 12, 12)
+        color(C.cyan, 0.85)
+        love.graphics.rectangle("line", x + 5, y + 5, w - 10, h - 10, 12, 12)
+    end
+
+    love.graphics.setFont(Game.fonts.tiny)
+    color(rc)
+    love.graphics.print(string.upper(rarity) .. "  /  " .. string.upper(item.kind), x + 14, y + 16)
+
+    love.graphics.setFont(Game.fonts.normal)
+    color(C.white)
+    love.graphics.printf(item.name, x + 14, y + 40, w - 28, "left")
+
+    love.graphics.setFont(Game.fonts.small)
+    color(C.white)
+    love.graphics.printf(item.desc, x + 14, y + 76, w - 28, "left")
+
+    if item.kind == "weapon" and item.id and weaponDefs[item.id] then
+        local def = weaponDefs[item.id]
+        local brand = brands[def.brand]
+        local elem = elements[def.element]
+        color(brand.color)
+        love.graphics.print(brand.name .. " / " .. brand.tag, x + 14, y + 150)
+        color(elem.color)
+        love.graphics.print(elem.name .. " element", x + 14, y + 170)
+        color(C.muted)
+        love.graphics.print("DMG " .. def.damage .. "   CD " .. string.format("%.2f", def.cooldown) .. "s", x + 14, y + 190)
+    else
+        color(rc, 0.88)
+        love.graphics.print("Build modifier", x + 14, y + 156)
+        color(C.muted)
+        love.graphics.print("Permanent this run", x + 14, y + 178)
+    end
+
+    love.graphics.setFont(Game.fonts.small)
+    color(affordable and C.gold or C.red)
+    love.graphics.print("$" .. item.price, x + 14, y + h - 42)
+    color(C.white)
+    love.graphics.printf("BUY " .. i, x + 72, y + h - 42, w - 86, "right")
+
+    love.graphics.setFont(Game.fonts.tiny)
+    color(Game.locked[i] and C.cyan or C.muted)
+    local lockKeys = {"Z", "X", "C", "V"}
+    love.graphics.printf((Game.locked[i] and "LOCKED" or "Lock " .. lockKeys[i]), x + 14, y + h - 18, w - 28, "right")
+
+    if not affordable then
+        love.graphics.setColor(0, 0, 0, 0.34)
+        love.graphics.rectangle("fill", x, y, w, h, 14, 14)
+    end
+end
+
+local function drawBuildPanel(x, y, w, h)
+    local p = Game.player
+    panel(x, y, w, h)
+    love.graphics.setFont(Game.fonts.small)
+    color(C.white)
+    love.graphics.print("Current build", x + 16, y + 12)
+
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.print(statText("Damage", pct(p.stats.damage)), x + 16, y + 44)
+    love.graphics.print(statText("Fire rate", pct(p.stats.fireRate)), x + 130, y + 44)
+    love.graphics.print(statText("Crit", pct(p.stats.crit)), x + 260, y + 44)
+    love.graphics.print(statText("Range", pct(p.stats.range)), x + 360, y + 44)
+    love.graphics.print(statText("Pierce", p.stats.pierce), x + 480, y + 44)
+    love.graphics.print(statText("Bounce", p.stats.bounce), x + 570, y + 44)
+
+    local wy = y + 72
+    color(C.gold)
+    love.graphics.print("Weapons", x + 16, wy)
+    local wx = x + 92
+    for i, weapon in ipairs(p.weapons) do
+        local brand = brands[weapon.brand]
+        color(brand.color)
+        love.graphics.print(weapon.name .. " Lv." .. weapon.level, wx, wy)
+        wx = wx + 175
+        if i >= 4 then break end
+    end
+end
+
 local function drawShop()
     drawHud()
-    panel(120, 126, Game.w - 240, Game.h - 172)
+    panel(70, 120, Game.w - 140, Game.h - 150)
     love.graphics.setFont(Game.fonts.big)
     color(C.white)
-    love.graphics.printf("Shop: Wave " .. (Game.wave - 1) .. " cleared", 120, 148, Game.w - 240, "center")
+    love.graphics.printf("SHOP  /  Wave " .. (Game.wave - 1) .. " cleared", 70, 140, Game.w - 140, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
-    love.graphics.printf("1-4 buy | Z/X/C/V lock | R reroll | Enter next wave", 120, 190, Game.w - 240, "center")
+    local rerollCost = 3 + Game.shopRefresh * 2
+    love.graphics.printf("1-4 buy   Z/X/C/V lock   R reroll ($" .. rerollCost .. ")   Enter next wave", 70, 184, Game.w - 140, "center")
+
+    local cardY = 234
+    local cardW = (Game.w - 190) / 4
     for i, item in ipairs(Game.shop) do
-        local x = 160 + (i - 1) * ((Game.w - 320) / 4)
-        local y = 250
-        local w = (Game.w - 380) / 4
-        panel(x, y, w, 250)
-        color(rarityColor[item.rarity or "common"] or C.white)
-        love.graphics.setFont(Game.fonts.normal)
-        love.graphics.printf(i .. ". " .. item.name, x + 16, y + 22, w - 32, "left")
-        love.graphics.setFont(Game.fonts.tiny)
-        color(C.muted)
-        love.graphics.printf(item.kind .. " / " .. (item.rarity or "common"), x + 16, y + 58, w - 32, "left")
-        color(C.white)
-        love.graphics.printf(item.desc, x + 16, y + 92, w - 32, "left")
-        color(C.gold)
-        love.graphics.printf("Cost $" .. item.price, x + 16, y + 192, w - 32, "left")
-        if Game.locked[i] then color(C.cyan); love.graphics.printf("LOCKED", x + 16, y + 218, w - 32, "left") end
+        local x = 85 + (i - 1) * (cardW + 10)
+        drawShopCard(item, i, x, cardY, cardW, 275)
     end
+
+    drawBuildPanel(85, 530, Game.w - 170, 110)
 end
 
 local function drawEnd(title, subtitle, c)
