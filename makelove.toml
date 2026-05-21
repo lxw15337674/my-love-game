@@ -1,0 +1,14 @@
+name = "heartcore-survivor"
+love_version = "11.4"
+default_targets = ["lovejs"]
+build_directory = "build/makelove"
+
+love_files = [
+  "+./main.lua",
+  "+./conf.lua",
+  "+./assets/*",
+]
+
+[lovejs]
+title = "心核幸存者"
+memory = "67108864"

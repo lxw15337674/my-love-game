@@ -22,29 +22,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '22'
+          python-version: '3.12'
 
-      - name: Prepare LÖVE source
+      - name: Install makelove
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'setuptools<81' makelove
+
+      - name: Build love.js package with makelove
         run: |
           rm -rf build dist
-          mkdir -p build/game-src
-          cp main.lua conf.lua build/game-src/
-          cp -R assets build/game-src/assets
+          makelove --force lovejs
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import shutil
 
-      - name: Build with rozenmad love-web-builder
-        run: |
-          git clone --depth 1 https://github.com/rozenmad/love-web-builder.git build/love-web-builder
-          cd build/love-web-builder
-          python3 build.py ../game-src ../../dist --name "心核幸存者" --memory 67108864
-          cd ../..
-          touch dist/.nojekyll
+          build_dir = Path('build/makelove/lovejs')
+          zips = sorted(build_dir.glob('*-lovejs.zip'))
+          if not zips:
+              raise SystemExit('makelove did not produce a lovejs zip')
+
+          extract_dir = Path('build/makelove-unpacked')
+          shutil.rmtree(extract_dir, ignore_errors=True)
+          extract_dir.mkdir(parents=True, exist_ok=True)
+          with ZipFile(zips[0]) as zf:
+              zf.extractall(extract_dir)
+
+          roots = [p for p in extract_dir.iterdir() if p.is_dir()]
+          if len(roots) != 1:
+              raise SystemExit(f'expected one extracted app directory, got {roots}')
+
+          shutil.rmtree('dist', ignore_errors=True)
+          shutil.copytree(roots[0], 'dist')
+          Path('dist/.nojekyll').write_text('')
+          PY
 
       - name: Patch love.js runtime for GitHub Pages
         run: |
-          python3 - <<'PY'
+          python - <<'PY'
           from pathlib import Path
 
           love_js = Path('dist/love.js')
