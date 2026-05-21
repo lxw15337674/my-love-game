@@ -1396,6 +1396,10 @@ local function updatePlaying(dt)
 end
 
 local function uiFont(size)
+    local fullBundled = "assets/fonts/NotoSansCJK-Regular.ttc"
+    if love.filesystem.getInfo(fullBundled) then
+        return love.graphics.newFont(fullBundled, size)
+    end
     local bundled = "assets/fonts/HeartcoreCJK-Regular.otf"
     if love.filesystem.getInfo(bundled) then
         return love.graphics.newFont(bundled, size)
@@ -1414,7 +1418,7 @@ function love.load()
     love.graphics.setDefaultFilter("nearest", "nearest")
     love.math.setRandomSeed(os.time())
     Game.w, Game.h = love.graphics.getDimensions()
-    Game.fonts = {tiny = uiFont(13), small = uiFont(17), normal = uiFont(22), big = uiFont(36), title = uiFont(60)}
+    Game.fonts = {tiny = uiFont(18), small = uiFont(24), normal = uiFont(31), big = uiFont(50), title = uiFont(84)}
     loadImages()
     Game.sounds = {
         pickup = makeTone(880, 0.06, 0.12),
@@ -1710,24 +1714,24 @@ local function drawMenu()
     color(C.muted)
     love.graphics.printf("A/D 选择关卡目标  ·  Q/E 调整危险等级  ·  回车开始", 0, 144, Game.w, "center")
 
-    panel(Game.w / 2 - 470, 188, 940, 150)
+    panel(Game.w / 2 - 600, 188, 1200, 170)
     love.graphics.setFont(Game.fonts.big)
     color(C.gold)
-    love.graphics.printf("统一白板开局", Game.w / 2 - 470, 214, 940, "center")
+    love.graphics.printf("统一白板开局", Game.w / 2 - 600, 214, 1200, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf("没有固定角色职业。武器、护盾、永久道具和临时战术道具都由商店随机 roll；每关结束固定三选一，把流派从奖励里长出来。", Game.w / 2 - 410, 268, 820, "center")
+    love.graphics.printf("没有固定角色职业。武器、护盾、永久道具和临时战术道具都由商店随机生成；每关结束固定三选一，把流派从奖励里长出来。", Game.w / 2 - 530, 282, 1060, "center")
 
-    panel(Game.w / 2 - 390, 390, 780, 185)
+    panel(Game.w / 2 - 500, 410, 1000, 210)
     love.graphics.setFont(Game.fonts.big)
     color(C.cyan)
-    love.graphics.printf(obj.name, Game.w / 2 - 390, 416, 780, "center")
+    love.graphics.printf(obj.name, Game.w / 2 - 500, 438, 1000, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf(obj.desc, Game.w / 2 - 350, 466, 700, "center")
+    love.graphics.printf(obj.desc, Game.w / 2 - 440, 504, 880, "center")
     color(C.gold)
     local dangerText = Game.danger == 0 and "危险等级 0：基础难度，无额外修正" or ("危险等级 " .. Game.danger .. "：敌人强化，战后补给增加")
-    love.graphics.printf(dangerText, Game.w / 2 - 350, 514, 700, "center")
+    love.graphics.printf(dangerText, Game.w / 2 - 440, 558, 880, "center")
 
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
@@ -1737,10 +1741,10 @@ end
 local function drawLevelUp()
     love.graphics.setColor(0, 0, 0, 0.58)
     love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
-    panel(Game.w / 2 - 420, 160, 840, 360)
+    panel(Game.w / 2 - 620, 145, 1240, 500)
     love.graphics.setFont(Game.fonts.big)
     color(C.gold)
-    love.graphics.printf("关卡完成：选择奖励", Game.w / 2 - 420, 190, 840, "center")
+    love.graphics.printf("关卡完成：选择奖励", Game.w / 2 - 620, 182, 1240, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
     local wr = Game.waveRewards or {}
@@ -1752,20 +1756,23 @@ local function drawLevelUp()
         wr.xp or 0,
         wr.coins or 0
     )
-    love.graphics.printf(settlement, Game.w / 2 - 420, 246, 840, "center")
+    love.graphics.printf(settlement, Game.w / 2 - 560, 258, 1120, "center")
     local detail = string.format("收获 +%d｜通关奖励 +%d｜按 1 / 2 / 3 选择，随后进入商店。", wr.harvest or 0, wr.clear or 0)
-    love.graphics.printf(detail, Game.w / 2 - 420, 274, 840, "center")
-    local w, h, gap = 240, 165, 28
+    love.graphics.printf(detail, Game.w / 2 - 560, 296, 1120, "center")
+    local w, h, gap = 330, 210, 34
     local sx = Game.w / 2 - (w * 3 + gap * 2) / 2
     for i, r in ipairs(Game.levelChoices) do
         local x = sx + (i - 1) * (w + gap)
-        panel(x, 318, w, h)
+        panel(x, 350, w, h)
+        local rc = rarityColor[r.rarity or "rare"] or C.cyan
+        color(rc, 0.95)
+        love.graphics.rectangle("fill", x, 350, w, 6, 6, 6)
         love.graphics.setFont(Game.fonts.normal)
         color(C.white)
-        love.graphics.printf(i .. ". " .. r.name, x + 12, 356, w - 24, "center")
+        love.graphics.printf(i .. ". " .. r.name, x + 16, 386, w - 32, "center")
         love.graphics.setFont(Game.fonts.small)
         color(C.cyan)
-        love.graphics.printf(r.desc, x + 18, 412, w - 36, "center")
+        love.graphics.printf(r.desc, x + 22, 462, w - 44, "center")
     end
 end
 
@@ -1879,15 +1886,15 @@ local function drawBuildPanel(x, y, w, h)
         {"元素", pct(p.stats.elementDamage or 1)}, {"经济", pct(p.stats.economy or 1)}, {"幸运", p.stats.luck}
     }
     for i, row in ipairs(rows) do
-        local rowY = y + 42 + (i - 1) * 22
-        local rowH = 18
+        local rowY = y + 54 + (i - 1) * 32
+        local rowH = 24
         color(C.white, 0.08)
         love.graphics.rectangle("fill", x + 14, rowY, w - 28, rowH, 7, 7)
         centeredText(row[1], x + 26, rowY, 76, rowH, Game.fonts.tiny, C.muted, "left")
         centeredText(tostring(row[2]), x + 104, rowY, w - 138, rowH, Game.fonts.tiny, C.white, "right")
     end
 
-    local wy = y + h - 58
+    local wy = y + h - 84
     color(C.white, 0.12)
     love.graphics.rectangle("fill", x + 14, wy - 12, w - 28, 1)
     color(C.gold)
@@ -1896,7 +1903,7 @@ local function drawBuildPanel(x, y, w, h)
     local names = {}
     for i, weapon in ipairs(p.weapons) do
         names[#names + 1] = weapon.name .. " 等级" .. weapon.level
-        if i >= 6 then break end
+        if i >= 4 then break end
     end
     love.graphics.printf(table.concat(names, " / "), x + 16, wy + 22, w - 32, "center")
 end
@@ -1916,15 +1923,15 @@ local function drawShop()
     color(C.muted)
     love.graphics.printf("1-4 购买/合成  ·  点按锁定  ·  Shift+R 刷新  ·  E 回收最后武器", 70, 176, Game.w - 140, "center")
 
-    local sideW = 292
-    local cardY = 226
+    local sideW = 360
+    local cardY = 238
     local cardW = (Game.w - 190 - sideW) / 4
     for i, item in ipairs(Game.shop) do
         local x = 72 + (i - 1) * (cardW + 10)
-        drawShopCard(item, i, x, cardY, cardW, 325)
+        drawShopCard(item, i, x, cardY, cardW, 420)
     end
 
-    drawBuildPanel(Game.w - 72 - sideW, cardY, sideW, 325)
+    drawBuildPanel(Game.w - 72 - sideW, cardY, sideW, 420)
 end
 
 local function drawEnd(title, subtitle, c)
