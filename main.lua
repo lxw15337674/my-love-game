@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.4"
+local VERSION = "v2026.05.22.5"
 
 local Game = {
     w = 1280,
@@ -82,6 +82,7 @@ local Game = {
             rarityLuck = 0
         },
         weapons = {},
+        items = {},
         shieldItem = nil,
         gear = {}
     },
@@ -649,6 +650,8 @@ end
 
 local function applyItem(item)
     item.apply(Game.player)
+    Game.player.items = Game.player.items or {}
+    Game.player.items[#Game.player.items + 1] = item
     playCue("shop"); toast("获得：" .. item.name)
     return true
 end
@@ -787,6 +790,8 @@ local function makeStatItem()
     local item = {kind = rarity == "legend" and "legend" or "item", rarity = rarity, name = (rarityLabel[rarity] or rarity) .. " 构筑芯片", price = priced(18 + count * 8, rarity), desc = table.concat(desc, " / ")}
     item.buy = function()
         for _, e in ipairs(effects) do e.roll.apply(Game.player, e.value) end
+        Game.player.items = Game.player.items or {}
+        Game.player.items[#Game.player.items + 1] = item
         playCue("shop"); toast("获得：" .. item.name)
         return true
     end
@@ -1061,6 +1066,7 @@ local function resetRun()
     Game.player.stats = {}
     for k, v in pairs(ch.stats) do Game.player.stats[k] = v end
     Game.player.weapons = {}
+    Game.player.items = {}
     Game.player.shieldItem = nil
     Game.player.gear = {}
     Game.tempBuffs = {}
@@ -2223,7 +2229,7 @@ local function itemTooltip(item)
     local kindText = kindLabel[item.kind] or item.kind or "道具"
     local rarityText = rarityLabel[item.rarity] or item.rarity or "普通"
     local lines = {
-        rarityText .. " · " .. kindText .. " · 价格 " .. (item.price or 0) .. " 材料",
+        rarityText .. " · " .. kindText .. (item.price and (" · 价格 " .. item.price .. " 材料") or ""),
         "效果：" .. modText(item.desc or "无说明")
     }
     if item.kind == "temp" then lines[#lines + 1] = "生效：仅下一波" else lines[#lines + 1] = "生效：本局永久" end
@@ -2389,7 +2395,48 @@ local function drawCompactBuildPanel(x, y, w, h)
         love.graphics.printf(text, sx + 8, sy + 4, (w - 60) / 2, "left")
     end
 
-    local cardY = y + 142
+    local mx, my = love.mouse.getPosition()
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.cyan)
+    love.graphics.printf("护盾槽", x + 14, y + 136, w - 28, "left")
+    local shieldY = y + 154
+    local shield = p.shieldItem
+    color(C.cyan, shield and 0.16 or 0.07)
+    love.graphics.rectangle("fill", x + 14, shieldY, w - 28, 28, 8, 8)
+    color(C.cyan, shield and 0.52 or 0.22)
+    love.graphics.rectangle("line", x + 14.5, shieldY + 0.5, w - 29, 27, 8, 8)
+    color(shield and C.white or C.muted)
+    love.graphics.printf(shield and compactDesc(shield.name, 14) or "空护盾槽", x + 24, shieldY + 7, w - 48, "left")
+    color(C.cyan)
+    love.graphics.printf(shield and "1/1" or "0/1", x + w - 62, shieldY + 7, 36, "right")
+    if shield and hitRect(mx, my, x + 14, shieldY, w - 28, 28) then return itemTooltip(shield) end
+
+    color(C.gold)
+    local items = p.items or {}
+    love.graphics.printf("道具槽 " .. math.min(#items, 4) .. "/4", x + 14, y + 190, w - 28, "left")
+    local itemY = y + 208
+    local slotW = (w - 38) / 2
+    for i = 1, 4 do
+        local item = items[i]
+        local sx = x + 14 + ((i - 1) % 2) * (slotW + 10)
+        local sy = itemY + math.floor((i - 1) / 2) * 30
+        local accent = item and shopItemAccent(item) or C.white
+        color(accent, item and 0.14 or 0.05)
+        love.graphics.rectangle("fill", sx, sy, slotW, 24, 7, 7)
+        color(accent, item and 0.46 or 0.18)
+        love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 23, 7, 7)
+        color(item and C.white or C.muted)
+        love.graphics.printf(item and compactDesc(item.name, 10) or "空槽", sx + 8, sy + 6, slotW - 16, "left")
+        if item and hitRect(mx, my, sx, sy, slotW, 24) then return itemTooltip(item) end
+    end
+    if #items > 4 then
+        color(C.gold)
+        love.graphics.printf("另有 " .. (#items - 4) .. " 件", x + 14, y + 264, w - 28, "right")
+    end
+
+    color(C.orange)
+    love.graphics.printf("武器槽 " .. #p.weapons .. "/4", x + 14, y + 276, w - 28, "left")
+    local cardY = y + 294
     for i = 1, math.min(2, #p.weapons) do
         local weapon = p.weapons[i]
         local elem = elements[weapon.element] or elements.kinetic
@@ -2410,7 +2457,6 @@ local function drawCompactBuildPanel(x, y, w, h)
         local count = weapon.count or 1
         local line = "伤 " .. actualDamage .. "×" .. count .. "  CD " .. string.format("%.2f", weapon.cooldown or 0) .. "  射程 " .. math.floor(weapon.range or 0)
         love.graphics.printf(line, x + 24, rowY + 18, w - 48, "left")
-        local mx, my = love.mouse.getPosition()
         if hitRect(mx, my, x + 14, rowY, w - 28, 32) then
             return weaponTooltip(weapon, "当前武器")
         end
