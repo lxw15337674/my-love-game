@@ -8,7 +8,7 @@ local Game = {
     state = "menu", -- menu, playing, paused, levelup, shop, gameover, victory
     time = 0,
     wave = 1,
-    waveTime = 30,
+    waveTime = 60,
     maxWave = 10,
     coins = 0,
     xp = 0,
@@ -301,10 +301,10 @@ local basePlayerDef = {
 
 local characterDefs = {basePlayerDef}
 
+local SURVIVAL_DURATION = 60
+
 local objectiveDefs = {
-    {name = "生存清剿", desc = "撑到计时结束，稳定推进", mode = "survive"},
-    {name = "精英悬赏", desc = "每波击杀指定数量敌人可提前收工", mode = "bounty"},
-    {name = "核心充能", desc = "站在中央区域充能，满值后结束本波", mode = "charge"}
+    {name = "生存模式", desc = "生存 60 秒，撑到计时结束", mode = "survive"}
 }
 
 local levelRewardPool = {
@@ -824,12 +824,12 @@ end
 local function startWave()
     local plan = currentWavePlan()
     Game.state = "playing"
-    Game.waveTime = plan.duration or 30
+    Game.waveTime = SURVIVAL_DURATION
     Game.waveElapsed = 0
     Game.waveEventIndex = 1
     Game.waveStartKills = Game.kills
-    Game.objectiveProgress = selectedObjective().mode == "charge" and math.min(35, (Game.objectiveProgress or 0) * 0.25) or 0
-    Game.objectiveText = selectedObjective().name
+    Game.objectiveProgress = 0
+    Game.objectiveText = "生存 " .. SURVIVAL_DURATION .. "秒"
     Game.enemies, Game.bullets, Game.pickups = {}, {}, {}
     Game.pendingRewardNextState = nil
     Game.waveRewards = {wave = Game.wave, reason = "", kills = 0, xp = 0, coins = 0, harvest = 0, clear = 0}
@@ -996,7 +996,6 @@ local function killEnemy(e)
         if other and other ~= e then damageEnemy(other, 24 * p.stats.damage, "kinetic", true, "暴击弹射") end
     end
     playCue(e.elite and "elite" or "pickup"); burst(e.x, e.y, e.color, e.boss and 44 or 12, e.boss and 260 or 150)
-    if e.boss then Game.state = "victory" end
 end
 
 local function damageEnemy(e, amount, element, crit, source)
@@ -1344,7 +1343,6 @@ end
 
 local function updatePlaying(dt)
     local plan = currentWavePlan()
-    local obj = selectedObjective()
     Game.time = Game.time + dt
     Game.waveElapsed = (Game.waveElapsed or 0) + dt
     Game.waveTime = Game.waveTime - dt
@@ -1360,7 +1358,7 @@ local function updatePlaying(dt)
     Game.spawnTimer = (Game.spawnTimer or 0) - dt
     if Game.spawnTimer <= 0 and not (plan.boss and Game.waveElapsed < 4) then
         spawnPack(plan)
-        local pressure = math.max(0, Game.waveElapsed / math.max(1, plan.duration or 30))
+        local pressure = math.max(0, Game.waveElapsed / SURVIVAL_DURATION)
         local bonus = currentAffixBonuses()
         Game.spawnTimer = math.max(0.30, ((plan.interval or 1.0) * bonus.intervalMult) - pressure * 0.16)
     end
@@ -1371,27 +1369,11 @@ local function updatePlaying(dt)
     updateEnemyShots(dt)
     updateEnemies(dt)
 
-    if obj.mode == "charge" then
-        local d = distance(Game.player.x, Game.player.y, Game.w / 2, Game.h / 2)
-        if d < 120 then Game.objectiveProgress = math.min(100, (Game.objectiveProgress or 0) + dt * (16 + Game.danger * 1.5)) end
-        Game.objectiveText = "充能 " .. math.floor(Game.objectiveProgress or 0) .. "%"
-        if (Game.objectiveProgress or 0) >= 100 and Game.state == "playing" then completeWave("核心充能完成") end
-    elseif obj.mode == "bounty" then
-        local target = 12 + Game.wave * 3 + Game.danger
-        local done = Game.kills - (Game.waveStartKills or 0)
-        Game.objectiveText = "悬赏 " .. math.min(done, target) .. "/" .. target
-        if done >= target and Game.state == "playing" then completeWave("悬赏完成") end
-    else
-        Game.objectiveText = "生存 " .. math.max(0, math.ceil(Game.waveTime)) .. "秒"
-    end
+    Game.objectiveText = "生存 " .. math.max(0, math.ceil(Game.waveTime)) .. "秒"
 
     if Game.waveTime <= 0 and Game.state == "playing" then
-        if plan.boss then
-            Game.waveTime = 0
-            if #Game.enemies == 0 then Game.state = "victory" end
-        else
-            completeWave("波次完成")
-        end
+        Game.waveTime = 0
+        completeWave(Game.wave >= Game.maxWave and "生存完成" or "波次完成")
     end
 end
 
@@ -1643,15 +1625,6 @@ local function drawHud()
 end
 
 local function drawWorld()
-    if Game.state == "playing" and selectedObjective().mode == "charge" then
-        love.graphics.setBlendMode("add")
-        color(C.cyan, 0.10)
-        love.graphics.circle("fill", Game.w / 2, Game.h / 2, 120)
-        color(C.cyan, 0.40)
-        love.graphics.circle("line", Game.w / 2, Game.h / 2, 120)
-        love.graphics.setBlendMode("alpha")
-    end
-
     for _, b in ipairs(Game.bullets) do
         drawProjectile(b)
     end
@@ -1763,7 +1736,6 @@ local function uiButton(text, x, y, w, h, bg, fg, font)
 end
 
 local function drawMenu()
-    local obj = selectedObjective()
     local w, h = Game.w, Game.h
     local t = love.timer.getTime() or 0
 
@@ -1850,24 +1822,6 @@ local function drawMenu()
     color(C.white)
     love.graphics.printf("白板开局，构筑成怪物", cx - 260, cy + 160, 520, "center")
 
-    -- 横向图标 + 文字组合，替代密集提示句。
-    local infoY = cy + 202
-    local info = {{"◷", "30秒波次", C.cyan}, {"◇", "三选一奖励", C.gold}, {"▣", "战后商店", C.pink}}
-    local infoW, gap = 150, 28
-    local infoX = cx - (infoW * #info + gap * (#info - 1)) / 2
-    love.graphics.setFont(Game.fonts.tiny)
-    for i, item in ipairs(info) do
-        local x = infoX + (i - 1) * (infoW + gap)
-        color(item[3], 0.16)
-        love.graphics.rectangle("fill", x, infoY, infoW, 34, 9, 9)
-        color(item[3], 0.72)
-        love.graphics.rectangle("line", x, infoY, infoW, 34, 9, 9)
-        color(item[3])
-        love.graphics.printf(item[1], x + 10, infoY + 7, 28, "center")
-        color(C.white)
-        love.graphics.printf(item[2], x + 38, infoY + 7, infoW - 46, "left")
-    end
-
     local deckX, deckY, deckW, deckH = 90, h - 168, w - 180, 126
     love.graphics.setColor(0.012, 0.016, 0.040, 0.78)
     love.graphics.rectangle("fill", deckX, deckY, deckW, deckH, 16, 16)
@@ -1878,16 +1832,17 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.small)
     color(C.cyan)
-    love.graphics.printf("模式  " .. obj.name, deckX + 28, deckY + 32, 330, "left")
+    love.graphics.printf("模式  生存模式 · 60秒", deckX + 28, deckY + 32, 360, "left")
 
     local dangerText = Game.danger == 0 and "难度  基础" or ("难度  危险 " .. Game.danger)
     color(C.gold)
     love.graphics.printf(dangerText, deckX + deckW - 358, deckY + 32, 330, "right")
 
     uiButton("开始实验", w / 2 - 140, deckY + 30, 280, 62, C.gold, C.white, Game.fonts.normal)
-    -- 控制项只保留必要动作，减少系统堆叠感。
-    uiButton("◀", deckX + 28, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
-    uiButton("▶", deckX + 100, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
+    -- 首页不再提供模式切换，只保留生存模式；难度仍可调整。
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf("唯一目标：生存 60 秒", deckX + 28, deckY + 86, 260, "left")
     uiButton("-", deckX + deckW - 158, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
     uiButton("+", deckX + deckW - 86, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
 end
@@ -2198,8 +2153,6 @@ end
 local function handlePointer(x, y)
     if Game.state == "menu" then
         local deckX, deckY, deckW = 90, Game.h - 168, Game.w - 180
-        if hitRect(x, y, deckX + 28, deckY + 82, 58, 32) then Game.selectedObjective = Game.selectedObjective - 1; if Game.selectedObjective < 1 then Game.selectedObjective = #objectiveDefs end; return true end
-        if hitRect(x, y, deckX + 100, deckY + 82, 58, 32) then Game.selectedObjective = Game.selectedObjective + 1; if Game.selectedObjective > #objectiveDefs then Game.selectedObjective = 1 end; return true end
         if hitRect(x, y, deckX + deckW - 158, deckY + 82, 58, 32) then Game.danger = math.max(0, Game.danger - 1); return true end
         if hitRect(x, y, deckX + deckW - 86, deckY + 82, 58, 32) then Game.danger = math.min(6, Game.danger + 1); return true end
         if hitRect(x, y, Game.w / 2 - 140, deckY + 30, 280, 62) then resetRun(); return true end
@@ -2258,8 +2211,6 @@ function love.keypressed(key)
     if Game.state == "paused" then return end
 
     if Game.state == "menu" then
-        if key == "a" or key == "left" then Game.selectedObjective = Game.selectedObjective - 1; if Game.selectedObjective < 1 then Game.selectedObjective = #objectiveDefs end; return end
-        if key == "d" or key == "right" then Game.selectedObjective = Game.selectedObjective + 1; if Game.selectedObjective > #objectiveDefs then Game.selectedObjective = 1 end; return end
         if key == "q" then Game.danger = math.max(0, Game.danger - 1); return end
         if key == "e" then Game.danger = math.min(6, Game.danger + 1); return end
     end
