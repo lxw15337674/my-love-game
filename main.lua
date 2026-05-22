@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.5"
+local VERSION = "v2026.05.22.6"
 
 local Game = {
     w = 1280,
@@ -2397,73 +2397,64 @@ local function drawCompactBuildPanel(x, y, w, h)
 
     local mx, my = love.mouse.getPosition()
     love.graphics.setFont(Game.fonts.tiny)
+
+    color(C.orange)
+    love.graphics.printf("武器槽 " .. #p.weapons .. "/4", x + 14, y + 136, w - 28, "left")
+    local weaponY = y + 154
+    local slotW = (w - 38) / 2
+    for i = 1, 4 do
+        local weapon = p.weapons[i]
+        local sx = x + 14 + ((i - 1) % 2) * (slotW + 10)
+        local sy = weaponY + math.floor((i - 1) / 2) * 30
+        local accent = weapon and (elements[weapon.element] or elements.kinetic).color or C.white
+        color(accent, weapon and 0.13 or 0.05)
+        love.graphics.rectangle("fill", sx, sy, slotW, 24, 7, 7)
+        color(accent, weapon and 0.44 or 0.18)
+        love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 23, 7, 7)
+        color(weapon and C.white or C.muted)
+        love.graphics.printf(weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, 10) or "空武器", sx + 8, sy + 6, slotW - 16, "left")
+        if weapon and hitRect(mx, my, sx, sy, slotW, 24) then return weaponTooltip(weapon, "当前武器") end
+    end
+
     color(C.cyan)
-    love.graphics.printf("护盾槽", x + 14, y + 136, w - 28, "left")
-    local shieldY = y + 154
+    love.graphics.printf("护盾槽", x + 14, y + 224, w - 28, "left")
+    local shieldY = y + 242
     local shield = p.shieldItem
     color(C.cyan, shield and 0.16 or 0.07)
     love.graphics.rectangle("fill", x + 14, shieldY, w - 28, 28, 8, 8)
     color(C.cyan, shield and 0.52 or 0.22)
     love.graphics.rectangle("line", x + 14.5, shieldY + 0.5, w - 29, 27, 8, 8)
     color(shield and C.white or C.muted)
-    love.graphics.printf(shield and compactDesc(shield.name, 14) or "空护盾槽", x + 24, shieldY + 7, w - 48, "left")
+    love.graphics.printf(shield and compactDesc(shield.name, 16) or "空护盾槽", x + 24, shieldY + 7, w - 48, "left")
     color(C.cyan)
     love.graphics.printf(shield and "1/1" or "0/1", x + w - 62, shieldY + 7, 36, "right")
     if shield and hitRect(mx, my, x + 14, shieldY, w - 28, 28) then return itemTooltip(shield) end
 
     color(C.gold)
     local items = p.items or {}
-    love.graphics.printf("道具槽 " .. math.min(#items, 4) .. "/4", x + 14, y + 190, w - 28, "left")
-    local itemY = y + 208
-    local slotW = (w - 38) / 2
-    for i = 1, 4 do
+    love.graphics.printf("道具槽 " .. #items, x + 14, y + 286, w - 28, "left")
+    local itemY = y + 304
+    for i = 1, math.min(#items, 6) do
         local item = items[i]
         local sx = x + 14 + ((i - 1) % 2) * (slotW + 10)
-        local sy = itemY + math.floor((i - 1) / 2) * 30
-        local accent = item and shopItemAccent(item) or C.white
-        color(accent, item and 0.14 or 0.05)
-        love.graphics.rectangle("fill", sx, sy, slotW, 24, 7, 7)
-        color(accent, item and 0.46 or 0.18)
-        love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 23, 7, 7)
-        color(item and C.white or C.muted)
-        love.graphics.printf(item and compactDesc(item.name, 10) or "空槽", sx + 8, sy + 6, slotW - 16, "left")
-        if item and hitRect(mx, my, sx, sy, slotW, 24) then return itemTooltip(item) end
-    end
-    if #items > 4 then
-        color(C.gold)
-        love.graphics.printf("另有 " .. (#items - 4) .. " 件", x + 14, y + 264, w - 28, "right")
-    end
-
-    color(C.orange)
-    love.graphics.printf("武器槽 " .. #p.weapons .. "/4", x + 14, y + 276, w - 28, "left")
-    local cardY = y + 294
-    for i = 1, math.min(2, #p.weapons) do
-        local weapon = p.weapons[i]
-        local elem = elements[weapon.element] or elements.kinetic
-        local brand = brands[weapon.brand]
-        local rowY = cardY + (i - 1) * 36
-        color(elem.color, 0.12)
-        love.graphics.rectangle("fill", x + 14, rowY, w - 28, 32, 8, 8)
-        color(elem.color, 0.46)
-        love.graphics.rectangle("line", x + 14.5, rowY + 0.5, w - 29, 31, 8, 8)
+        local sy = itemY + math.floor((i - 1) / 2) * 26
+        local accent = shopItemAccent(item)
+        color(accent, 0.12)
+        love.graphics.rectangle("fill", sx, sy, slotW, 22, 7, 7)
+        color(accent, 0.40)
+        love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 21, 7, 7)
         color(C.white)
-        love.graphics.printf(weapon.name .. " Lv" .. weapon.level, x + 24, rowY + 4, w - 48, "left")
-        if brand then
-            color(brand.color, 0.86)
-            love.graphics.printf(brand.name, x + w - 74, rowY + 4, 48, "right")
-        end
-        color(C.muted)
-        local actualDamage = math.floor((weapon.damage or 0) * (p.stats.damage or 1) + 0.5)
-        local count = weapon.count or 1
-        local line = "伤 " .. actualDamage .. "×" .. count .. "  CD " .. string.format("%.2f", weapon.cooldown or 0) .. "  射程 " .. math.floor(weapon.range or 0)
-        love.graphics.printf(line, x + 24, rowY + 18, w - 48, "left")
-        if hitRect(mx, my, x + 14, rowY, w - 28, 32) then
-            return weaponTooltip(weapon, "当前武器")
-        end
+        love.graphics.printf(compactDesc(item.name, 10), sx + 8, sy + 5, slotW - 16, "left")
+        if hitRect(mx, my, sx, sy, slotW, 22) then return itemTooltip(item) end
     end
-    if #p.weapons > 2 then
+    if #items == 0 then
+        color(C.white, 0.05)
+        love.graphics.rectangle("fill", x + 14, itemY, w - 28, 22, 7, 7)
+        color(C.muted)
+        love.graphics.printf("暂无道具", x + 22, itemY + 5, w - 44, "left")
+    elseif #items > 6 then
         color(C.gold)
-        love.graphics.printf("另有 " .. (#p.weapons - 2) .. " 把武器", x + 14, y + h - 22, w - 28, "left")
+        love.graphics.printf("另有 " .. (#items - 6) .. " 件", x + 14, y + h - 20, w - 28, "right")
     end
 end
 
