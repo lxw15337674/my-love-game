@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.28"
+local VERSION = "v2026.05.22.29"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -17,7 +17,7 @@ local Game = {
     time = 0,
     wave = 1,
     waveTime = 30,
-    maxWave = 10,
+    maxWave = 30,
     coins = 0,
     kills = 0,
     shopRefresh = 0,
@@ -233,7 +233,16 @@ local wavePlans = {
 }
 
 local function wavePlanAt(wave)
-    return wavePlans[wave] or wavePlans[#wavePlans]
+    local safeWave = math.max(1, wave or 1)
+    local base = wavePlans[((safeWave - 1) % #wavePlans) + 1] or wavePlans[#wavePlans]
+    local chapterIndex = math.floor((safeWave - 1) / CHAPTER_SIZE) + 1
+    local plan = {}
+    for k, v in pairs(base) do plan[k] = v end
+    plan.duration = 30
+    plan.interval = math.max(0.38, (base.interval or 1.0) - (chapterIndex - 1) * 0.035)
+    plan.pack = (base.pack or 1) + math.floor((chapterIndex - 1) / 2)
+    plan.name = base.name or "生存波次"
+    return plan
 end
 
 local function chapterInfoAt(wave)
@@ -280,7 +289,8 @@ local waveAffixes = {
 }
 
 local function affixesAt(wave)
-    local pair = waveAffixes[wave] or waveAffixes[#waveAffixes] or {}
+    local safeWave = math.max(1, wave or 1)
+    local pair = waveAffixes[((safeWave - 1) % #waveAffixes) + 1] or waveAffixes[#waveAffixes] or {}
     return affixDefs[pair.reward], affixDefs[pair.penalty]
 end
 
@@ -665,6 +675,12 @@ local function spawnEnemy(def, opts)
         shootTimer = rnd() * 1.2, dashTimer = rnd() * 1.6, wanderTimer = rnd() * 1.4, wanderAngle = rnd() * TAU,
         burn = 0, slow = 0, corrosion = 0, lastHit = 0
     }
+    if def.boss then
+        toast("Boss 接入：" .. def.name)
+        addText(Game.w / 2 - 46, 154, "Boss", C.red)
+    elseif def.elite or def.behavior == "bomber" then
+        addText(clamp(x, 80, Game.w - 80), clamp(y, 170, Game.h - 90), def.elite and "精英" or "燃烧投手", def.elite and C.purple or C.orange)
+    end
 end
 
 local function spawnPack(plan)
@@ -946,6 +962,19 @@ local function clearedWaveCount()
     return math.max(0, Game.wave)
 end
 
+local function clearRewardForWave(wave)
+    local safeWave = math.max(1, wave or 1)
+    return 12 + math.floor(safeWave * 1.5) + Game.danger * 2
+end
+
+local function shopBudgetHint()
+    local coins = Game.coins or 0
+    if coins < 18 then return "预算：优先便宜补强" end
+    if coins < 34 then return "预算：约 1 件核心商品" end
+    if coins < 56 then return "预算：1 件核心 + 1 次刷新" end
+    return "预算：可追组合或锁定关键牌"
+end
+
 local function slotMilestone()
     return math.floor(clearedWaveCount() / 5) * 5
 end
@@ -1132,6 +1161,7 @@ local function resetRun()
     Game.message = ""
     Game.enemyShots = {}
     Game.waveRewards = nil
+    Game.lastWaveIncome = nil
     Game.runStats = {damage = 0, damageByWeapon = {}, coinsEarned = 0, highestWave = 1, rerolls = 0}
     Game.player.x, Game.player.y = Game.w / 2, Game.h / 2
     Game.player.hp, Game.player.maxHp = ch.hp, ch.hp
@@ -1433,11 +1463,15 @@ local function damagePlayer(amount)
         amount = amount - used
     end
     if amount > 0 then p.hp = p.hp - amount end
-    if hadShield and p.shield <= 0 and p.gear.shieldBurst then
-        for _, e in ipairs(Game.enemies) do
-            if distance(p.x, p.y, e.x, e.y) < 165 then damageEnemy(e, 32 * p.stats.damage, "arc", false, "护盾脉冲") end
+    if hadShield and p.shield <= 0 then
+        addText(p.x - 34, p.y - 42, "护盾破裂", C.cyan)
+        burst(p.x, p.y, C.cyan, 24, 190)
+        if p.gear.shieldBurst then
+            for _, e in ipairs(Game.enemies) do
+                if distance(p.x, p.y, e.x, e.y) < 165 then damageEnemy(e, 32 * p.stats.damage, "arc", false, "护盾脉冲") end
+            end
+            burst(p.x, p.y, C.cyan, 38, 240)
         end
-        burst(p.x, p.y, C.cyan, 38, 240)
     end
     if p.hp <= 0 then Game.state = "gameover" end
 end
@@ -1683,6 +1717,9 @@ local function completeWave(reason)
         addCoins(gain, "harvest")
         toast((reason or "波次完成") .. "：收获 +" .. gain .. " 材料")
     end
+    local base = clearRewardForWave(finishedWave)
+    addCoins(base, "clear")
+    Game.lastWaveIncome = (Game.waveRewards and Game.waveRewards.coins) or base
     generateLevelChoices()
     if Game.wave >= Game.maxWave then
         Game.pendingRewardNextState = "victory"
@@ -1691,8 +1728,6 @@ local function completeWave(reason)
     end
     Game.wave = Game.wave + 1
     Game.runStats.highestWave = math.max(Game.runStats.highestWave or 1, Game.wave)
-    local base = 10 + Game.wave * 2 + Game.danger * 2
-    addCoins(base, "clear")
     Game.pendingRewardNextState = "shop"
     Game.state = "levelup"
 end
@@ -1875,6 +1910,10 @@ function love.update(dt)
     elseif os.getenv("LOVE_AUTOSHOP") == "1" and not Game.autoShopDone then
         if Game.state == "menu" then
             resetRun()
+            if os.getenv("LOVE_AUTOWAVE") then
+                Game.wave = clamp(tonumber(os.getenv("LOVE_AUTOWAVE")) or Game.wave, 1, Game.maxWave)
+                Game.runStats.highestWave = Game.wave
+            end
             enterShop()
         end
         if os.getenv("LOVE_AUTOSHOP_TAB") then Game.shopTab = os.getenv("LOVE_AUTOSHOP_TAB") end
@@ -2016,6 +2055,8 @@ local function drawBarCapsule(label, value, x, y, w, h, pct, accent)
     love.graphics.printf(value, x + w - valueW - 12, y + math.floor((h - Game.fonts.tiny:getHeight()) / 2), valueW, "right")
 end
 
+local waveThreatSummary
+
 local function drawHud()
     local p = Game.player
     local hudY, hudH = 14, 100
@@ -2045,12 +2086,8 @@ local function drawHud()
     drawCapsule(Game.objectiveText or selectedObjective().name, midX + 96, hudY + 18, 150, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.18})
     drawCapsule("危险 " .. Game.danger, midX + 96, hudY + 52, 150, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.32, borderAlpha = 0.16})
 
-    -- 右：当前影响。只保留词缀、主动技能和一行武器摘要，不再堆列表。
+    -- 右：战斗中只留主动技能、主要威胁和 Boss 血条，词缀细节挪到下一波情报。
     local rx, rw = Game.w - 392, 354
-    local reward, penalty = currentAffixes()
-    drawCapsule("奖励 " .. (reward and reward.name or "无"), rx, hudY + 10, 168, 28, {fg = C.green, border = C.green, borderAlpha = 0.16, align = "left", padX = 14})
-    drawCapsule("惩罚 " .. (penalty and penalty.name or "无"), rx + 180, hudY + 10, 174, 28, {fg = C.red, border = C.red, borderAlpha = 0.16, align = "left", padX = 14})
-
     local skill = p.activeSkill or {}
     local skillText = "空格 " .. (skill.name or "主动技能")
     local skillFg = C.cyan
@@ -2061,18 +2098,16 @@ local function drawHud()
         skillText = "空格 冷却 " .. string.format("%.1f", skill.cd) .. "s"
         skillFg = C.muted
     end
-    drawCapsule(skillText, rx, hudY + 42, rw, 24, {font = Game.fonts.tiny, fg = skillFg, border = skillFg, bgAlpha = 0.26, borderAlpha = 0.18, align = "left", padX = 14})
+    drawCapsule(skillText, rx, hudY + 10, rw, 28, {font = Game.fonts.tiny, fg = skillFg, border = skillFg, bgAlpha = 0.26, borderAlpha = 0.18, align = "left", padX = 14})
+    drawCapsule("威胁 " .. waveThreatSummary(Game.wave), rx, hudY + 46, rw, 24, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, bgAlpha = 0.22, borderAlpha = 0.14, align = "left", padX = 14})
 
-    local weaponText = "武器 0/4"
-    local tagText = "等待构筑"
-    if p.weapons[1] then
-        local weapon = p.weapons[1]
-        local brand = brands[weapon.brand]
-        weaponText = "武器 " .. #p.weapons .. "/4 · " .. weapon.name .. " Lv" .. weapon.level
-        tagText = brand and brand.tag or "构筑中"
+    local boss = nil
+    for _, e in ipairs(Game.enemies or {}) do if e.boss then boss = e; break end end
+    if boss then
+        drawBarCapsule("Boss", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), rx, hudY + 72, rw, 20, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
+    else
+        drawCapsule("敌群 " .. #Game.enemies, rx, hudY + 72, rw, 20, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.18, borderAlpha = 0.10, align = "left", padX = 14})
     end
-    drawCapsule(weaponText, rx, hudY + 66, rw, 24, {font = Game.fonts.tiny, fg = C.white, border = C.cyan, align = "left", padX = 14})
-    drawCapsule(tagText, rx + rw - 150, hudY + 68, 140, 20, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.20, borderAlpha = 0.10})
 end
 
 local function drawWorld()
@@ -2336,7 +2371,7 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.small)
     color(C.cyan)
-    love.graphics.printf("模式  生存模式 · 30秒", deckX + 28, deckY + 32, 360, "left")
+    love.graphics.printf("模式  30关构筑生存", deckX + 28, deckY + 32, 360, "left")
 
     local dangerText = Game.danger == 0 and "难度  基础" or ("难度  危险 " .. Game.danger)
     color(C.gold)
@@ -2346,7 +2381,7 @@ local function drawMenu()
     -- 首页不再提供模式切换，只保留生存模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("唯一目标：生存 30 秒", deckX + 28, deckY + 86, 260, "left")
+    love.graphics.printf("目标：通关 30 小关，每关撑过 30 秒", deckX + 28, deckY + 86, 360, "left")
     uiButton("-", deckX + deckW - 158, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
     uiButton("+", deckX + deckW - 86, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
 end
@@ -2676,6 +2711,54 @@ local function weaponComparisonLines(current, candidate)
     }
 end
 
+local function waveThreatProfile(wave)
+    local plan = wavePlanAt(wave or Game.wave)
+    local profile = {shield = 0, armor = 0, ranged = 0, fire = 0, elite = 0, boss = plan.boss and 1 or 0}
+    for _, entry in ipairs(plan.enemies or {}) do
+        local def = enemyDefs[entry[1]]
+        local weight = entry[2] or 0
+        if def then
+            if def.defense == "shield" then profile.shield = profile.shield + weight end
+            if def.defense == "armor" then profile.armor = profile.armor + weight end
+            if def.behavior == "shooter" then profile.ranged = profile.ranged + weight end
+            if def.behavior == "bomber" then profile.fire = profile.fire + weight end
+            if def.elite then profile.elite = profile.elite + weight end
+            if def.boss then profile.boss = profile.boss + weight end
+        end
+    end
+    return profile
+end
+
+local function itemRecommendationReason(item)
+    if not item then return nil end
+    local profile = waveThreatProfile(Game.wave)
+    local desc = item.desc or ""
+    if item.kind == "weapon" and item.id and weaponDefs[item.id] then
+        local def = item.weaponDef or weaponDefs[item.id]
+        if profile.shield >= 20 and def.element == "arc" then return "下一波护盾目标偏多，电弧武器更有效。" end
+        if profile.armor >= 18 and def.element == "corrode" then return "下一波装甲目标偏多，腐蚀武器更有效。" end
+        if profile.fire >= 3 and (def.range or 0) >= 760 then return "下一波有区域封锁，远射程更安全。" end
+        if profile.boss > 0 and (def.damage or 0) * (def.count or 1) >= 20 then return "Boss/精英压力高，需要更强单轮输出。" end
+    end
+    if profile.shield >= 20 and (desc:find("护盾") or desc:find("对盾") or desc:find("电弧")) then return "下一波护盾敌人多，优先补对盾/护盾能力。" end
+    if profile.armor >= 18 and (desc:find("护甲") or desc:find("对甲") or desc:find("腐蚀")) then return "下一波装甲敌人多，优先补对甲能力。" end
+    if profile.fire >= 3 and (item.kind == "temp" or desc:find("移速") or desc:find("护盾")) then return "下一波有燃烧投手，临时生存/机动补强更稳。" end
+    if profile.boss > 0 and (desc:find("伤害") or desc:find("暴击") or desc:find("射速")) then return "Boss 波需要更高持续输出。" end
+    return nil
+end
+
+waveThreatSummary = function(wave)
+    local profile = waveThreatProfile(wave)
+    local parts = {}
+    if profile.boss > 0 then parts[#parts + 1] = "Boss" end
+    if profile.elite > 0 then parts[#parts + 1] = "精英" end
+    if profile.fire >= 3 then parts[#parts + 1] = "燃烧区" end
+    if profile.ranged >= 18 then parts[#parts + 1] = "远程压制" end
+    if profile.shield >= 20 then parts[#parts + 1] = "护盾敌群" end
+    if profile.armor >= 18 then parts[#parts + 1] = "装甲敌群" end
+    return #parts > 0 and table.concat(parts, " / ") or "常规混合敌群"
+end
+
 local function itemTooltip(item)
     if not item then return nil end
     local kindText = kindLabel[item.kind] or item.kind or "道具"
@@ -2694,6 +2777,8 @@ local function itemTooltip(item)
         local tip = weaponTooltip(def, "商品武器", selected)
         table.insert(tip.lines, 1, "价格：◆ " .. item.price)
         table.insert(tip.lines, 2, {text = "类型：" .. kindText .. " · " .. kindDesc, color = C.muted})
+        local rec = itemRecommendationReason(item)
+        if rec then tip.lines[#tip.lines + 1] = {text = "推荐：" .. rec, color = C.gold, gap = 8} end
         if not selected then
             tip.lines[#tip.lines + 1] = {text = "提示：先点击右侧武器槽，选择要对比的武器。", color = C.muted, gap = 8}
         end
@@ -2705,6 +2790,8 @@ local function itemTooltip(item)
         {text = "效果：" .. modText(item.desc or "无说明"), color = C.white, gap = 6}
     }
     if item.flag then lines[#lines + 1] = "特殊协议：" .. item.flag end
+    local rec = itemRecommendationReason(item)
+    if rec then lines[#lines + 1] = {text = "推荐：" .. rec, color = C.gold, gap = 8} end
     return {title = "商品：" .. (item.name or "未知道具"), lines = lines}
 end
 
@@ -2758,6 +2845,7 @@ local function drawShopCard(item, i, x, y, w, h)
     else
         cardTags = {{text = kindText, color = accent}}
     end
+    if itemRecommendationReason(item) then cardTags[#cardTags + 1] = {text = "推荐", color = C.gold} end
     love.graphics.setFont(Game.fonts.tiny)
     drawTagRow(cardTags, x + 18, y + 13, w - 82)
     local topLockX, topLockY, topLockW, topLockH = x + w - 58, y + 10, 40, 30
@@ -3126,7 +3214,7 @@ local function drawNextWavePanel(x, y, w, h)
     love.graphics.printf(chapterWaveLabel(Game.wave) .. " · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("生存 30 秒 · 根据词条和敌群选择临时道具", x + 24, y + 84, w - 48, "left")
+    love.graphics.printf("生存 30 秒 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
 
     local pillW = (w - 62) / 2
     if reward then tip = drawAffixInfoPill(reward, "奖励", x + 24, y + 122, pillW, 58, mx, my) or tip end
@@ -3141,15 +3229,15 @@ local function drawNextWavePanel(x, y, w, h)
     for i, entry in ipairs(plan.enemies or {}) do
         local key, weight = entry[1], entry[2]
         local def = enemyDefs[key]
-        if def and i <= 3 then
+        if def and i <= 6 then
             local chance = total > 0 and math.floor(weight / total * 100 + 0.5) or weight
             color(def.color, 0.16)
-            love.graphics.rectangle("fill", x + 24, rowY, w - 48, 24, 7, 7)
+            love.graphics.rectangle("fill", x + 24, rowY, w - 48, 22, 7, 7)
             color(def.color)
-            love.graphics.printf(def.name, x + 36, rowY + 6, 112, "left")
+            love.graphics.printf(def.name, x + 36, rowY + 5, 112, "left")
             color(C.muted)
-            love.graphics.printf(chance .. "% · " .. defenseText(def) .. " · 伤害 " .. def.damage, x + 156, rowY + 6, w - 196, "left")
-            rowY = rowY + 32
+            love.graphics.printf(chance .. "% · " .. defenseText(def) .. " · " .. (def.behavior or "追击") .. " · 伤害 " .. def.damage, x + 156, rowY + 5, w - 196, "left")
+            rowY = rowY + 26
         end
     end
     local events = plan.events or {}
@@ -3355,7 +3443,8 @@ local function drawShop()
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
     local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
-    love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4 · " .. shieldText .. " · 道具槽 " .. #(Game.player.items or {}) .. " · 购买后售罄，刷新后补货", infoX, 74, infoW, "center")
+    local incomeText = Game.lastWaveIncome and ("上波收入 +" .. Game.lastWaveIncome .. " · ") or ""
+    love.graphics.printf(incomeText .. shopBudgetHint() .. " · 武器槽 " .. #Game.player.weapons .. "/4 · " .. shieldText .. " · 道具槽 " .. #(Game.player.items or {}), infoX, 74, infoW, "center")
 
     local rerollCost = 3 + Game.shopRefresh * 2
     local refreshText = Game.freeRefresh > 0 and ("免费刷新 " .. Game.freeRefresh .. " 次") or ("刷新 " .. rerollCost .. " 材料")
