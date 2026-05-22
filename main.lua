@@ -2,6 +2,8 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
+local VERSION = "v2026.05.22.1"
+
 local Game = {
     w = 1280,
     h = 720,
@@ -2417,10 +2419,15 @@ local function drawSlotTabContent(x, y, w, h)
     uiButton(label, x + w / 2 - buttonW / 2, y + h - 96, buttonW, buttonH, unlocked and C.gold or C.white, C.white, Game.fonts.normal)
 end
 
+local function drawVersion()
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted, 0.72)
+    love.graphics.printf(VERSION, 0, Game.h - 24, Game.w - 18, "right")
+end
+
 local shopTabs = {
     {id = "shop", label = "商店"},
     {id = "intel", label = "下一波情报"},
-    {id = "build", label = "当前构筑"},
     {id = "slot", label = "补给转轮"}
 }
 
@@ -2520,18 +2527,18 @@ local function drawShop()
 
     if active == "intel" then
         tip = drawNextWavePanel(72, contentY, Game.w - 144, contentH)
-    elseif active == "build" then
-        drawBuildTabContent(72, contentY, Game.w - 144, contentH)
     elseif active == "slot" then
         drawSlotTabContent(72, contentY, Game.w - 144, contentH)
     else
         color(C.gold)
         local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
-        love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  " .. shieldText .. "  ·  详细构筑请切到『当前构筑』", 70, 176, Game.w - 140, "center")
+        love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  " .. shieldText, 70, 176, Game.w - 140, "center")
         local cardY = 214
         local gridH = 392
-        local gap = 16
-        local cardW = (Game.w - 144 - gap) / 2
+        local gap = 14
+        local sideW = 420
+        local sideX = Game.w - 72 - sideW
+        local cardW = (sideX - 72 - gap) / 2
         local cardH = (gridH - gap) / 2
         for i, item in ipairs(Game.shop) do
             local col = (i - 1) % 2
@@ -2540,6 +2547,7 @@ local function drawShop()
             local y = cardY + row * (cardH + gap)
             drawShopCard(item, i, x, y, cardW, cardH)
         end
+        drawCompactBuildPanel(sideX, cardY, sideW, gridH)
     end
 
     local actionY = 636
@@ -2592,9 +2600,9 @@ function love.draw()
     love.graphics.push()
     love.graphics.translate(ox, oy)
     drawBackground()
-    if Game.state == "menu" then drawMenu(); love.graphics.pop(); return end
-    if Game.state == "shop" then drawShop(); love.graphics.pop(); return end
-    if Game.state == "levelup" then drawWorld(); drawHud(); drawLevelUp(); love.graphics.pop(); return end
+    if Game.state == "menu" then drawMenu(); drawVersion(); love.graphics.pop(); return end
+    if Game.state == "shop" then drawShop(); drawVersion(); love.graphics.pop(); return end
+    if Game.state == "levelup" then drawWorld(); drawHud(); drawLevelUp(); drawVersion(); love.graphics.pop(); return end
     drawWorld()
     drawHud()
     if Game.state == "paused" then drawPauseOverlay(); love.graphics.pop(); return end
@@ -2607,6 +2615,7 @@ function love.draw()
     end
     if Game.state == "gameover" then drawEnd("机体失控", "构筑失败。虚空可没那么温柔。", C.red) end
     if Game.state == "victory" then drawEnd("通关完成", "核心稳定，战场清空。", C.gold) end
+    drawVersion()
     love.graphics.pop()
 end
 
@@ -2670,8 +2679,10 @@ local function handlePointer(x, y)
         if (Game.shopTab or "shop") == "shop" then
             local cardY = 214
             local gridH = 392
-            local gap = 16
-            local cardW = (Game.w - 144 - gap) / 2
+            local gap = 14
+            local sideW = 420
+            local sideX = Game.w - 72 - sideW
+            local cardW = (sideX - 72 - gap) / 2
             local cardH = (gridH - gap) / 2
             for i = 1, 4 do
                 local col = (i - 1) % 2
