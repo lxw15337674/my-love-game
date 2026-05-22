@@ -1,4 +1,4 @@
-# Heartcore Survivor Prototype
+# Robot War Prototype
 
 A small LÖVE 11.x arena roguelite prototype.
 
@@ -8,7 +8,7 @@ Design direction:
 - Automatic aiming and firing
 - Clear, restrained stats instead of huge number spam
 - Loot-driven builds inspired by randomized gear, brands, elements, and legendary effects
-- Heartcore / starfield theme
+- Robot war / starfield battlefield theme
 
 ## Run
 
