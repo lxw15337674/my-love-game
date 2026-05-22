@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.20"
+local VERSION = "v2026.05.22.22"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2605,20 +2605,18 @@ local function weaponTooltip(weapon, titlePrefix, compareWeapon)
         return {text = label .. "：" .. value .. (suffix or "") .. " " .. diffText(delta, suffix), color = compareColor(delta, higherBetter), gap = gap}
     end
     local lines = {
-        {text = "品牌：" .. (brand and brand.name or "武器"), color = brand and brand.color or C.white},
-        {text = "元素：" .. elem.name, color = elem.color},
-        {text = "标签：" .. (brand and brand.tag or elem.desc), color = C.muted},
+        {text = "品牌：" .. (brand and brand.name or "武器") .. " · " .. (brand and brand.tag or "影响武器基础风格。"), color = brand and brand.color or C.white},
+        {text = "元素：" .. elem.name .. " · " .. elem.desc, color = elem.color},
         attr("单发伤害", v.damage, "damage", true, nil, 6),
         attr("弹体数量", v.count, "count", true),
         attr("总伤害", v.totalDamage, "totalDamage", true),
-        attr("冷却", string.format("%.2f", v.cooldown), "cooldown", false, "s"),
         attr("射程", v.range, "range", true),
         attr("弹速", v.speed, "speed", true),
         attr("穿透", v.pierce, "pierce", true),
         attr("弹射", v.bounce, "bounce", true),
         {text = "散布：" .. string.format("%.2f", weapon.spread or 0), color = C.white}
     }
-    if compareWeapon then lines[#lines + 1] = {text = "差值基准：" .. (compareWeapon.name or "当前武器"), color = C.gold, gap = 6} end
+    if compareWeapon then lines[#lines + 1] = {text = "对比对象：当前装备的「" .. (compareWeapon.name or "武器") .. "」", color = C.gold, gap = 6} end
     if weapon.splash then lines[#lines + 1] = {text = "特殊：爆炸半径 " .. weapon.splash, color = C.gold, gap = 6} end
     if weapon.chain then lines[#lines + 1] = {text = "特殊：连锁 " .. (weapon.chain + math.floor((p.stats.bounce or 0) / 2)) .. " 次", color = C.gold, gap = 6} end
     if weapon.aura then lines[#lines + 1] = {text = "特殊：牵引光环 " .. weapon.aura, color = C.gold, gap = 6} end
@@ -2656,7 +2654,6 @@ local function weaponComparisonLines(current, candidate)
         {text = "对比选中武器：" .. (current.name or "当前武器"), color = C.gold, gap = 8},
         line("总伤", a.totalDamage, b.totalDamage, b.totalDamage - a.totalDamage, true),
         line("单发", a.damage, b.damage, b.damage - a.damage, true),
-        line("冷却", string.format("%.2fs", a.cooldown), string.format("%.2fs", b.cooldown), tonumber(string.format("%.2f", b.cooldown - a.cooldown)), false, "s"),
         line("射程", a.range, b.range, b.range - a.range, true),
         line("弹速", a.speed, b.speed, b.speed - a.speed, true),
         line("穿透", a.pierce, b.pierce, b.pierce - a.pierce, true),
@@ -2669,12 +2666,6 @@ local function itemTooltip(item)
     if not item then return nil end
     local rarity = item.rarity or "common"
     local rarityText = rarityLabel[rarity] or rarity or "普通"
-    local rarityDesc = ({
-        common = "普通稀有度：价格低，属性稳定。",
-        rare = "稀有：属性和词缀强于普通。",
-        epic = "史诗：更高属性，并可能带更强词缀。",
-        legend = "传说：高价值构筑件，通常带特殊协议。"
-    })[rarity] or "稀有度影响价格和属性强度。"
     local kindText = kindLabel[item.kind] or item.kind or "道具"
     local kindDesc = ({
         weapon = "武器：购买后装备到武器槽；同名武器会升级。",
@@ -2688,14 +2679,9 @@ local function itemTooltip(item)
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local selected = Game.player.weapons[Game.selectedWeaponIndex or 1]
-        local brand = brands[def.brand]
-        local elem = elements[def.element] or elements.kinetic
         local tip = weaponTooltip(def, "商品武器", selected)
         table.insert(tip.lines, 1, rarityText .. " · " .. kindText .. " · 价格 ◆ " .. item.price)
-        table.insert(tip.lines, 2, {text = "稀有度：" .. rarityDesc, color = C.muted})
-        table.insert(tip.lines, 3, {text = "类型：" .. kindDesc, color = C.muted})
-        table.insert(tip.lines, 4, {text = "品牌：" .. (brand and brand.name or "武器") .. " · " .. (brand and brand.tag or "武器品牌影响基础风格。"), color = brand and brand.color or C.muted})
-        table.insert(tip.lines, 5, {text = "元素：" .. elem.name .. " · " .. elem.desc, color = elem.color})
+        table.insert(tip.lines, 2, {text = "类型：" .. kindDesc, color = C.muted})
         if not selected then
             tip.lines[#tip.lines + 1] = {text = "提示：先点击右侧武器槽，选择要对比的武器。", color = C.muted, gap = 8}
         end
@@ -2704,7 +2690,6 @@ local function itemTooltip(item)
     local slotDesc = item.kind == "shield" and "槽位：护盾组件 · 安装到护盾槽。" or "槽位：构筑装备 · 进入道具槽或作为战术生效。"
     local lines = {
         rarityText .. " · " .. kindText .. (item.price and (" · 价格 ◆ " .. item.price) or ""),
-        {text = "稀有度：" .. rarityDesc, color = C.muted},
         {text = "类型：" .. kindDesc, color = C.muted},
         {text = slotDesc, color = C.muted},
         {text = "效果：" .. modText(item.desc or "无说明"), color = C.white, gap = 6}
@@ -2814,10 +2799,10 @@ local function drawShopCard(item, i, x, y, w, h)
         local def = item.weaponDef or weaponDefs[item.id]
         local rows = {
             {"伤害", tostring(def.damage)},
-            {"CD", string.format("%.2f", def.cooldown)},
+            {"弹体", tostring(def.count or 1)},
+            {"总伤", tostring((def.damage or 0) * (def.count or 1))},
             {"射程", tostring(math.floor(def.range or 0))},
             {"弹速", tostring(math.floor(def.speed or 0))},
-            {"数量", tostring(def.count or 1)},
             {"弹射", tostring(def.bounce or 0)}
         }
         for ri, row in ipairs(rows) do
