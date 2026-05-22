@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.29"
+local VERSION = "v2026.05.22.30"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -16,8 +16,8 @@ local Game = {
     state = "menu", -- menu, playing, paused, levelup, shop, gameover, victory
     time = 0,
     wave = 1,
-    waveTime = 30,
-    maxWave = 30,
+    waveTime = 60,
+    maxWave = 1,
     coins = 0,
     kills = 0,
     shopRefresh = 0,
@@ -366,10 +366,10 @@ local basePlayerDef = {
 
 local characterDefs = {basePlayerDef}
 
-local SURVIVAL_DURATION = 30
+local SURVIVAL_DURATION = 60
 
 local objectiveDefs = {
-    {name = "生存模式", desc = "生存 30 秒，撑到计时结束", mode = "survive"}
+    {name = "生存模式", desc = "生存 60 秒，撑到计时结束", mode = "survive"}
 }
 
 local levelRewardPool = {
@@ -2371,7 +2371,7 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.small)
     color(C.cyan)
-    love.graphics.printf("模式  30关构筑生存", deckX + 28, deckY + 32, 360, "left")
+    love.graphics.printf("模式  60秒生存", deckX + 28, deckY + 32, 360, "left")
 
     local dangerText = Game.danger == 0 and "难度  基础" or ("难度  危险 " .. Game.danger)
     color(C.gold)
@@ -2381,7 +2381,7 @@ local function drawMenu()
     -- 首页不再提供模式切换，只保留生存模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("目标：通关 30 小关，每关撑过 30 秒", deckX + 28, deckY + 86, 360, "left")
+    love.graphics.printf("目标：只需生存 60 秒，撑到计时结束", deckX + 28, deckY + 86, 360, "left")
     uiButton("-", deckX + deckW - 158, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
     uiButton("+", deckX + deckW - 86, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
 end
@@ -3214,7 +3214,7 @@ local function drawNextWavePanel(x, y, w, h)
     love.graphics.printf(chapterWaveLabel(Game.wave) .. " · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("生存 30 秒 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
+    love.graphics.printf("生存 60 秒 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
 
     local pillW = (w - 62) / 2
     if reward then tip = drawAffixInfoPill(reward, "奖励", x + 24, y + 122, pillW, 58, mx, my) or tip end
