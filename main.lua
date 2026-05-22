@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.3"
+local VERSION = "v2026.05.22.4"
 
 local Game = {
     w = 1280,
@@ -855,10 +855,10 @@ local addCoins
 local slotSymbols = {
     {id = "coin", name = "材料", mark = "◆", color = C.gold, weight = 28},
     {id = "weapon", name = "武器", mark = "⚙", color = C.cyan, weight = 18},
-    {id = "temp", name = "战术", mark = "✦", color = C.purple, weight = 18},
-    {id = "shield", name = "护盾", mark = "▣", color = C.green, weight = 14},
+    {id = "temp", name = "战术", mark = "战", color = C.purple, weight = 18},
+    {id = "shield", name = "护盾", mark = "盾", color = C.green, weight = 14},
     {id = "heal", name = "修复", mark = "❤", color = C.pink, weight = 14},
-    {id = "rare", name = "稀有", mark = "★", color = C.orange, weight = 8}
+    {id = "rare", name = "稀有", mark = "稀", color = C.orange, weight = 8}
 }
 
 local function clearedWaveCount()
@@ -2059,7 +2059,7 @@ local function pct(v)
 end
 
 local function modText(text)
-    return text:gsub("%+", "↑"):gsub("%-", "↓")
+    return text
 end
 
 local function centeredText(text, x, y, w, h, font, c, align)
@@ -2079,11 +2079,33 @@ local function tagPill(text, x, y, bg, fg)
 end
 
 local function shopItemAccent(item)
-    if item.kind == "weapon" then return C.orange, "⚔" end
-    if item.kind == "shield" then return C.cyan, "▣" end
-    if item.kind == "temp" then return C.purple, "✦" end
-    if item.kind == "legend" then return C.gold, "★" end
-    return rarityColor[item.rarity or "common"] or C.white, "◆"
+    if item.kind == "weapon" then return C.orange end
+    if item.kind == "shield" then return C.cyan end
+    if item.kind == "temp" then return C.purple end
+    if item.kind == "legend" then return C.gold end
+    return rarityColor[item.rarity or "common"] or C.white
+end
+
+local function drawKindIcon(kind, x, y, accent)
+    color(accent, 0.18)
+    love.graphics.circle("fill", x, y, 12, 18)
+    color(accent, 0.82)
+    love.graphics.setLineWidth(2)
+    if kind == "weapon" then
+        love.graphics.line(x - 7, y + 7, x + 7, y - 7)
+        love.graphics.line(x + 2, y - 7, x + 7, y - 7, x + 7, y - 2)
+        love.graphics.line(x - 6, y + 4, x - 3, y + 7)
+    elseif kind == "shield" then
+        love.graphics.polygon("line", x, y - 9, x + 8, y - 5, x + 6, y + 6, x, y + 10, x - 6, y + 6, x - 8, y - 5)
+    elseif kind == "temp" then
+        love.graphics.polygon("line", x, y - 10, x + 4, y - 2, x + 11, y, x + 4, y + 2, x, y + 10, x - 4, y + 2, x - 11, y, x - 4, y - 2)
+    elseif kind == "legend" then
+        love.graphics.circle("line", x, y, 8, 18)
+        love.graphics.circle("fill", x, y, 3, 10)
+    else
+        love.graphics.rectangle("line", x - 7, y - 7, 14, 14, 3, 3)
+    end
+    love.graphics.setLineWidth(1)
 end
 
 local function compactDesc(text, maxLen)
@@ -2103,7 +2125,7 @@ local function compactDesc(text, maxLen)
         else i = i + 1 end
     end
     if cut then
-        s = s:sub(1, cut - 1) .. "…"
+        s = s:sub(1, cut - 1) .. "..."
     end
     return s
 end
@@ -2213,7 +2235,7 @@ local function drawShopCard(item, i, x, y, w, h)
     local rarity = item.rarity or "common"
     local rc = rarityColor[rarity] or C.white
     local affordable = Game.coins >= item.price
-    local accent, icon = shopItemAccent(item)
+    local accent = shopItemAccent(item)
     local mx, my = love.mouse.getPosition()
     local hover = Game.state == "shop" and (Game.shopTab or "shop") == "shop" and hitRect(mx, my, x, y, w, h)
     local drawnY = drawMetalCard(x, y, w, h, accent, hover, Game.locked[i], rarity == "rare" or rarity == "epic" or rarity == "legend")
@@ -2222,8 +2244,7 @@ local function drawShopCard(item, i, x, y, w, h)
     local rarityText = rarityLabel[rarity] or rarity
     local kindText = kindLabel[item.kind] or item.kind
     love.graphics.setFont(Game.fonts.tiny)
-    color(accent)
-    love.graphics.printf(icon, x + 18, y + 16, 24, "center")
+    drawKindIcon(item.kind, x + 30, y + 25, accent)
     color(C.muted)
     love.graphics.printf(rarityText .. " · " .. kindText, x + 50, y + 19, w - 160, "left")
     color(affordable and C.gold or C.muted)
@@ -2232,14 +2253,20 @@ local function drawShopCard(item, i, x, y, w, h)
     color(Game.locked[i] and C.cyan or C.white, Game.locked[i] and 0.16 or 0.05)
     love.graphics.rectangle("fill", topLockX, topLockY, 30, 24, 8, 8)
     color(Game.locked[i] and C.cyan or C.muted, Game.locked[i] and 0.82 or 0.42)
-    love.graphics.printf(Game.locked[i] and "锁" or "□", topLockX, topLockY + 5, 30, "center")
+    if Game.locked[i] then
+        love.graphics.setFont(Game.fonts.tiny)
+        love.graphics.printf("锁", topLockX, topLockY + 5, 30, "center")
+    else
+        love.graphics.rectangle("line", topLockX + 9, topLockY + 7, 12, 10, 2, 2)
+        love.graphics.arc("line", topLockX + 15, topLockY + 8, 5, math.pi, TAU)
+    end
 
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
     love.graphics.printf(item.name, x + 18, y + 48, w - 36, "left")
     love.graphics.setFont(Game.fonts.tiny)
     local desc = compactDesc(item.desc, 42)
-    local descColor = desc:find("↓") and C.red or (desc:find("↑") and C.green or C.muted)
+    local descColor = desc:find("%-") and C.red or (desc:find("%+") and C.green or C.muted)
     color(descColor)
     love.graphics.printf(desc, x + 18, y + 76, w - 36, "left")
 
