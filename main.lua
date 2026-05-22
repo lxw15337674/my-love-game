@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.1"
+local VERSION = "v2026.05.22.2"
 
 local Game = {
     w = 1280,
@@ -35,6 +35,9 @@ local Game = {
     slotPaidSpins = 0,
     slotResult = nil,
     shopTab = "shop",
+    hoveredShopItem = nil,
+    shopRollTimer = 0,
+    shopGhost = nil,
     levelChoices = {},
     pendingRewardNextState = nil,
     objectiveProgress = 0,
@@ -1029,6 +1032,9 @@ local function resetRun()
     Game.slotPaidSpins = 0
     Game.slotResult = nil
     Game.shopTab = "shop"
+    Game.hoveredShopItem = nil
+    Game.shopRollTimer = 0
+    Game.shopGhost = nil
     Game.levelChoices = {}
     Game.pendingRewardNextState = nil
     Game.objectiveProgress = 0
@@ -1573,6 +1579,26 @@ function love.update(dt)
     end
     Game.messageTimer = math.max(0, Game.messageTimer - dt)
     Game.shake = math.max(0, Game.shake - dt)
+    Game.shopRollTimer = math.max(0, (Game.shopRollTimer or 0) - dt)
+    if Game.state == "shop" and (Game.shopTab or "shop") == "shop" then
+        local mx, my = love.mouse.getPosition()
+        local cardY, gridH, gap, sideW, sideGap = 214, 392, 24, 300, 20
+        local sideX = Game.w - 72 - sideW
+        local cardW = (sideX - 72 - gap - sideGap) / 2
+        local cardH = (gridH - gap) / 2
+        local hovered = nil
+        for i = 1, 4 do
+            local col = (i - 1) % 2
+            local row = math.floor((i - 1) / 2)
+            local x = 72 + col * (cardW + gap)
+            local y = cardY + row * (cardH + gap)
+            if mx >= x and mx <= x + cardW and my >= y and my <= y + cardH then hovered = i end
+        end
+        if hovered and hovered ~= Game.hoveredShopItem then playCue("pickup") end
+        Game.hoveredShopItem = hovered
+    else
+        Game.hoveredShopItem = nil
+    end
     if Game.state == "playing" then updatePlaying(dt) end
     if os.getenv("LOVE_AUTOMENU") == "1" and not Game.autoMenuDone then
         Game.autoMenuClock = (Game.autoMenuClock or 0) + dt
@@ -2049,6 +2075,73 @@ local function tagPill(text, x, y, bg, fg)
     return tw
 end
 
+local function shopItemAccent(item)
+    if item.kind == "weapon" then return C.orange, "⚔" end
+    if item.kind == "shield" then return C.cyan, "▣" end
+    if item.kind == "temp" then return C.purple, "✦" end
+    if item.kind == "legend" then return C.gold, "★" end
+    return rarityColor[item.rarity or "common"] or C.white, "◆"
+end
+
+local function compactDesc(text, maxLen)
+    local s = modText(text or "")
+    s = s:gsub("下一波", "下波"):gsub("本局永久生效", "永久"):gsub("材料", "材")
+    s = s:gsub("护盾回复", "回盾"):gsub("暴击伤害", "暴伤"):gsub("元素伤害", "元素")
+    s = s:gsub("最大生命", "生命"):gsub("冷却", "CD")
+    local chars, cut = 0, nil
+    local i = 1
+    while i <= #s do
+        chars = chars + 1
+        if chars == maxLen then cut = i; break end
+        local b = s:byte(i)
+        if b >= 240 then i = i + 4
+        elseif b >= 224 then i = i + 3
+        elseif b >= 192 then i = i + 2
+        else i = i + 1 end
+    end
+    if cut then
+        s = s:sub(1, cut - 1) .. "…"
+    end
+    return s
+end
+
+local function drawMetalCard(x, y, w, h, accent, hover, locked, rare)
+    local lift = hover and -6 or 0
+    y = y + lift
+    love.graphics.setColor(0, 0, 0, hover and 0.54 or 0.38)
+    love.graphics.rectangle("fill", x + 10, y + h + (hover and 12 or 8), w - 20, 18, 14, 14)
+    color(accent, hover and 0.10 or 0.045)
+    love.graphics.rectangle("fill", x - 2, y - 2, w + 4, h + 4, 18, 18)
+    color({0.018, 0.022, 0.048}, locked and 0.92 or 0.84)
+    love.graphics.rectangle("fill", x, y, w, h, 16, 16)
+    color(accent, hover and 0.34 or 0.20)
+    love.graphics.rectangle("fill", x + 4, y + 4, w - 8, math.max(18, h * 0.28), 14, 14)
+    color(accent, hover and 0.70 or 0.36)
+    love.graphics.setLineWidth(hover and 2 or 1)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, 16, 16)
+    love.graphics.setLineWidth(1)
+    color(C.white, hover and 0.18 or 0.10)
+    love.graphics.polygon("fill", x + 16, y + 8, x + 84, y + 8, x + 64, y + 13, x + 18, y + 13)
+    color(accent, 0.48)
+    love.graphics.rectangle("fill", x + 10, y + h - 7, w - 20, 2, 2, 2)
+    if rare then
+        local t = love.timer.getTime() or 0
+        local sweep = (math.sin(t * 3.2) + 1) / 2
+        color(C.white, 0.10 + sweep * 0.12)
+        love.graphics.rectangle("fill", x + 8 + sweep * (w - 72), y + 3, 56, 2, 2, 2)
+        color(accent, 0.18 + sweep * 0.16)
+        love.graphics.rectangle("line", x + 5.5, y + 5.5, w - 11, h - 11, 13, 13)
+    end
+    if locked then
+        color(C.cyan, 0.18)
+        love.graphics.rectangle("fill", x, y, w, h, 16, 16)
+        love.graphics.setFont(Game.fonts.big)
+        color(C.cyan, 0.34)
+        love.graphics.printf("锁", x, y + h / 2 - 28, w, "center")
+    end
+    return y
+end
+
 local function drawTooltip(tip)
     if not tip then return end
     local mx, my = love.mouse.getPosition()
@@ -2079,109 +2172,70 @@ local function drawShopCard(item, i, x, y, w, h)
     local rarity = item.rarity or "common"
     local rc = rarityColor[rarity] or C.white
     local affordable = Game.coins >= item.price
-
-    panel(x, y, w, h)
-    color(rc, 0.95)
-    love.graphics.rectangle("fill", x, y, w, 5, 5, 5)
-    if Game.locked[i] then
-        color(C.cyan, 0.32)
-        love.graphics.rectangle("fill", x + 6, y + 6, w - 12, h - 12, 12, 12)
-        color(C.cyan, 0.85)
-        love.graphics.rectangle("line", x + 5, y + 5, w - 10, h - 10, 12, 12)
-    end
+    local accent, icon = shopItemAccent(item)
+    local mx, my = love.mouse.getPosition()
+    local hover = Game.state == "shop" and (Game.shopTab or "shop") == "shop" and hitRect(mx, my, x, y, w, h)
+    local drawnY = drawMetalCard(x, y, w, h, accent, hover, Game.locked[i], rarity == "rare" or rarity == "epic" or rarity == "legend")
+    y = drawnY
 
     local rarityText = rarityLabel[rarity] or rarity
     local kindText = kindLabel[item.kind] or item.kind
-    local tagX = x + 14
-    tagX = tagX + tagPill(rarityText, tagX, y + 18, rc, C.bgA) + 8
-    tagPill(kindText, tagX, y + 18, item.kind == "weapon" and C.gold or C.cyan, C.bgA)
-
-    if h < 260 then
-        love.graphics.setFont(Game.fonts.small)
-        color(C.white)
-        love.graphics.printf(item.name, x + 14, y + 48, w - 28, "left")
-        love.graphics.setFont(Game.fonts.tiny)
-        color(C.white)
-        love.graphics.printf(modText(item.desc), x + 14, y + 72, w - 28, "left")
-        if item.kind == "weapon" and item.id and weaponDefs[item.id] then
-            local def = item.weaponDef or weaponDefs[item.id]
-            local brand = brands[def.brand]
-            local elem = elements[def.element]
-            color(brand.color)
-            love.graphics.printf(brand.name .. " · " .. brand.tag, x + 14, y + 108, w - 28, "left")
-            color(elem.color)
-            love.graphics.printf(elem.name .. " / 伤害 " .. def.damage .. " / 冷却 " .. string.format("%.2f", def.cooldown), x + 14, y + 126, w - 28, "left")
-        else
-            color(rc, 0.88)
-            love.graphics.printf("本局永久生效", x + 14, y + 120, w - 28, "left")
-        end
-
-        local buyY = y + h - 34
-        color(affordable and C.gold or C.red, 0.16)
-        love.graphics.rectangle("fill", x + 14, buyY, w - 120, 26, 9, 9)
-        color(affordable and C.gold or C.red, 0.55)
-        love.graphics.rectangle("line", x + 14, buyY, w - 120, 26, 9, 9)
-        centeredText("购买 " .. i .. " · " .. item.price, x + 14, buyY, w - 120, 26, Game.fonts.tiny, affordable and C.gold or C.red, "center")
-
-        local lockX = x + w - 96
-        color(Game.locked[i] and C.cyan or C.white, Game.locked[i] and 0.18 or 0.07)
-        love.graphics.rectangle("fill", lockX, buyY, 82, 26, 9, 9)
-        color(Game.locked[i] and C.cyan or C.muted)
-        love.graphics.rectangle("line", lockX, buyY, 82, 26, 9, 9)
-        centeredText(Game.locked[i] and "已锁" or "锁定", lockX, buyY, 82, 26, Game.fonts.tiny, Game.locked[i] and C.cyan or C.muted, "center")
-
-        if not affordable then
-            love.graphics.setColor(0, 0, 0, 0.30)
-            love.graphics.rectangle("fill", x, y, w, h, 14, 14)
-        end
-        return
-    end
-
-    love.graphics.setFont(Game.fonts.normal)
-    color(C.white)
-    love.graphics.printf(item.name, x + 14, y + 56, w - 28, "center")
+    love.graphics.setFont(Game.fonts.tiny)
+    color(accent)
+    love.graphics.printf(icon, x + 18, y + 16, 24, "center")
+    color(C.muted)
+    love.graphics.printf(rarityText .. " · " .. kindText, x + 50, y + 19, w - 160, "left")
+    color(affordable and C.gold or C.muted)
+    love.graphics.printf(item.price .. " 材", x + w - 128, y + 19, 72, "right")
+    local topLockX, topLockY = x + w - 48, y + 13
+    color(Game.locked[i] and C.cyan or C.white, Game.locked[i] and 0.16 or 0.05)
+    love.graphics.rectangle("fill", topLockX, topLockY, 30, 24, 8, 8)
+    color(Game.locked[i] and C.cyan or C.muted, Game.locked[i] and 0.82 or 0.42)
+    love.graphics.printf(Game.locked[i] and "锁" or "□", topLockX, topLockY + 5, 30, "center")
 
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf(modText(item.desc), x + 14, y + 94, w - 28, "center")
+    love.graphics.printf(item.name, x + 18, y + 48, w - 36, "left")
     love.graphics.setFont(Game.fonts.tiny)
+    local desc = compactDesc(item.desc, 42)
+    local descColor = desc:find("↓") and C.red or (desc:find("↑") and C.green or C.muted)
+    color(descColor)
+    love.graphics.printf(desc, x + 18, y + 76, w - 36, "left")
 
+    local chipY = y + 108
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
         local elem = elements[def.element]
         color(brand.color)
-        love.graphics.printf(brand.name .. " / " .. brand.tag, x + 14, y + 166, w - 28, "center")
+        love.graphics.printf(brand.name, x + 18, chipY, 96, "left")
         color(elem.color)
-        love.graphics.printf(elem.name .. " 属性", x + 14, y + 188, w - 28, "center")
-        color(C.muted)
-        love.graphics.printf("伤害 " .. def.damage .. "   冷却 " .. string.format("%.2f", def.cooldown) .. " 秒", x + 14, y + 210, w - 28, "center")
+        love.graphics.printf(elem.name .. " · " .. def.damage .. "伤 · " .. string.format("%.2f", def.cooldown) .. "CD", x + 110, chipY, w - 128, "left")
     else
-        color(rc, 0.88)
-        love.graphics.printf("构筑强化", x + 14, y + 174, w - 28, "center")
-        color(C.muted)
-        love.graphics.printf("本局永久生效", x + 14, y + 198, w - 28, "center")
+        color(accent, 0.64)
+        love.graphics.printf("永久", x + 18, chipY, w - 36, "left")
     end
 
-    local buyY = y + h - 74
-    color(affordable and C.gold or C.red, 0.16)
-    love.graphics.rectangle("fill", x + 16, buyY, w - 32, 34, 10, 10)
-    color(affordable and C.gold or C.red, 0.55)
-    love.graphics.rectangle("line", x + 16, buyY, w - 32, 34, 10, 10)
-    love.graphics.setFont(Game.fonts.small)
-    centeredText("购买 " .. i .. "  ·  " .. item.price .. " 材料", x + 16, buyY, w - 32, 34, Game.fonts.small, affordable and C.gold or C.red, "center")
+    local buyY = y + h - 36
+    local buyColor = affordable and C.gold or C.muted
+    color(buyColor, hover and 0.18 or 0.075)
+    love.graphics.rectangle("fill", x + 18, buyY, w - 36, 28, 10, 10)
+    color(buyColor, hover and 0.64 or 0.30)
+    love.graphics.rectangle("line", x + 18, buyY, w - 36, 28, 10, 10)
+    centeredText("购买 " .. i, x + 18, buyY, w - 36, 28, Game.fonts.tiny, buyColor, "center")
 
-    local lockY = y + h - 34
-    color(Game.locked[i] and C.cyan or C.white, Game.locked[i] and 0.18 or 0.07)
-    love.graphics.rectangle("fill", x + 16, lockY, w - 32, 28, 9, 9)
-    color(Game.locked[i] and C.cyan or C.muted)
-    love.graphics.rectangle("line", x + 16, lockY, w - 32, 28, 9, 9)
-    centeredText(Game.locked[i] and "已锁定" or "点按锁定", x + 16, lockY, w - 32, 28, Game.fonts.tiny, Game.locked[i] and C.cyan or C.muted, "center")
+    if Game.shopRollTimer and Game.shopRollTimer > 0 then
+        local a = clamp(Game.shopRollTimer / 0.55, 0, 1)
+        color(C.cyan, 0.08 + a * 0.14)
+        for yy = y + 18, y + h - 20, 24 do love.graphics.rectangle("fill", x + 10, yy, w - 20, 2, 2, 2) end
+    end
 
     if not affordable then
-        love.graphics.setColor(0, 0, 0, 0.34)
-        love.graphics.rectangle("fill", x, y, w, h, 14, 14)
+        love.graphics.setColor(0, 0, 0, 0.30)
+        love.graphics.rectangle("fill", x, y, w, h, 16, 16)
     end
+    return
+
 end
 
 local function drawBuildPanel(x, y, w, h)
@@ -2222,18 +2276,52 @@ end
 
 local function drawCompactBuildPanel(x, y, w, h)
     local p = Game.player
-    panel(x, y, w, h)
+    love.graphics.setColor(0.04, 0.08, 0.14, 0.58)
+    love.graphics.rectangle("fill", x, y, w, h, 18, 18)
+    color(C.cyan, 0.18)
+    love.graphics.rectangle("fill", x + 6, y + 6, w - 12, h - 12, 16, 16)
+    color(C.cyan, 0.34)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, 18, 18)
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
     love.graphics.printf("当前构筑", x + 14, y + 8, w - 28, "left")
+    local slotX = x + w - 108
+    for i = 1, 4 do
+        local filled = i <= #p.weapons
+        color(filled and C.orange or C.white, filled and 0.76 or 0.12)
+        love.graphics.rectangle("fill", slotX + (i - 1) * 22, y + 12, 16, 8, 4, 4)
+    end
     love.graphics.setFont(Game.fonts.tiny)
-    local line1 = "生命 " .. math.ceil(p.hp) .. "/" .. p.maxHp .. "  护盾 " .. math.ceil(p.shield) .. "/" .. p.maxShield .. "  护甲 " .. p.stats.armor
-    local line2 = "移速 " .. math.floor(p.speed) .. "  暴击 " .. math.floor((p.stats.crit or 0) * 100 + 0.5) .. "%  材料倍率 ×" .. string.format("%.2f", p.stats.economy or 1)
+    local vitalW = (w - 36) / 2
+    color(C.pink, 0.26)
+    love.graphics.rectangle("fill", x + 14, y + 34, vitalW, 32, 10, 10)
+    color(C.cyan, 0.26)
+    love.graphics.rectangle("fill", x + 22 + vitalW, y + 34, vitalW, 32, 10, 10)
+    love.graphics.setFont(Game.fonts.small)
+    color(C.pink)
+    love.graphics.printf(math.ceil(p.hp) .. "/" .. p.maxHp, x + 18, y + 40, vitalW - 8, "center")
+    color(C.cyan)
+    love.graphics.printf(math.ceil(p.shield) .. "/" .. p.maxShield, x + 26 + vitalW, y + 40, vitalW - 8, "center")
+    love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf(line1, x + 14, y + 34, w - 28, "left")
-    love.graphics.printf(line2, x + 14, y + 52, w - 28, "left")
+    love.graphics.printf("生命", x + 18, y + 66, vitalW - 8, "center")
+    love.graphics.printf("护盾", x + 26 + vitalW, y + 66, vitalW - 8, "center")
+    local stats = {
+        "护甲 " .. p.stats.armor,
+        "移速 " .. math.floor(p.speed),
+        "暴击 " .. math.floor((p.stats.crit or 0) * 100 + 0.5) .. "%",
+        "材料×" .. string.format("%.2f", p.stats.economy or 1)
+    }
+    for i, text in ipairs(stats) do
+        local sx = x + 14 + ((i - 1) % 2) * ((w - 36) / 2 + 8)
+        local sy = y + 88 + math.floor((i - 1) / 2) * 24
+        color(C.white, 0.06)
+        love.graphics.rectangle("fill", sx, sy, (w - 44) / 2, 18, 6, 6)
+        color(C.muted)
+        love.graphics.printf(text, sx + 8, sy + 4, (w - 60) / 2, "left")
+    end
 
-    local cardY = y + 74
+    local cardY = y + 142
     for i = 1, math.min(2, #p.weapons) do
         local weapon = p.weapons[i]
         local elem = elements[weapon.element] or elements.kinetic
@@ -2245,15 +2333,15 @@ local function drawCompactBuildPanel(x, y, w, h)
         love.graphics.rectangle("line", x + 14.5, rowY + 0.5, w - 29, 31, 8, 8)
         color(C.white)
         love.graphics.printf(weapon.name .. " Lv" .. weapon.level, x + 24, rowY + 4, w - 48, "left")
+        if brand then
+            color(brand.color, 0.86)
+            love.graphics.printf(brand.name, x + w - 74, rowY + 4, 48, "right")
+        end
         color(C.muted)
         local actualDamage = math.floor((weapon.damage or 0) * (p.stats.damage or 1) + 0.5)
         local count = weapon.count or 1
-        local line = "伤害 " .. actualDamage .. "×" .. count .. "  冷却 " .. string.format("%.2f", weapon.cooldown or 0) .. "s  范围 " .. math.floor(weapon.range or 0)
-        love.graphics.printf(line, x + 158, rowY + 4, w - 186, "left")
-        if brand then
-            color(brand.color, 0.86)
-            love.graphics.printf(brand.name, x + 100, rowY + 4, 50, "left")
-        end
+        local line = "伤 " .. actualDamage .. "×" .. count .. "  CD " .. string.format("%.2f", weapon.cooldown or 0) .. "  射程 " .. math.floor(weapon.range or 0)
+        love.graphics.printf(line, x + 24, rowY + 18, w - 48, "left")
     end
     if #p.weapons > 2 then
         color(C.gold)
@@ -2422,7 +2510,7 @@ end
 local function drawVersion()
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted, 0.72)
-    love.graphics.printf(VERSION, 0, Game.h - 24, Game.w - 18, "right")
+    love.graphics.printf(VERSION, 0, Game.h - 28, Game.w - 30, "right")
 end
 
 local shopTabs = {
@@ -2535,10 +2623,11 @@ local function drawShop()
         love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  " .. shieldText, 70, 176, Game.w - 140, "center")
         local cardY = 214
         local gridH = 392
-        local gap = 14
-        local sideW = 420
+        local gap = 24
+        local sideW = 300
+        local sideGap = 20
         local sideX = Game.w - 72 - sideW
-        local cardW = (sideX - 72 - gap) / 2
+        local cardW = (sideX - 72 - gap - sideGap) / 2
         local cardH = (gridH - gap) / 2
         for i, item in ipairs(Game.shop) do
             local col = (i - 1) % 2
@@ -2550,13 +2639,16 @@ local function drawShop()
         drawCompactBuildPanel(sideX, cardY, sideW, gridH)
     end
 
-    local actionY = 636
-    local secondaryW, primaryW, gap = 240, 360, 24
+    local actionY = 646
+    local secondaryW, primaryW, gap = 204, 300, 28
     local groupW = secondaryW * 2 + primaryW + gap * 2
     local groupX = Game.w / 2 - groupW / 2
-    uiButton(refreshText, groupX, actionY, secondaryW, 56, C.cyan)
-    uiButton("进入下一波", Game.w / 2 - primaryW / 2, actionY - 8, primaryW, 72, C.gold, C.white, Game.fonts.normal)
-    uiButton("回收最后武器", groupX + groupW - secondaryW, actionY, secondaryW, 56, C.white)
+    uiButton(refreshText, groupX, actionY, secondaryW, 42, C.cyan)
+    local pulse = 0.08 + (math.sin((love.timer.getTime() or 0) * 4) + 1) * 0.045
+    color(C.gold, pulse)
+    love.graphics.rectangle("fill", Game.w / 2 - primaryW / 2 - 8, actionY - 7, primaryW + 16, 56, 16, 16)
+    uiButton("进入下一波", Game.w / 2 - primaryW / 2, actionY - 3, primaryW, 48, C.gold, C.white, Game.fonts.normal)
+    uiButton("回收最后武器", groupX + groupW - secondaryW, actionY, secondaryW, 42, C.white)
     drawTooltip(tip)
 end
 
@@ -2643,6 +2735,9 @@ end
 local function refreshShop()
     if Game.freeRefresh and Game.freeRefresh > 0 then
         Game.freeRefresh = Game.freeRefresh - 1
+        Game.shopGhost = {}
+        for i, item in ipairs(Game.shop or {}) do Game.shopGhost[i] = item.name end
+        Game.shopRollTimer = 0.55
         rollShop(true)
         toast("免费刷新")
         return
@@ -2652,6 +2747,9 @@ local function refreshShop()
         Game.coins = Game.coins - cost
         Game.shopRefresh = Game.shopRefresh + 1
         Game.runStats.rerolls = (Game.runStats.rerolls or 0) + 1
+        Game.shopGhost = {}
+        for i, item in ipairs(Game.shop or {}) do Game.shopGhost[i] = item.name end
+        Game.shopRollTimer = 0.55
         rollShop(true)
         toast("商店已刷新")
     else
@@ -2679,19 +2777,20 @@ local function handlePointer(x, y)
         if (Game.shopTab or "shop") == "shop" then
             local cardY = 214
             local gridH = 392
-            local gap = 14
-            local sideW = 420
+            local gap = 24
+            local sideW = 300
+            local sideGap = 20
             local sideX = Game.w - 72 - sideW
-            local cardW = (sideX - 72 - gap) / 2
+            local cardW = (sideX - 72 - gap - sideGap) / 2
             local cardH = (gridH - gap) / 2
             for i = 1, 4 do
                 local col = (i - 1) % 2
                 local row = math.floor((i - 1) / 2)
                 local cardX = 72 + col * (cardW + gap)
                 local cardTop = cardY + row * (cardH + gap)
-                local buyY = cardTop + cardH - 34
-                if hitRect(x, y, cardX + 14, buyY, cardW - 120, 26) then buySlot(i); return true end
-                if hitRect(x, y, cardX + cardW - 96, buyY, 82, 26) then Game.locked[i] = not Game.locked[i]; toast(Game.locked[i] and "已锁定商品" or "已取消锁定"); return true end
+                local buyY = cardTop + cardH - 36
+                if hitRect(x, y, cardX + 18, buyY, cardW - 36, 28) then buySlot(i); return true end
+                if hitRect(x, y, cardX + cardW - 48, cardTop + 13, 30, 24) then Game.locked[i] = not Game.locked[i]; playCue("shop"); toast(Game.locked[i] and "已锁定商品" or "已取消锁定"); return true end
             end
         elseif Game.shopTab == "slot" then
             local buttonW, buttonH = 320, 64
