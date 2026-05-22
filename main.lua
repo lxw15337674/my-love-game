@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.26"
+local VERSION = "v2026.05.22.27"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2883,11 +2883,11 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
     local p = Game.player
     opts = opts or {}
     local showSell = opts.showSell ~= false
-    love.graphics.setColor(0.04, 0.08, 0.14, 0.58)
+    love.graphics.setColor(0, 0, 0, 0.86)
     love.graphics.rectangle("fill", x, y, w, h, 18, 18)
-    color(C.cyan, 0.18)
+    color(C.white, 0.045)
     love.graphics.rectangle("fill", x + 6, y + 6, w - 12, h - 12, 16, 16)
-    color(C.cyan, 0.34)
+    color(C.white, 0.18)
     love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, 18, 18)
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
