@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.15"
+local VERSION = "v2026.05.22.16"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2305,33 +2305,33 @@ local function drawMetalCard(x, y, w, h, accent, hover, locked, rare)
     y = y + lift
     love.graphics.setColor(0, 0, 0, hover and 0.54 or 0.38)
     love.graphics.rectangle("fill", x + 10, y + h + (hover and 12 or 8), w - 20, 18, 14, 14)
-    color(accent, hover and 0.10 or 0.045)
+    color(C.white, hover and 0.10 or 0.04)
     love.graphics.rectangle("fill", x - 2, y - 2, w + 4, h + 4, 18, 18)
-    color({0.018, 0.022, 0.048}, locked and 0.92 or 0.84)
+    color({0.006, 0.007, 0.012}, locked and 0.96 or 0.90)
     love.graphics.rectangle("fill", x, y, w, h, 16, 16)
-    color(accent, hover and 0.34 or 0.20)
+    color(C.white, hover and 0.10 or 0.055)
     love.graphics.rectangle("fill", x + 4, y + 4, w - 8, math.max(18, h * 0.28), 14, 14)
-    color(accent, hover and 0.70 or 0.36)
+    color(C.white, hover and 0.74 or 0.30)
     love.graphics.setLineWidth(hover and 2 or 1)
     love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, 16, 16)
     love.graphics.setLineWidth(1)
     color(C.white, hover and 0.18 or 0.10)
     love.graphics.polygon("fill", x + 16, y + 8, x + 84, y + 8, x + 64, y + 13, x + 18, y + 13)
-    color(accent, 0.48)
+    color(C.white, hover and 0.40 or 0.20)
     love.graphics.rectangle("fill", x + 10, y + h - 7, w - 20, 2, 2, 2)
     if rare then
         local t = love.timer.getTime() or 0
         local sweep = (math.sin(t * 3.2) + 1) / 2
         color(C.white, 0.10 + sweep * 0.12)
         love.graphics.rectangle("fill", x + 8 + sweep * (w - 72), y + 3, 56, 2, 2, 2)
-        color(accent, 0.18 + sweep * 0.16)
+        color(C.white, 0.12 + sweep * 0.12)
         love.graphics.rectangle("line", x + 5.5, y + 5.5, w - 11, h - 11, 13, 13)
     end
     if locked then
-        color(C.cyan, 0.18)
+        color(C.white, 0.12)
         love.graphics.rectangle("fill", x, y, w, h, 16, 16)
         love.graphics.setFont(Game.fonts.big)
-        color(C.cyan, 0.34)
+        color(C.white, 0.34)
         love.graphics.printf("锁", x, y + h / 2 - 28, w, "center")
     end
     return y
@@ -2512,15 +2512,14 @@ local function drawShopCard(item, i, x, y, w, h)
     local mx, my = mousePosition()
     local hover = Game.state == "shop" and (Game.shopTab or "shop") == "shop" and hitRect(mx, my, x, y, w, h)
     if not item then
-        local accent = i <= 3 and C.orange or C.gold
         local label = i <= 3 and ("武器架 " .. i) or ("装备箱 " .. (i - 3))
-        drawMetalCard(x, y, w, h, accent, false, false, false)
+        drawMetalCard(x, y, w, h, C.white, false, false, false)
         love.graphics.setFont(Game.fonts.tiny)
         color(C.muted)
         love.graphics.printf(label, x + 18, y + 20, w - 36, "left")
-        color(accent, 0.12)
+        color(C.white, 0.045)
         love.graphics.rectangle("fill", x + 18, y + 72, w - 36, 92, 14, 14)
-        color(accent, 0.34)
+        color(C.white, 0.18)
         love.graphics.rectangle("line", x + 18.5, y + 72.5, w - 37, 91, 14, 14)
         love.graphics.setFont(Game.fonts.normal)
         color(C.muted, 0.80)
@@ -2547,15 +2546,17 @@ local function drawShopCard(item, i, x, y, w, h)
     local kindText = kindLabel[item.kind] or item.kind
     local shelfText = item.kind == "weapon" and ("武器架 " .. i) or ("装备箱 " .. (i - 3))
     love.graphics.setFont(Game.fonts.tiny)
-    drawKindIcon(item.kind, x + 30, y + 25, accent)
     color(C.muted)
-    love.graphics.printf(shelfText .. " · " .. rarityText .. " · " .. kindText, x + 50, y + 19, w - 170, "left")
+    love.graphics.printf(shelfText, x + 18, y + 19, 68, "left")
+    local tagX = x + 86
+    tagX = tagX + tagPill(rarityText, tagX, y + 13, rc, C.bgA) + 6
+    tagPill(kindText, tagX, y + 13, accent, C.bgA)
     color(affordable and C.gold or C.muted)
     love.graphics.printf(item.price .. " 材", x + w - 128, y + 19, 72, "right")
     local topLockX, topLockY = x + w - 48, y + 13
-    color(Game.locked[i] and C.cyan or C.white, Game.locked[i] and 0.16 or 0.05)
+    color(C.white, Game.locked[i] and 0.16 or 0.05)
     love.graphics.rectangle("fill", topLockX, topLockY, 30, 24, 8, 8)
-    color(Game.locked[i] and C.cyan or C.muted, Game.locked[i] and 0.82 or 0.42)
+    color(Game.locked[i] and C.white or C.muted, Game.locked[i] and 0.82 or 0.42)
     if Game.locked[i] then
         love.graphics.setFont(Game.fonts.tiny)
         love.graphics.printf("锁", topLockX, topLockY + 5, 30, "center")
@@ -2569,41 +2570,27 @@ local function drawShopCard(item, i, x, y, w, h)
     love.graphics.printf(compactDesc(item.name, 16), x + 18, y + 50, w - 36, "left")
     love.graphics.setFont(Game.fonts.tiny)
     local desc = compactDesc(item.desc, 28)
-    local descColor = desc:find("%-") and C.red or (desc:find("%+") and C.green or C.muted)
-    color(descColor)
+    color(C.muted)
     love.graphics.printf(desc, x + 18, y + 82, w - 36, "left")
 
     local displayY, displayH = y + 112, 58
-    if item.kind == "weapon" then
-        color(accent, 0.11)
-        love.graphics.rectangle("fill", x + 18, displayY, w - 36, displayH, 12, 12)
-        color(C.white, 0.08)
-        love.graphics.rectangle("fill", x + 34, displayY + 18, w - 68, 5, 3, 3)
-        love.graphics.rectangle("fill", x + 48, displayY + 36, w - 96, 5, 3, 3)
-        color(accent, 0.30)
-        love.graphics.rectangle("line", x + 18.5, displayY + 0.5, w - 37, displayH - 1, 12, 12)
-    else
-        color(accent, 0.11)
-        love.graphics.rectangle("fill", x + 18, displayY, w - 36, displayH, 10, 10)
-        color(accent, 0.25)
-        love.graphics.rectangle("line", x + 18.5, displayY + 0.5, w - 37, displayH - 1, 10, 10)
-        color(C.white, 0.07)
-        love.graphics.line(x + 34, displayY + 29, x + w - 34, displayY + 29)
-        love.graphics.line(x + w / 2, displayY + 10, x + w / 2, displayY + displayH - 10)
-    end
+    color(C.white, 0.045)
+    love.graphics.rectangle("fill", x + 18, displayY, w - 36, displayH, 12, 12)
+    color(C.white, 0.18)
+    love.graphics.rectangle("line", x + 18.5, displayY + 0.5, w - 37, displayH - 1, 12, 12)
 
-    local chipY = displayY + 18
+    local chipY = displayY + 17
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
         local elem = elements[def.element]
-        color(brand.color)
-        love.graphics.printf(brand.name, x + 34, chipY, 82, "left")
-        color(elem.color)
-        love.graphics.printf(elem.name .. " · " .. def.damage .. "伤 · " .. string.format("%.2f", def.cooldown) .. "CD", x + 118, chipY, w - 146, "left")
+        local tx = x + 34
+        tx = tx + tagPill(brand.name, tx, chipY - 3, brand.color, C.bgA) + 8
+        tx = tx + tagPill(elem.name, tx, chipY - 3, elem.color, C.bgA) + 8
+        color(C.white)
+        love.graphics.printf(def.damage .. "伤 · " .. string.format("%.2f", def.cooldown) .. "CD", tx, chipY + 2, x + w - 34 - tx, "left")
     else
-        color(accent, 0.64)
-        love.graphics.printf(item.kind == "shield" and "护盾组件" or "构筑装备", x + 34, chipY, w - 68, "left")
+        tagPill(item.kind == "shield" and "护盾组件" or "构筑装备", x + 34, chipY - 3, accent, C.bgA)
     end
 
     local buyY = y + h - 36
@@ -3154,17 +3141,17 @@ local function drawShop()
         local weaponY = 204
         local supportY = 554
         love.graphics.setFont(Game.fonts.small)
-        color(C.orange)
+        color(C.white)
         love.graphics.printf("武器架 · 3 选 1", marginX, weaponY - 34, shelfW, "left")
         color(C.white, 0.08)
         love.graphics.rectangle("fill", marginX, weaponY - 8, shelfW, 10, 5, 5)
-        color(C.orange, 0.28)
+        color(C.white, 0.16)
         love.graphics.rectangle("fill", marginX, weaponY + cardH + 10, shelfW, 8, 4, 4)
-        color(C.gold)
+        color(C.white)
         love.graphics.printf("装备箱 · 道具 / 护盾 / 战术", marginX, supportY - 34, shelfW, "left")
         color(C.white, 0.07)
         love.graphics.rectangle("fill", marginX, supportY - 8, shelfW, 10, 5, 5)
-        color(C.gold, 0.24)
+        color(C.white, 0.14)
         love.graphics.rectangle("fill", marginX, supportY + cardH + 10, shelfW, 8, 4, 4)
         for i = 1, 6 do
             local item = Game.shop[i]
