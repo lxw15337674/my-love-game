@@ -8,8 +8,8 @@ function love.conf(t)
     t.appendidentity = false
 
     t.window.title = "心核幸存者"
-    t.window.width = 1280
-    t.window.height = 720
+    t.window.width = 1920
+    t.window.height = 1080
     t.window.minwidth = 960
     t.window.minheight = 540
     t.window.resizable = true
