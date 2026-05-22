@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.19"
+local VERSION = "v2026.05.22.20"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2409,18 +2409,12 @@ end
 
 local function drawTagRow(tags, x, y, maxW)
     local cursor = x
-    local mx, my = mousePosition()
-    local tip = nil
     for _, tag in ipairs(tags) do
         local remain = maxW - (cursor - x)
         if remain < 48 then break end
-        local tw = tagPill(tag.text, cursor, y, tag.color or C.white, tag.fg or C.bgA, remain)
-        if hitRect(mx, my, cursor, y, tw, 24) then
-            tip = {title = tag.title or ("标签：" .. tostring(tag.text or "")), lines = tag.lines or {tag.desc or "用于区分商品属性。"}, anchor = {x = cursor, y = y, w = tw, h = 24}, width = tag.width or 340}
-        end
-        cursor = cursor + tw + 6
+        cursor = cursor + tagPill(tag.text, cursor, y, tag.color or C.white, tag.fg or C.bgA, remain) + 6
     end
-    return tip
+    return cursor - x
 end
 
 local function shopItemAccent(item)
@@ -2673,21 +2667,47 @@ end
 
 local function itemTooltip(item)
     if not item then return nil end
+    local rarity = item.rarity or "common"
+    local rarityText = rarityLabel[rarity] or rarity or "普通"
+    local rarityDesc = ({
+        common = "普通稀有度：价格低，属性稳定。",
+        rare = "稀有：属性和词缀强于普通。",
+        epic = "史诗：更高属性，并可能带更强词缀。",
+        legend = "传说：高价值构筑件，通常带特殊协议。"
+    })[rarity] or "稀有度影响价格和属性强度。"
+    local kindText = kindLabel[item.kind] or item.kind or "道具"
+    local kindDesc = ({
+        weapon = "武器：购买后装备到武器槽；同名武器会升级。",
+        shield = "护盾：安装到护盾槽，替换当前护盾组件。",
+        temp = "战术：只影响下一波战斗。",
+        item = "强化：购买后进入道具槽，本局永久生效。",
+        mod = "模组：改变核心战斗属性或武器表现。",
+        relic = "遗物：偏构筑联动的永久效果。",
+        legend = "传说装备：带特殊协议的永久构筑件。"
+    })[item.kind] or "商品类型决定购买后的生效位置。"
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local selected = Game.player.weapons[Game.selectedWeaponIndex or 1]
+        local brand = brands[def.brand]
+        local elem = elements[def.element] or elements.kinetic
         local tip = weaponTooltip(def, "商品武器", selected)
-        table.insert(tip.lines, 1, (rarityLabel[item.rarity] or item.rarity or "普通") .. " · 价格 " .. item.price .. " 材料")
+        table.insert(tip.lines, 1, rarityText .. " · " .. kindText .. " · 价格 ◆ " .. item.price)
+        table.insert(tip.lines, 2, {text = "稀有度：" .. rarityDesc, color = C.muted})
+        table.insert(tip.lines, 3, {text = "类型：" .. kindDesc, color = C.muted})
+        table.insert(tip.lines, 4, {text = "品牌：" .. (brand and brand.name or "武器") .. " · " .. (brand and brand.tag or "武器品牌影响基础风格。"), color = brand and brand.color or C.muted})
+        table.insert(tip.lines, 5, {text = "元素：" .. elem.name .. " · " .. elem.desc, color = elem.color})
         if not selected then
             tip.lines[#tip.lines + 1] = {text = "提示：先点击右侧武器槽，选择要对比的武器。", color = C.muted, gap = 8}
         end
         return tip
     end
-    local kindText = kindLabel[item.kind] or item.kind or "道具"
-    local rarityText = rarityLabel[item.rarity] or item.rarity or "普通"
+    local slotDesc = item.kind == "shield" and "槽位：护盾组件 · 安装到护盾槽。" or "槽位：构筑装备 · 进入道具槽或作为战术生效。"
     local lines = {
-        rarityText .. " · " .. kindText .. (item.price and (" · 价格 " .. item.price .. " 材料") or ""),
-        "效果：" .. modText(item.desc or "无说明")
+        rarityText .. " · " .. kindText .. (item.price and (" · 价格 ◆ " .. item.price) or ""),
+        {text = "稀有度：" .. rarityDesc, color = C.muted},
+        {text = "类型：" .. kindDesc, color = C.muted},
+        {text = slotDesc, color = C.muted},
+        {text = "效果：" .. modText(item.desc or "无说明"), color = C.white, gap = 6}
     }
     if item.kind == "temp" then lines[#lines + 1] = "生效：仅下一波" else lines[#lines + 1] = "生效：本局永久" end
     if item.flag then lines[#lines + 1] = "特殊协议：" .. item.flag end
@@ -2761,7 +2781,7 @@ local function drawShopCard(item, i, x, y, w, h)
         cardTags[#cardTags + 1] = {text = "构筑装备", color = accent, title = "槽位：构筑装备", lines = {item.kind == "temp" and "战术道具只影响下一波。" or "进入道具槽，提供永久构筑属性。"}}
     end
     love.graphics.setFont(Game.fonts.tiny)
-    local tagTip = drawTagRow(cardTags, x + 18, y + 13, w - 82)
+    drawTagRow(cardTags, x + 18, y + 13, w - 82)
     local topLockX, topLockY, topLockW, topLockH = x + w - 58, y + 10, 40, 30
     color(C.white, Game.locked[i] and 0.18 or 0.07)
     love.graphics.rectangle("fill", topLockX, topLockY, topLockW, topLockH, 9, 9)
@@ -2832,9 +2852,8 @@ local function drawShopCard(item, i, x, y, w, h)
         love.graphics.rectangle("fill", x, y, w, h, 16, 16)
     end
     if hover then
-        if tagTip then return tagTip end
         local tip = itemTooltip(item)
-        if tip then tip.anchor = {x = x, y = y, w = w, h = h}; tip.width = 400 end
+        if tip then tip.anchor = {x = x, y = y, w = w, h = h}; tip.width = 430 end
         return tip
     end
     return nil
