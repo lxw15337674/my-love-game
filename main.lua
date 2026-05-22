@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.13"
+local VERSION = "v2026.05.22.14"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -40,6 +40,7 @@ local Game = {
     slotResult = nil,
     shopTab = "shop",
     hoveredShopItem = nil,
+    selectedWeaponIndex = 1,
     shopRollTimer = 0,
     shopGhost = nil,
     levelChoices = {},
@@ -664,6 +665,8 @@ local function nearestEnemy(x, y, range)
     return best, bestD
 end
 
+local rebuildPlayerBuildStats
+
 local function applyItem(item)
     item.apply(Game.player)
     Game.player.items = Game.player.items or {}
@@ -701,18 +704,7 @@ local function addWeapon(def)
     return true
 end
 
-local function equipShield(item)
-    local p = Game.player
-    local old = p.shieldItem
-    if old then
-        p.maxShield = math.max(1, p.maxShield - (old.shieldCap or 0))
-        p.shield = math.min(p.shield, p.maxShield)
-        p.shieldRegen = p.shieldRegen - (old.shieldRegen or 0)
-        p.stats.armor = p.stats.armor - (old.armor or 0)
-        p.maxHp = math.max(1, p.maxHp - (old.hp or 0))
-        p.hp = math.min(p.hp, p.maxHp)
-    end
-    p.shieldItem = item
+local function applyShieldStats(p, item)
     p.maxShield = p.maxShield + (item.shieldCap or 0)
     p.shield = math.min(p.maxShield, p.shield + (item.shieldCap or 0))
     p.shieldRegen = p.shieldRegen + (item.shieldRegen or 0)
@@ -720,6 +712,15 @@ local function equipShield(item)
     p.maxHp = p.maxHp + (item.hp or 0)
     p.hp = math.min(p.maxHp, p.hp + (item.hp or 0))
     if item.flag then p.gear[item.flag] = true end
+end
+
+local function equipShield(item)
+    local p = Game.player
+    local oldHp, oldShield = p.hp, p.shield
+    p.shieldItem = item
+    rebuildPlayerBuildStats()
+    p.hp = math.min(p.maxHp, oldHp + (item.hp or 0))
+    p.shield = math.min(p.maxShield, oldShield + (item.shieldCap or 0))
     playCue("shop"); toast("护盾安装：" .. item.name)
     return true
 end
@@ -729,6 +730,33 @@ local function addTempBuff(item)
     Game.tempBuffs[#Game.tempBuffs + 1] = buff
     playCue("shop"); toast("战术道具已备好：" .. item.name)
     return true
+end
+
+rebuildPlayerBuildStats = function()
+    local p = Game.player
+    local ch = selectedCharacter()
+    local hp, shield = p.hp, p.shield
+    local weapons, items, shieldItem = p.weapons or {}, p.items or {}, p.shieldItem
+    p.maxHp, p.maxShield = ch.hp, ch.shield
+    p.shieldDelay, p.shieldRegen = p.shieldDelay or 0, 7
+    p.speed, p.pickup = ch.speed, p.pickup or 0
+    p.stats = {}
+    for k, v in pairs(ch.stats) do p.stats[k] = v end
+    p.gear = {}
+    for _, weapon in ipairs(weapons) do
+        if weapon.apply then weapon.apply(p) end
+    end
+    if shieldItem then applyShieldStats(p, shieldItem) end
+    for _, item in ipairs(items) do
+        if item.effects then
+            for _, e in ipairs(item.effects) do e.roll.apply(p, e.value) end
+        elseif item.apply then
+            item.apply(p)
+        end
+        if item.flag then p.gear[item.flag] = true end
+    end
+    p.hp = math.min(math.max(1, hp), p.maxHp)
+    p.shield = math.min(math.max(0, shield), p.maxShield)
 end
 
 local weaponAffixRolls = {
@@ -803,7 +831,7 @@ local function makeStatItem()
         effects[#effects + 1] = {roll = roll, value = value}
         desc[#desc + 1] = roll.desc(value)
     end
-    local item = {kind = rarity == "legend" and "legend" or "item", rarity = rarity, name = (rarityLabel[rarity] or rarity) .. " 构筑芯片", price = priced(18 + count * 8, rarity), desc = table.concat(desc, " / ")}
+    local item = {kind = rarity == "legend" and "legend" or "item", rarity = rarity, name = (rarityLabel[rarity] or rarity) .. " 构筑芯片", price = priced(18 + count * 8, rarity), desc = table.concat(desc, " / "), effects = effects}
     item.buy = function()
         for _, e in ipairs(effects) do e.roll.apply(Game.player, e.value) end
         Game.player.items = Game.player.items or {}
@@ -1103,6 +1131,7 @@ local function resetRun()
     Game.player.stats = {}
     for k, v in pairs(ch.stats) do Game.player.stats[k] = v end
     Game.player.weapons = {}
+    Game.selectedWeaponIndex = 1
     Game.player.items = {}
     Game.player.shieldItem = nil
     Game.player.gear = {}
@@ -2386,23 +2415,71 @@ local function drawTooltip(tip)
     Tooltip.draw(tip, mx, my)
 end
 
+local weaponCompareValue
+
 local function weaponTooltip(weapon, titlePrefix)
     local p = Game.player
     local brand = brands[weapon.brand]
     local elem = elements[weapon.element] or elements.kinetic
-    local actualDamage = math.floor((weapon.damage or 0) * (p.stats.damage or 1) + 0.5)
-    local cooldown = (weapon.cooldown or 0) / math.max(0.25, p.stats.fireRate or 1)
+    local v = weaponCompareValue(weapon)
     local lines = {
-        (brand and brand.name or "武器") .. " · " .. elem.name .. " · " .. (brand and brand.tag or elem.desc),
-        "伤害 " .. actualDamage .. " × " .. (weapon.count or 1) .. "    冷却 " .. string.format("%.2f", cooldown) .. "s",
-        "射程 " .. math.floor((weapon.range or 0) * (p.stats.range or 1)) .. "    弹速 " .. math.floor((weapon.speed or 0) * (p.stats.projectileSpeed or 1)),
-        "穿透 " .. ((weapon.pierce or 0)) .. "    弹射 " .. ((weapon.bounce or 0) + (p.stats.bounce or 0)) .. "    散布 " .. string.format("%.2f", weapon.spread or 0)
+        {text = "品牌：" .. (brand and brand.name or "武器"), color = brand and brand.color or C.white},
+        {text = "元素：" .. elem.name, color = elem.color},
+        {text = "标签：" .. (brand and brand.tag or elem.desc), color = C.muted},
+        {text = "单发伤害：" .. v.damage, color = C.white, gap = 6},
+        {text = "弹体数量：" .. v.count, color = C.white},
+        {text = "总伤害：" .. v.totalDamage, color = C.white},
+        {text = "冷却：" .. string.format("%.2f", v.cooldown) .. "s", color = C.white},
+        {text = "射程：" .. v.range, color = C.white},
+        {text = "弹速：" .. v.speed, color = C.white},
+        {text = "穿透：" .. v.pierce, color = C.white},
+        {text = "弹射：" .. v.bounce, color = C.white},
+        {text = "散布：" .. string.format("%.2f", weapon.spread or 0), color = C.white}
     }
-    if weapon.splash then lines[#lines + 1] = "特殊：爆炸半径 " .. weapon.splash end
-    if weapon.chain then lines[#lines + 1] = "特殊：连锁 " .. (weapon.chain + math.floor((p.stats.bounce or 0) / 2)) .. " 次" end
-    if weapon.aura then lines[#lines + 1] = "特殊：牵引光环 " .. weapon.aura end
-    if weapon.desc then lines[#lines + 1] = "说明：" .. weapon.desc end
-    return {title = (titlePrefix or "武器") .. "：" .. (weapon.name or "未知武器"), lines = lines}
+    if weapon.splash then lines[#lines + 1] = {text = "特殊：爆炸半径 " .. weapon.splash, color = C.gold, gap = 6} end
+    if weapon.chain then lines[#lines + 1] = {text = "特殊：连锁 " .. (weapon.chain + math.floor((p.stats.bounce or 0) / 2)) .. " 次", color = C.gold, gap = 6} end
+    if weapon.aura then lines[#lines + 1] = {text = "特殊：牵引光环 " .. weapon.aura, color = C.gold, gap = 6} end
+    if weapon.desc then lines[#lines + 1] = {text = "说明：" .. weapon.desc, color = C.muted, gap = 6} end
+    return {title = (titlePrefix or "武器") .. "：" .. (weapon.name or "未知武器"), lines = lines, width = 400}
+end
+
+weaponCompareValue = function(weapon)
+    local p = Game.player
+    return {
+        damage = math.floor((weapon.damage or 0) * (p.stats.damage or 1) + 0.5),
+        totalDamage = math.floor((weapon.damage or 0) * (p.stats.damage or 1) * (weapon.count or 1) + 0.5),
+        cooldown = (weapon.cooldown or 0) / math.max(0.25, p.stats.fireRate or 1),
+        range = math.floor((weapon.range or 0) * (p.stats.range or 1)),
+        speed = math.floor((weapon.speed or 0) * (p.stats.projectileSpeed or 1)),
+        pierce = weapon.pierce or 0,
+        bounce = (weapon.bounce or 0) + (p.stats.bounce or 0),
+        count = weapon.count or 1
+    }
+end
+
+local function compareColor(delta, higherBetter)
+    if math.abs(delta) < 0.001 then return C.muted end
+    local good = higherBetter and delta > 0 or delta < 0
+    return good and C.green or C.red
+end
+
+local function weaponComparisonLines(current, candidate)
+    local a, b = weaponCompareValue(current), weaponCompareValue(candidate)
+    local function line(label, old, new, delta, higherBetter, suffix)
+        local sign = delta > 0 and "+" or ""
+        return {text = label .. "  当前 " .. old .. " → 商品 " .. new .. "  (" .. sign .. delta .. (suffix or "") .. ")", color = compareColor(delta, higherBetter)}
+    end
+    return {
+        {text = "对比选中武器：" .. (current.name or "当前武器"), color = C.gold, gap = 8},
+        line("总伤", a.totalDamage, b.totalDamage, b.totalDamage - a.totalDamage, true),
+        line("单发", a.damage, b.damage, b.damage - a.damage, true),
+        line("冷却", string.format("%.2fs", a.cooldown), string.format("%.2fs", b.cooldown), tonumber(string.format("%.2f", b.cooldown - a.cooldown)), false, "s"),
+        line("射程", a.range, b.range, b.range - a.range, true),
+        line("弹速", a.speed, b.speed, b.speed - a.speed, true),
+        line("穿透", a.pierce, b.pierce, b.pierce - a.pierce, true),
+        line("弹射", a.bounce, b.bounce, b.bounce - a.bounce, true),
+        line("数量", a.count, b.count, b.count - a.count, true)
+    }
 end
 
 local function itemTooltip(item)
@@ -2411,6 +2488,13 @@ local function itemTooltip(item)
         local def = item.weaponDef or weaponDefs[item.id]
         local tip = weaponTooltip(def, "商品武器")
         table.insert(tip.lines, 1, (rarityLabel[item.rarity] or item.rarity or "普通") .. " · 价格 " .. item.price .. " 材料")
+        local selected = Game.player.weapons[Game.selectedWeaponIndex or 1]
+        if selected then
+            for _, entry in ipairs(weaponComparisonLines(selected, def)) do tip.lines[#tip.lines + 1] = entry end
+            tip.width = 440
+        else
+            tip.lines[#tip.lines + 1] = {text = "提示：先点击右侧武器槽，选择要对比的武器。", color = C.muted, gap = 8}
+        end
         return tip
     end
     local kindText = kindLabel[item.kind] or item.kind or "道具"
@@ -2584,6 +2668,8 @@ local function drawBuildPanel(x, y, w, h)
     love.graphics.printf(table.concat(names, " / "), x + 16, wy + 22, w - 32, "center")
 end
 
+local sellWeapon, sellShield, sellItem
+
 local function drawCompactBuildPanel(x, y, w, h)
     local p = Game.player
     love.graphics.setColor(0.04, 0.08, 0.14, 0.58)
@@ -2647,13 +2733,27 @@ local function drawCompactBuildPanel(x, y, w, h)
         local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
         local sy = weaponY + math.floor((i - 1) / 2) * 42
         local accent = weapon and (elements[weapon.element] or elements.kinetic).color or C.white
+        local selected = weapon and i == (Game.selectedWeaponIndex or 1)
         color(accent, weapon and 0.13 or 0.05)
         love.graphics.rectangle("fill", sx, sy, slotW, 34, 9, 9)
-        color(accent, weapon and 0.44 or 0.18)
+        color(selected and C.gold or accent, selected and 0.78 or (weapon and 0.44 or 0.18))
+        love.graphics.setLineWidth(selected and 2 or 1)
         love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 33, 9, 9)
+        love.graphics.setLineWidth(1)
         color(weapon and C.white or C.muted)
-        love.graphics.printf(weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, 12) or "空武器", sx + 10, sy + 9, slotW - 20, "left")
-        if weapon and hitRect(mx, my, sx, sy, slotW, 34) then return weaponTooltip(weapon, "当前武器") end
+        love.graphics.printf(weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, 10) or "空武器", sx + 10, sy + 9, slotW - 56, "left")
+        if weapon then
+            color(C.red, 0.14)
+            love.graphics.rectangle("fill", sx + slotW - 42, sy + 6, 32, 22, 7, 7)
+            color(C.red, 0.58)
+            love.graphics.rectangle("line", sx + slotW - 42, sy + 6, 32, 22, 7, 7)
+            love.graphics.printf("卖", sx + slotW - 42, sy + 11, 32, "center")
+        end
+        if weapon and hitRect(mx, my, sx, sy, slotW, 34) then
+            local tip = weaponTooltip(weapon, selected and "当前武器 · 对比中" or "当前武器")
+            tip.lines[#tip.lines + 1] = {text = "操作：点击槽位选中；点击右侧“卖”出售。", color = C.gold, gap = 8}
+            return tip
+        end
     end
 
     local shieldLabelY = y + 364
@@ -2668,10 +2768,22 @@ local function drawCompactBuildPanel(x, y, w, h)
     color(C.cyan, shield and 0.52 or 0.22)
     love.graphics.rectangle("line", x + 14.5, shieldY + 0.5, w - 29, 41, 10, 10)
     color(shield and C.white or C.muted)
-    love.graphics.printf(shield and compactDesc(shield.name, 20) or "空护盾槽", x + 26, shieldY + 12, w - 92, "left")
-    color(C.cyan)
-    love.graphics.printf(shield and "1/1" or "0/1", x + w - 72, shieldY + 12, 44, "right")
-    if shield and hitRect(mx, my, x + 14, shieldY, w - 28, 42) then return itemTooltip(shield) end
+    love.graphics.printf(shield and compactDesc(shield.name, 16) or "空护盾槽", x + 26, shieldY + 12, w - 118, "left")
+    if shield then
+        color(C.red, 0.14)
+        love.graphics.rectangle("fill", x + w - 66, shieldY + 9, 38, 24, 7, 7)
+        color(C.red, 0.58)
+        love.graphics.rectangle("line", x + w - 66, shieldY + 9, 38, 24, 7, 7)
+        love.graphics.printf("卖", x + w - 66, shieldY + 15, 38, "center")
+    else
+        color(C.cyan)
+        love.graphics.printf("0/1", x + w - 72, shieldY + 12, 44, "right")
+    end
+    if shield and hitRect(mx, my, x + 14, shieldY, w - 28, 42) then
+        local tip = itemTooltip(shield)
+        tip.lines[#tip.lines + 1] = {text = "操作：点击右侧“卖”出售护盾。", color = C.gold, gap = 8}
+        return tip
+    end
 
     local itemLabelY = y + 466
     color(C.white, 0.12)
@@ -2690,8 +2802,17 @@ local function drawCompactBuildPanel(x, y, w, h)
         color(accent, 0.40)
         love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 29, 8, 8)
         color(C.white)
-        love.graphics.printf(compactDesc(item.name, 12), sx + 10, sy + 8, slotW - 20, "left")
-        if hitRect(mx, my, sx, sy, slotW, 30) then return itemTooltip(item) end
+        love.graphics.printf(compactDesc(item.name, 9), sx + 10, sy + 8, slotW - 54, "left")
+        color(C.red, 0.14)
+        love.graphics.rectangle("fill", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
+        color(C.red, 0.58)
+        love.graphics.rectangle("line", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
+        love.graphics.printf("卖", sx + slotW - 40, sy + 9, 30, "center")
+        if hitRect(mx, my, sx, sy, slotW, 30) then
+            local tip = itemTooltip(item)
+            tip.lines[#tip.lines + 1] = {text = "操作：点击右侧“卖”出售道具。", color = C.gold, gap = 8}
+            return tip
+        end
     end
     if #items == 0 then
         color(C.white, 0.05)
@@ -2702,6 +2823,38 @@ local function drawCompactBuildPanel(x, y, w, h)
         color(C.gold)
         love.graphics.printf("另有 " .. (#items - 8) .. " 件", x + 14, y + h - 28, w - 28, "right")
     end
+end
+
+local function handleBuildPanelClick(px, py, x, y, w, h)
+    local p = Game.player
+    local slotW = (w - 44) / 2
+    local slotGap = 12
+    local weaponLabelY = y + 224
+    local weaponY = weaponLabelY + 30
+    for i = 1, 4 do
+        local weapon = p.weapons[i]
+        local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
+        local sy = weaponY + math.floor((i - 1) / 2) * 42
+        if weapon and hitRect(px, py, sx, sy, slotW, 34) then
+            if hitRect(px, py, sx + slotW - 42, sy + 6, 32, 22) then return sellWeapon(i) end
+            Game.selectedWeaponIndex = i
+            playCue("shop"); toast("已选中武器槽 " .. i .. "：" .. weapon.name)
+            return true
+        end
+    end
+
+    local shieldLabelY = y + 364
+    local shieldY = shieldLabelY + 30
+    if p.shieldItem and hitRect(px, py, x + w - 66, shieldY + 9, 38, 24) then return sellShield() end
+
+    local itemLabelY = y + 466
+    local itemY = itemLabelY + 30
+    for i = 1, math.min(#(p.items or {}), 8) do
+        local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
+        local sy = itemY + math.floor((i - 1) / 2) * 38
+        if hitRect(px, py, sx + slotW - 40, sy + 5, 30, 20) then return sellItem(i) end
+    end
+    return false
 end
 
 local function defenseText(def)
@@ -3021,7 +3174,7 @@ local function drawShop()
     color(C.gold, pulse)
     love.graphics.rectangle("fill", Game.w / 2 - primaryW / 2 - 8, actionY - 7, primaryW + 16, 56, 16, 16)
     uiButton("进入下一波", Game.w / 2 - primaryW / 2, actionY - 3, primaryW, 48, C.gold, C.white, Game.fonts.normal)
-    uiButton("回收最后武器", groupX + groupW - secondaryW, actionY, secondaryW, 42, C.white)
+    uiButton("卖出选中武器", groupX + groupW - secondaryW, actionY, secondaryW, 42, C.white)
     drawTooltip(tip)
 end
 
@@ -3111,13 +3264,50 @@ local function buySlot(i)
     Game.locked[i] = false
 end
 
-local function recycleWeapon()
+local function sellValue(item, fallback)
+    return math.max(1, math.floor(((item and item.price) or fallback or 12) * 0.45 + 0.5))
+end
+
+sellWeapon = function(index)
     local p = Game.player
-    local w = table.remove(p.weapons)
-    if not w then toast("没有可回收武器") return end
-    local value = math.max(8, math.floor((w.price or 20) * 0.45 + (w.level or 1) * 4))
+    index = index or Game.selectedWeaponIndex or #p.weapons
+    local w = p.weapons[index]
+    if not w then toast("该武器槽为空") return false end
+    table.remove(p.weapons, index)
+    local value = math.max(8, sellValue(w, 20) + (w.level or 1) * 4)
     Game.coins = Game.coins + value
-    toast("回收 " .. w.name .. "：+" .. value .. " 材料")
+    Game.selectedWeaponIndex = #p.weapons > 0 and clamp(math.min(index, #p.weapons), 1, #p.weapons) or 1
+    rebuildPlayerBuildStats()
+    playCue("shop"); toast("卖出武器 " .. w.name .. "：+" .. value .. " 材料")
+    return true
+end
+
+sellShield = function()
+    local p = Game.player
+    local shield = p.shieldItem
+    if not shield then toast("护盾槽为空") return false end
+    p.shieldItem = nil
+    local value = sellValue(shield, 18)
+    Game.coins = Game.coins + value
+    rebuildPlayerBuildStats()
+    playCue("shop"); toast("卖出护盾 " .. shield.name .. "：+" .. value .. " 材料")
+    return true
+end
+
+sellItem = function(index)
+    local p = Game.player
+    local item = p.items and p.items[index]
+    if not item then toast("该道具槽为空") return false end
+    table.remove(p.items, index)
+    local value = sellValue(item, 14)
+    Game.coins = Game.coins + value
+    rebuildPlayerBuildStats()
+    playCue("shop"); toast("卖出道具 " .. item.name .. "：+" .. value .. " 材料")
+    return true
+end
+
+local function recycleWeapon()
+    return sellWeapon(Game.selectedWeaponIndex or #Game.player.weapons)
 end
 
 local function refreshShop()
@@ -3173,6 +3363,7 @@ local function handlePointer(x, y)
             local cardH = 268
             local weaponY = 254
             local supportY = 604
+            if handleBuildPanelClick(x, y, sideX, 228, sideW, 656) then return true end
             for i = 1, 6 do
                 local col = (i - 1) % 3
                 local cardX = marginX + col * (cardW + gap)
