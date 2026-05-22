@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.17"
+local VERSION = "v2026.05.22.18"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -39,6 +39,7 @@ local Game = {
     slotPaidSpins = 0,
     slotResult = nil,
     shopTab = "shop",
+    buildPanelTab = "stats",
     hoveredShopItem = nil,
     selectedWeaponIndex = 1,
     shopRollTimer = 0,
@@ -49,6 +50,7 @@ local Game = {
     objectiveText = "",
     waveRewards = nil,
     enemyShots = {},
+    fireZones = {},
     runStats = {damage = 0, damageByWeapon = {}, coinsEarned = 0, highestWave = 1, rerolls = 0},
     player = {
         x = 640,
@@ -210,20 +212,22 @@ local enemyDefs = {
     shell = {name = "壳层记忆", sprite = "enemy_shell", defense = "armor", hp = 44, speed = 50, damage = 13, r = 20, color = C.green, armor = 3, xp = 5, coin = 4, behavior = "guard"},
     wisp = {name = "电弧游魂", sprite = "enemy_wisp", defense = "shield", hp = 18, shield = 26, shieldRegen = 2.2, speed = 105, damage = 8, r = 13, color = C.cyan, xp = 4, coin = 3, behavior = "shooter"},
     elite = {name = "坏蛋精英", sprite = "enemy_elite", defense = "shield", hp = 150, shield = 90, shieldRegen = 3.0, speed = 64, damage = 18, r = 28, color = C.purple, armor = 2, xp = 16, coin = 12, elite = true, behavior = "aura"},
+    treasure = {name = "宝藏信标", sprite = "pickup_coin", defense = "flesh", hp = 32, speed = 112, damage = 0, r = 16, color = C.gold, xp = 1, coin = 5, treasureCoin = 18, treasure = true, behavior = "treasure"},
+    bomber = {name = "燃烧投手", sprite = "enemy_splinter", defense = "flesh", hp = 38, speed = 72, damage = 10, r = 15, color = C.orange, xp = 4, coin = 4, behavior = "bomber"},
     boss = {name = "裂心机核", sprite = "boss_heartbreak", defense = "armor", hp = 2800, shield = 850, shieldRegen = 4.0, speed = 44, damage = 24, r = 46, color = C.pink, armor = 5, xp = 80, coin = 60, boss = true, behavior = "boss"}
 }
 
 local wavePlans = {
     {name = "裂片试探", duration = 30, interval = 1.10, pack = 1, sides = {"left", "right"}, enemies = {{"splinter", 70}, {"drifter", 30}}},
-    {name = "双翼骚扰", duration = 30, interval = 1.02, pack = 2, sides = {"left", "right", "top"}, enemies = {{"splinter", 52}, {"drifter", 38}, {"wisp", 10}}},
-    {name = "电弧乱流", duration = 32, interval = 0.92, pack = 2, sides = {"top", "right", "left"}, enemies = {{"splinter", 40}, {"drifter", 30}, {"wisp", 30}}, events = {{time = 18, enemy = "elite", side = "right", toast = "精英信号：右侧突破"}}},
-    {name = "装甲推进", duration = 32, interval = 0.88, pack = 2, sides = {"left", "right", "bottom"}, enemies = {{"splinter", 32}, {"drifter", 28}, {"wisp", 18}, {"shell", 22}}},
-    {name = "交叉包围", duration = 34, interval = 0.80, pack = 3, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 30}, {"drifter", 30}, {"wisp", 25}, {"shell", 15}}, events = {{time = 12, enemy = "elite", side = "left", toast = "精英压境：左侧"}}},
-    {name = "重壳浪潮", duration = 34, interval = 0.78, pack = 3, sides = {"right", "bottom", "top"}, enemies = {{"drifter", 25}, {"wisp", 25}, {"shell", 38}, {"splinter", 12}}, events = {{time = 22, enemy = "elite", side = "bottom", toast = "底线精英出现"}}},
-    {name = "高速撕裂", duration = 36, interval = 0.70, pack = 3, sides = {"left", "right"}, enemies = {{"splinter", 42}, {"drifter", 38}, {"wisp", 12}, {"shell", 8}}, events = {{time = 16, enemy = "elite", side = "right"}}},
-    {name = "四面噪声", duration = 36, interval = 0.64, pack = 4, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 28}, {"drifter", 28}, {"wisp", 26}, {"shell", 18}}, events = {{time = 10, enemy = "elite", side = "top"}, {time = 25, enemy = "elite", side = "bottom"}}},
-    {name = "核心前夜", duration = 38, interval = 0.58, pack = 4, sides = {"right", "left", "top", "bottom"}, enemies = {{"splinter", 24}, {"drifter", 28}, {"wisp", 28}, {"shell", 20}}, events = {{time = 9, enemy = "elite", side = "left"}, {time = 21, enemy = "elite", side = "right"}}},
-    {name = "裂心机核", duration = 60, interval = 0.95, pack = 2, sides = {"left", "right", "top", "bottom"}, boss = true, enemies = {{"splinter", 28}, {"drifter", 26}, {"wisp", 26}, {"shell", 20}}, events = {{time = 0.2, enemy = "boss", side = "right", toast = "Boss：裂心机核接入"}, {time = 20, enemy = "elite", side = "left"}, {time = 40, enemy = "elite", side = "right"}}}
+    {name = "双翼骚扰", duration = 30, interval = 1.02, pack = 2, sides = {"left", "right", "top"}, enemies = {{"splinter", 50}, {"drifter", 37}, {"wisp", 10}, {"treasure", 3}}},
+    {name = "电弧乱流", duration = 32, interval = 0.92, pack = 2, sides = {"top", "right", "left"}, enemies = {{"splinter", 38}, {"drifter", 28}, {"wisp", 28}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 18, enemy = "elite", side = "right", toast = "精英信号：右侧突破"}}},
+    {name = "装甲推进", duration = 32, interval = 0.88, pack = 2, sides = {"left", "right", "bottom"}, enemies = {{"splinter", 30}, {"drifter", 26}, {"wisp", 18}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}},
+    {name = "交叉包围", duration = 34, interval = 0.80, pack = 3, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 28}, {"drifter", 28}, {"wisp", 23}, {"shell", 15}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 12, enemy = "elite", side = "left", toast = "精英压境：左侧"}}},
+    {name = "重壳浪潮", duration = 34, interval = 0.78, pack = 3, sides = {"right", "bottom", "top"}, enemies = {{"drifter", 23}, {"wisp", 23}, {"shell", 36}, {"splinter", 12}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 22, enemy = "elite", side = "bottom", toast = "底线精英出现"}}},
+    {name = "高速撕裂", duration = 36, interval = 0.70, pack = 3, sides = {"left", "right"}, enemies = {{"splinter", 39}, {"drifter", 36}, {"wisp", 12}, {"shell", 7}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 16, enemy = "elite", side = "right"}}},
+    {name = "四面噪声", duration = 36, interval = 0.64, pack = 4, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 26}, {"drifter", 26}, {"wisp", 24}, {"shell", 18}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 10, enemy = "elite", side = "top"}, {time = 25, enemy = "elite", side = "bottom"}}},
+    {name = "核心前夜", duration = 38, interval = 0.58, pack = 4, sides = {"right", "left", "top", "bottom"}, enemies = {{"splinter", 22}, {"drifter", 26}, {"wisp", 26}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 9, enemy = "elite", side = "left"}, {time = 21, enemy = "elite", side = "right"}}},
+    {name = "裂心机核", duration = 60, interval = 0.95, pack = 2, sides = {"left", "right", "top", "bottom"}, boss = true, enemies = {{"splinter", 26}, {"drifter", 24}, {"wisp", 24}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 0.2, enemy = "boss", side = "right", toast = "Boss：裂心机核接入"}, {time = 20, enemy = "elite", side = "left"}, {time = 40, enemy = "elite", side = "right"}}}
 }
 
 local function wavePlanAt(wave)
@@ -641,9 +645,9 @@ local function spawnEnemy(def, opts)
         hp = hp, maxHp = hp, shield = shield, maxShield = shield, defense = def.defense or (shield > 0 and "shield" or ((def.armor or 0) > 0 and "armor" or "flesh")), shieldRegen = def.shieldRegen or 0,
         speed = (def.speed + Game.wave * 2) * bonus.enemySpeed * (1 + Game.danger * 0.025),
         damage = def.damage * bonus.enemyDamage * (1 + Game.danger * 0.06), armor = (def.armor or 0) + bonus.enemyArmor,
-        color = def.color, xp = def.xp, coin = def.coin, sprite = def.sprite, behavior = def.behavior or "chase",
-        elite = def.elite, boss = def.boss,
-        shootTimer = rnd() * 1.2, dashTimer = rnd() * 1.6,
+        color = def.color, xp = def.xp, coin = def.coin, treasureCoin = def.treasureCoin, sprite = def.sprite, behavior = def.behavior or "chase",
+        elite = def.elite, boss = def.boss, treasure = def.treasure,
+        shootTimer = rnd() * 1.2, dashTimer = rnd() * 1.6, wanderTimer = rnd() * 1.4, wanderAngle = rnd() * TAU,
         burn = 0, slow = 0, corrosion = 0, lastHit = 0
     }
 end
@@ -1056,6 +1060,7 @@ local function startWave()
     Game.objectiveProgress = 0
     Game.objectiveText = "生存 " .. SURVIVAL_DURATION .. "秒"
     Game.enemies, Game.bullets, Game.pickups = {}, {}, {}
+    Game.enemyShots, Game.fireZones = {}, {}
     Game.pendingRewardNextState = nil
     Game.waveRewards = {wave = Game.wave, reason = "", kills = 0, coins = 0, harvest = 0, clear = 0}
     local p = Game.player
@@ -1101,6 +1106,7 @@ local function resetRun()
     Game.slotPaidSpins = 0
     Game.slotResult = nil
     Game.shopTab = "shop"
+    Game.buildPanelTab = "stats"
     Game.hoveredShopItem = nil
     Game.shopRollTimer = 0
     Game.shopGhost = nil
@@ -1193,6 +1199,11 @@ local function killEnemy(e)
     addCoins(coinGain)
     if rnd() < 0.52 then addCoins(math.max(1, math.floor(e.coin / 2))) end
     if e.elite and rnd() < 0.72 then addCoins(e.coin + 8) end
+    if e.treasure then
+        local treasureGain = addCoins((e.treasureCoin or 18) + Game.wave * 2, "treasure")
+        addText(e.x, e.y - e.r - 18, "+" .. treasureGain .. " 材料", C.gold)
+        toast("击破宝藏信标：材料 +" .. treasureGain)
+    end
     local p = Game.player
     if p.gear.killShield then p.shield = math.min(p.maxShield, p.shield + 6 + Game.wave) end
     if p.gear.killBurst then
@@ -1420,19 +1431,55 @@ local function fireEnemyShot(e, a)
     Game.enemyShots[#Game.enemyShots + 1] = {x = e.x, y = e.y, vx = math.cos(a) * 250, vy = math.sin(a) * 250, r = 6, damage = e.damage * 0.75, color = e.color, life = 3.0}
 end
 
+local function igniteFireZone(x, y, radius, duration, damage)
+    Game.fireZones = Game.fireZones or {}
+    Game.fireZones[#Game.fireZones + 1] = {x = x, y = y, r = radius or 82, life = duration or 4.6, maxLife = duration or 4.6, damage = damage or 8, tick = 0, color = C.orange}
+    burst(x, y, C.orange, 22, 220)
+end
+
+local function throwFireBomb(e, targetX, targetY)
+    local travel = 0.85
+    Game.enemyShots[#Game.enemyShots + 1] = {
+        kind = "firebomb", x = e.x, y = e.y,
+        targetX = targetX, targetY = targetY,
+        vx = (targetX - e.x) / travel, vy = (targetY - e.y) / travel,
+        r = 8, damage = e.damage * 0.65, color = C.orange, life = travel,
+        zoneRadius = 86, zoneDuration = 4.8
+    }
+    addText(e.x, e.y - e.r - 10, "燃烧弹", C.orange)
+end
+
 local function updateEnemyShots(dt)
     local p = Game.player
     for i = #Game.enemyShots, 1, -1 do
         local b = Game.enemyShots[i]
         b.life = b.life - dt
         b.x, b.y = b.x + b.vx * dt, b.y + b.vy * dt
-        if distance(b.x, b.y, p.x, p.y) < b.r + p.r then
+        if b.kind == "firebomb" and b.life <= 0 then
+            igniteFireZone(b.targetX or b.x, b.targetY or b.y, b.zoneRadius, b.zoneDuration, b.damage)
+            table.remove(Game.enemyShots, i)
+        elseif distance(b.x, b.y, p.x, p.y) < b.r + p.r then
             damagePlayer(b.damage)
             burst(b.x, b.y, b.color, 5, 80)
+            if b.kind == "firebomb" then igniteFireZone(b.x, b.y, b.zoneRadius, b.zoneDuration, b.damage) end
             table.remove(Game.enemyShots, i)
         elseif b.life <= 0 or b.x < -40 or b.x > Game.w + 40 or b.y < -40 or b.y > Game.h + 40 then
             table.remove(Game.enemyShots, i)
         end
+    end
+end
+
+local function updateFireZones(dt)
+    local p = Game.player
+    for i = #Game.fireZones, 1, -1 do
+        local z = Game.fireZones[i]
+        z.life = z.life - dt
+        z.tick = (z.tick or 0) - dt
+        if distance(z.x, z.y, p.x, p.y) < z.r + p.r * 0.35 and z.tick <= 0 then
+            damagePlayer(z.damage or 6)
+            z.tick = 0.45
+        end
+        if z.life <= 0 then table.remove(Game.fireZones, i) end
     end
 end
 
@@ -1462,17 +1509,55 @@ local function updateEnemies(dt)
         if e.slow and e.slow > 0 then e.slow = e.slow - dt end
         local spd = e.speed * ((e.slow and e.slow > 0) and 0.58 or 1)
         local a = angleTo(e.x, e.y, p.x, p.y)
+        local distToPlayer = distance(e.x, e.y, p.x, p.y)
+        local moveAngle = a
         local behavior = e.behavior or "chase"
-        if behavior == "shooter" and distance(e.x, e.y, p.x, p.y) < 420 then
+        if behavior == "treasure" then
+            e.wanderTimer = (e.wanderTimer or 0) - dt
+            if e.wanderTimer <= 0 then
+                e.wanderTimer = randf(0.55, 1.35)
+                e.wanderAngle = rnd() * TAU
+            end
+            moveAngle = distToPlayer < 360 and (a + math.pi) or (e.wanderAngle or a)
+            spd = spd * (distToPlayer < 360 and 1.35 or 0.82)
+        elseif behavior == "shooter" then
             e.shootTimer = (e.shootTimer or 0) - dt
-            if e.shootTimer <= 0 then
+            if distToPlayer < 560 and e.shootTimer <= 0 then
                 fireEnemyShot(e, a)
                 e.shootTimer = 1.65
             end
-            spd = spd * 0.52
+            e.wanderTimer = (e.wanderTimer or 0) - dt
+            if e.wanderTimer <= 0 then
+                e.wanderTimer = randf(0.65, 1.45)
+                e.wanderAngle = a + (rnd() < 0.5 and 1 or -1) * randf(1.25, 1.85)
+            end
+            if distToPlayer < 330 then
+                moveAngle = a + math.pi
+                spd = spd * 0.95
+            else
+                moveAngle = e.wanderAngle or a
+                spd = spd * 0.36
+            end
+        elseif behavior == "bomber" then
+            e.shootTimer = (e.shootTimer or 0) - dt
+            if distToPlayer < 620 and e.shootTimer <= 0 then
+                local leadX = p.x + (p.lastMoveX or 0) * 54 + randf(-36, 36)
+                local leadY = p.y + (p.lastMoveY or 0) * 54 + randf(-36, 36)
+                throwFireBomb(e, clamp(leadX, 70, Game.w - 70), clamp(leadY, 150, Game.h - 70))
+                e.shootTimer = randf(2.2, 3.2)
+            end
+            if distToPlayer < 360 then
+                moveAngle = a + math.pi
+                spd = spd * 0.78
+            else
+                e.wanderTimer = (e.wanderTimer or 0) - dt
+                if e.wanderTimer <= 0 then e.wanderTimer = randf(0.8, 1.6); e.wanderAngle = a + (rnd() < 0.5 and 1 or -1) * randf(1.1, 1.7) end
+                moveAngle = e.wanderAngle or a
+                spd = spd * 0.30
+            end
         elseif behavior == "charger" then
             e.dashTimer = (e.dashTimer or 0) - dt
-            if e.dashTimer <= 0 and distance(e.x, e.y, p.x, p.y) < 360 then
+            if e.dashTimer <= 0 and distToPlayer < 360 then
                 spd = spd * 2.4
                 e.dashTimer = 2.2
                 addText(e.x, e.y - e.r - 8, "突进", C.orange)
@@ -1480,7 +1565,7 @@ local function updateEnemies(dt)
         elseif behavior == "guard" then
             spd = spd * 0.78
             e.armor = math.max(e.armor or 0, 3 + math.floor(Game.wave / 3))
-        elseif behavior == "aura" and distance(e.x, e.y, p.x, p.y) < 135 then
+        elseif behavior == "aura" and distToPlayer < 135 then
             damagePlayer(e.damage * 0.22)
         elseif behavior == "boss" then
             e.shootTimer = (e.shootTimer or 0) - dt
@@ -1489,10 +1574,10 @@ local function updateEnemies(dt)
                 e.shootTimer = 1.25
             end
         end
-        e.x = e.x + math.cos(a) * spd * dt
-        e.y = e.y + math.sin(a) * spd * dt
+        e.x = e.x + math.cos(moveAngle) * spd * dt
+        e.y = e.y + math.sin(moveAngle) * spd * dt
         if distance(e.x, e.y, p.x, p.y) < e.r + p.r then
-            damagePlayer(e.damage)
+            if (e.damage or 0) > 0 then damagePlayer(e.damage) end
             e.x = e.x - math.cos(a) * 18
             e.y = e.y - math.sin(a) * 18
         end
@@ -1623,6 +1708,7 @@ local function updatePlaying(dt)
     updateAutoArc(dt)
     updateBullets(dt)
     updateEnemyShots(dt)
+    updateFireZones(dt)
     updateEnemies(dt)
 
     Game.objectiveText = "生存 " .. math.max(0, math.ceil(Game.waveTime)) .. "秒"
@@ -1790,6 +1876,20 @@ function love.update(dt)
         if Game.autoShopClock > 0.4 then
             Game.autoShopDone = true
             love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-shop.png")
+            love.event.quit()
+        end
+    elseif os.getenv("LOVE_AUTOFIREZONE") == "1" and not Game.autoFireZoneDone then
+        if Game.state == "menu" then resetRun() end
+        if Game.state == "playing" and not Game.autoFireZoneSpawned then
+            Game.autoFireZoneSpawned = true
+            spawnEnemy(enemyDefs.treasure, {side = "right", scale = 1})
+            spawnEnemy(enemyDefs.bomber, {side = "left", scale = 1})
+            igniteFireZone(Game.player.x + 120, Game.player.y + 40, 90, 4.8, 8)
+        end
+        Game.autoFireZoneClock = (Game.autoFireZoneClock or 0) + dt
+        if Game.autoFireZoneClock > 1.0 then
+            Game.autoFireZoneDone = true
+            love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-firezone.png")
             love.event.quit()
         end
     elseif os.getenv("LOVE_AUTOSHOT") == "1" and not Game.autoShotDone then
@@ -1961,13 +2061,24 @@ local function drawHud()
 end
 
 local function drawWorld()
+    for _, z in ipairs(Game.fireZones or {}) do
+        local pct = clamp(z.life / math.max(0.1, z.maxLife or z.life), 0, 1)
+        love.graphics.setBlendMode("add")
+        color(C.orange, 0.10 + pct * 0.18)
+        love.graphics.circle("fill", z.x, z.y, z.r)
+        color(C.red, 0.12 + pct * 0.12)
+        love.graphics.circle("fill", z.x, z.y, z.r * 0.68)
+        love.graphics.setBlendMode("alpha")
+        color(C.orange, 0.42)
+        love.graphics.circle("line", z.x, z.y, z.r)
+    end
     for _, b in ipairs(Game.bullets) do
         drawProjectile(b)
     end
     for _, b in ipairs(Game.enemyShots) do
         love.graphics.setBlendMode("add")
-        color(b.color or C.red, 0.36)
-        love.graphics.circle("fill", b.x, b.y, b.r * 2.2)
+        color(b.color or C.red, b.kind == "firebomb" and 0.48 or 0.36)
+        love.graphics.circle("fill", b.x, b.y, b.r * (b.kind == "firebomb" and 3.0 or 2.2))
         love.graphics.setBlendMode("alpha")
         color(b.color or C.red, 0.95)
         love.graphics.circle("fill", b.x, b.y, b.r)
@@ -1996,6 +2107,18 @@ local function drawWorld()
         end
         love.graphics.setColor(0, 0, 0, 0.34)
         love.graphics.ellipse("fill", e.x, e.y + e.r * 1.35, e.r * 2.2, e.r * 0.52)
+        if e.treasure then
+            local pulse = 0.55 + 0.45 * math.sin((love.timer.getTime() or 0) * 5)
+            love.graphics.setBlendMode("add")
+            color(C.gold, 0.20 + pulse * 0.16)
+            love.graphics.circle("fill", e.x, e.y, e.r * 2.8)
+            color(C.white, 0.70)
+            love.graphics.circle("line", e.x, e.y, e.r * 1.9)
+            love.graphics.setBlendMode("alpha")
+            love.graphics.setFont(Game.fonts.tiny)
+            color(C.gold)
+            love.graphics.printf("宝", e.x - 16, e.y - e.r - 26, 32, "center")
+        end
         love.graphics.setBlendMode("add")
         love.graphics.setColor(e.color[1], e.color[2], e.color[3], e.boss and 0.30 or 0.24)
         love.graphics.circle("fill", e.x, e.y, e.r * 2.35)
@@ -2743,27 +2866,87 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
     color(C.muted)
     love.graphics.printf("生命", x + 18, y + 66, vitalW - 8, "center")
     love.graphics.printf("护盾", x + 26 + vitalW, y + 66, vitalW - 8, "center")
-    local stats = {
-        "护甲 " .. p.stats.armor,
-        "移速 " .. math.floor(p.speed),
-        "暴击 " .. math.floor((p.stats.crit or 0) * 100 + 0.5) .. "%",
-        "材料×" .. string.format("%.2f", p.stats.economy or 1)
-    }
-    for i, text in ipairs(stats) do
-        local sx = x + 14 + ((i - 1) % 2) * ((w - 36) / 2 + 8)
-        local sy = y + 88 + math.floor((i - 1) / 2) * 24
-        color(C.white, 0.06)
-        love.graphics.rectangle("fill", sx, sy, (w - 44) / 2, 18, 6, 6)
-        color(C.muted)
-        love.graphics.printf(text, sx + 8, sy + 4, (w - 60) / 2, "left")
-    end
-
     local mx, my = mousePosition()
+    local activeBuildTab = Game.buildPanelTab or "stats"
+    local tabY, tabW, tabH = y + 92, 108, 26
+    local tabs = {{id = "stats", label = "基础属性"}, {id = "items", label = "道具槽"}}
     love.graphics.setFont(Game.fonts.tiny)
+    for i, tab in ipairs(tabs) do
+        local tx = x + 14 + (i - 1) * (tabW + 8)
+        local active = activeBuildTab == tab.id
+        color(active and C.gold or C.white, active and 0.20 or 0.06)
+        love.graphics.rectangle("fill", tx, tabY, tabW, tabH, 8, 8)
+        color(active and C.gold or C.muted, active and 0.72 or 0.36)
+        love.graphics.rectangle("line", tx + 0.5, tabY + 0.5, tabW - 1, tabH - 1, 8, 8)
+        love.graphics.printf(tab.label, tx, tabY + 7, tabW, "center")
+    end
 
     local slotW = (w - 44) / 2
     local slotGap = 12
-    local weaponLabelY = y + 224
+    if activeBuildTab == "items" then
+        local items = p.items or {}
+        local itemY = y + 146
+        color(C.gold)
+        love.graphics.printf("道具槽 " .. #items, x + 14, itemY - 28, w - 28, "left")
+        color(C.muted)
+        love.graphics.printf("道具槽已单独分页；卖出按钮只在本页显示。", x + 118, itemY - 28, w - 132, "right")
+        for i = 1, math.min(#items, 18) do
+            local item = items[i]
+            local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
+            local sy = itemY + math.floor((i - 1) / 2) * 38
+            local accent = shopItemAccent(item)
+            color(accent, 0.12)
+            love.graphics.rectangle("fill", sx, sy, slotW, 30, 8, 8)
+            color(accent, 0.40)
+            love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 29, 8, 8)
+            color(C.white)
+            love.graphics.printf(compactDesc(item.name, showSell and 9 or 13), sx + 10, sy + 8, slotW - (showSell and 54 or 20), "left")
+            if showSell then
+                color(C.red, 0.14)
+                love.graphics.rectangle("fill", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
+                color(C.red, 0.58)
+                love.graphics.rectangle("line", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
+                love.graphics.printf("卖", sx + slotW - 40, sy + 9, 30, "center")
+            end
+            if hitRect(mx, my, sx, sy, slotW, 30) then
+                local tip = itemTooltip(item)
+                tip.lines[#tip.lines + 1] = {text = showSell and "操作：点击右侧“卖”出售道具。" or "当前暂停中：构筑信息只读展示。", color = C.gold, gap = 8}
+                return tip
+            end
+        end
+        if #items == 0 then
+            color(C.white, 0.05)
+            love.graphics.rectangle("fill", x + 14, itemY, w - 28, 34, 8, 8)
+            color(C.muted)
+            love.graphics.printf("暂无道具", x + 26, itemY + 10, w - 52, "left")
+        end
+        return nil
+    end
+
+    local stats = {
+        {"伤害", pct(p.stats.damage)}, {"射速", pct(p.stats.fireRate)},
+        {"暴击", pct(p.stats.crit)}, {"暴伤", pct(p.stats.critDamage)},
+        {"元素", pct(p.stats.elementDamage or 1)}, {"对盾", pct(p.stats.shieldDamage or 1)},
+        {"对甲", pct(p.stats.armorDamage or 1)}, {"对肉", pct(p.stats.fleshDamage or 1)},
+        {"护甲", tostring(p.stats.armor)}, {"闪避", pct(p.stats.dodge)},
+        {"吸血", pct(p.stats.lifesteal)}, {"幸运", tostring(p.stats.luck or 0)},
+        {"材料", "×" .. string.format("%.2f", p.stats.economy or 1)}, {"收获", tostring(p.stats.harvest or 0)},
+        {"弹射", tostring(p.stats.bounce or 0)}, {"弹速", pct(p.stats.projectileSpeed or 1)}
+    }
+    for i, row in ipairs(stats) do
+        local sx = x + 14 + ((i - 1) % 2) * ((w - 36) / 2 + 8)
+        local sy = y + 130 + math.floor((i - 1) / 2) * 22
+        color(C.white, 0.06)
+        love.graphics.rectangle("fill", sx, sy, (w - 44) / 2, 18, 6, 6)
+        color(C.muted)
+        love.graphics.printf(row[1], sx + 8, sy + 4, 46, "left")
+        color(C.white)
+        love.graphics.printf(row[2], sx + 58, sy + 4, (w - 132) / 2, "right")
+    end
+
+    love.graphics.setFont(Game.fonts.tiny)
+
+    local weaponLabelY = y + 326
     color(C.white, 0.12)
     love.graphics.rectangle("fill", x + 14, weaponLabelY - 12, w - 28, 1)
     color(C.orange)
@@ -2797,7 +2980,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         end
     end
 
-    local shieldLabelY = y + 364
+    local shieldLabelY = y + 466
     color(C.white, 0.12)
     love.graphics.rectangle("fill", x + 14, shieldLabelY - 12, w - 28, 1)
     color(C.cyan)
@@ -2826,53 +3009,25 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         return tip
     end
 
-    local itemLabelY = y + 466
-    color(C.white, 0.12)
-    love.graphics.rectangle("fill", x + 14, itemLabelY - 12, w - 28, 1)
-    color(C.gold)
-    local items = p.items or {}
-    love.graphics.printf("道具槽 " .. #items, x + 14, itemLabelY, w - 28, "left")
-    local itemY = itemLabelY + 30
-    for i = 1, math.min(#items, 8) do
-        local item = items[i]
-        local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
-        local sy = itemY + math.floor((i - 1) / 2) * 38
-        local accent = shopItemAccent(item)
-        color(accent, 0.12)
-        love.graphics.rectangle("fill", sx, sy, slotW, 30, 8, 8)
-        color(accent, 0.40)
-        love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 29, 8, 8)
-        color(C.white)
-        love.graphics.printf(compactDesc(item.name, showSell and 9 or 13), sx + 10, sy + 8, slotW - (showSell and 54 or 20), "left")
-        if showSell then
-            color(C.red, 0.14)
-            love.graphics.rectangle("fill", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
-            color(C.red, 0.58)
-            love.graphics.rectangle("line", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
-            love.graphics.printf("卖", sx + slotW - 40, sy + 9, 30, "center")
-        end
-        if hitRect(mx, my, sx, sy, slotW, 30) then
-            local tip = itemTooltip(item)
-            tip.lines[#tip.lines + 1] = {text = showSell and "操作：点击右侧“卖”出售道具。" or "当前暂停中：构筑信息只读展示。", color = C.gold, gap = 8}
-            return tip
-        end
-    end
-    if #items == 0 then
-        color(C.white, 0.05)
-        love.graphics.rectangle("fill", x + 14, itemY, w - 28, 34, 8, 8)
-        color(C.muted)
-        love.graphics.printf("暂无道具", x + 26, itemY + 10, w - 52, "left")
-    elseif #items > 8 then
-        color(C.gold)
-        love.graphics.printf("另有 " .. (#items - 8) .. " 件", x + 14, y + h - 28, w - 28, "right")
-    end
 end
 
 local function handleBuildPanelClick(px, py, x, y, w, h)
     local p = Game.player
     local slotW = (w - 44) / 2
     local slotGap = 12
-    local weaponLabelY = y + 224
+    local tabY, tabW, tabH = y + 92, 108, 26
+    if hitRect(px, py, x + 14, tabY, tabW, tabH) then Game.buildPanelTab = "stats"; playCue("shop"); return true end
+    if hitRect(px, py, x + 14 + tabW + 8, tabY, tabW, tabH) then Game.buildPanelTab = "items"; playCue("shop"); return true end
+    if (Game.buildPanelTab or "stats") == "items" then
+        local itemY = y + 146
+        for i = 1, math.min(#(p.items or {}), 18) do
+            local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
+            local sy = itemY + math.floor((i - 1) / 2) * 38
+            if hitRect(px, py, sx + slotW - 40, sy + 5, 30, 20) then return sellItem(i) end
+        end
+        return false
+    end
+    local weaponLabelY = y + 326
     local weaponY = weaponLabelY + 30
     for i = 1, 4 do
         local weapon = p.weapons[i]
@@ -2886,17 +3041,9 @@ local function handleBuildPanelClick(px, py, x, y, w, h)
         end
     end
 
-    local shieldLabelY = y + 364
+    local shieldLabelY = y + 466
     local shieldY = shieldLabelY + 30
     if p.shieldItem and hitRect(px, py, x + w - 66, shieldY + 9, 38, 24) then return sellShield() end
-
-    local itemLabelY = y + 466
-    local itemY = itemLabelY + 30
-    for i = 1, math.min(#(p.items or {}), 8) do
-        local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
-        local sy = itemY + math.floor((i - 1) / 2) * 38
-        if hitRect(px, py, sx + slotW - 40, sy + 5, 30, 20) then return sellItem(i) end
-    end
     return false
 end
 
