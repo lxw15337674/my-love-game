@@ -5,7 +5,7 @@
 local Game = {
     w = 1280,
     h = 720,
-    state = "menu", -- menu, playing, levelup, shop, gameover, victory
+    state = "menu", -- menu, playing, paused, levelup, shop, gameover, victory
     time = 0,
     wave = 1,
     waveTime = 30,
@@ -2097,6 +2097,21 @@ local function drawShop()
     uiButton("回收最后武器", groupX + groupW - secondaryW, actionY, secondaryW, 56, C.white)
 end
 
+local function drawPauseOverlay()
+    love.graphics.setColor(0, 0, 0, 0.50)
+    love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
+    local x, y, w, h = Game.w / 2 - 270, Game.h / 2 - 150, 540, 300
+    panel(x, y, w, h)
+    love.graphics.setFont(Game.fonts.big)
+    color(C.gold)
+    love.graphics.printf("暂停", x + 20, y + 34, w - 40, "center")
+    love.graphics.setFont(Game.fonts.small)
+    color(C.muted)
+    love.graphics.printf("战斗已冻结 · Esc 继续", x + 20, y + 96, w - 40, "center")
+    uiButton("继续游戏", Game.w / 2 - 170, y + 146, 340, 58, C.cyan, C.white, Game.fonts.normal)
+    uiButton("退出本局", Game.w / 2 - 170, y + 220, 340, 58, C.red, C.white, Game.fonts.normal)
+end
+
 local function drawEnd(title, subtitle, c)
     love.graphics.setColor(0, 0, 0, 0.56)
     love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
@@ -2127,6 +2142,7 @@ function love.draw()
     if Game.state == "levelup" then drawWorld(); drawHud(); drawLevelUp(); love.graphics.pop(); return end
     drawWorld()
     drawHud()
+    if Game.state == "paused" then drawPauseOverlay(); love.graphics.pop(); return end
     if Game.messageTimer > 0 then
         local toastY = 140
         panel(Game.w / 2 - 260, toastY, 520, 40)
@@ -2213,6 +2229,10 @@ local function handlePointer(x, y)
         if hitRect(x, y, groupX, actionY, secondaryW, 56) then refreshShop(); return true end
         if hitRect(x, y, Game.w / 2 - primaryW / 2, actionY - 8, primaryW, 72) then startWave(); return true end
         if hitRect(x, y, groupX + groupW - secondaryW, actionY, secondaryW, 56) then recycleWeapon(); return true end
+    elseif Game.state == "paused" then
+        local menuY = Game.h / 2 - 150
+        if hitRect(x, y, Game.w / 2 - 170, menuY + 146, 340, 58) then Game.state = "playing"; toast("继续战斗"); return true end
+        if hitRect(x, y, Game.w / 2 - 170, menuY + 220, 340, 58) then Game.state = "menu"; toast("已退出本局"); return true end
     elseif Game.state == "gameover" or Game.state == "victory" then
         if hitRect(x, y, Game.w / 2 - 300, 205, 600, 260) then Game.state = "menu"; return true end
     end
@@ -2228,7 +2248,14 @@ function love.touchpressed(id, x, y, dx, dy, pressure)
 end
 
 function love.keypressed(key)
-    if key == "escape" then love.event.quit() end
+    if key == "escape" then
+        if Game.state == "playing" then Game.state = "paused"; toast("已暂停"); return end
+        if Game.state == "paused" then Game.state = "playing"; toast("继续战斗"); return end
+        if Game.state == "gameover" or Game.state == "victory" then Game.state = "menu"; return end
+        love.event.quit()
+    end
+
+    if Game.state == "paused" then return end
 
     if Game.state == "menu" then
         if key == "a" or key == "left" then Game.selectedObjective = Game.selectedObjective - 1; if Game.selectedObjective < 1 then Game.selectedObjective = #objectiveDefs end; return end
