@@ -1705,37 +1705,81 @@ local function drawWorld()
     for _, t in ipairs(Game.damageTexts) do color(t.color, clamp(t.life / 0.72, 0, 1)); love.graphics.setFont(Game.fonts.tiny); love.graphics.print(t.text, t.x, t.y) end
 end
 
+local function hitRect(px, py, x, y, w, h)
+    return px >= x and px <= x + w and py >= y and py <= y + h
+end
+
+local function uiButton(text, x, y, w, h, bg, fg, font)
+    local c = bg or C.cyan
+    local strong = font == Game.fonts.normal
+    color(c, strong and 0.34 or 0.20)
+    love.graphics.rectangle("fill", x, y, w, h, 14, 14)
+    color(c, strong and 0.96 or 0.74)
+    love.graphics.setLineWidth(strong and 3 or 2)
+    love.graphics.rectangle("line", x, y, w, h, 14, 14)
+    love.graphics.setLineWidth(1)
+    if strong then
+        color(C.white, 0.12)
+        love.graphics.rectangle("fill", x + 6, y + 6, w - 12, math.max(8, h * 0.36), 10, 10)
+    end
+    love.graphics.setFont(font or Game.fonts.small)
+    color(fg or C.white)
+    love.graphics.printf(text, x, y + math.floor((h - (font or Game.fonts.small):getHeight()) / 2) + 1, w, "center")
+end
+
 local function drawMenu()
     local obj = selectedObjective()
     love.graphics.setFont(Game.fonts.title)
     color(C.white)
-    love.graphics.printf("心核幸存者", 0, 58, Game.w, "center")
+    love.graphics.printf("心核幸存者", 0, 34, Game.w, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
-    love.graphics.printf("A/D 选择关卡目标  ·  Q/E 调整危险等级  ·  回车开始", 0, 144, Game.w, "center")
+    love.graphics.printf("冷黑心核 · 30 秒生存波次 · 随机构筑进化", 0, 160, Game.w, "center")
 
-    panel(Game.w / 2 - 600, 188, 1200, 170)
+    -- 左侧主视觉：让首页先像游戏 Title Screen，而不是设置面板
+    panel(90, 225, 720, 440)
     love.graphics.setFont(Game.fonts.big)
     color(C.gold)
-    love.graphics.printf("统一白板开局", Game.w / 2 - 600, 214, 1200, "center")
+    love.graphics.printf("实验体启动", 110, 255, 680, "center")
+    color(C.cyan, 0.16)
+    love.graphics.circle("fill", 450, 455, 142)
+    color(C.pink, 0.42)
+    love.graphics.circle("line", 450, 455, 154)
+    color(C.cyan, 0.68)
+    love.graphics.circle("line", 450, 455, 98)
+    color(C.pink)
+    drawHeart(450, 462, 1.25)
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf("没有固定角色职业。武器、护盾、永久道具和临时战术道具都由商店随机生成；每关结束固定三选一，把流派从奖励里长出来。", Game.w / 2 - 530, 282, 1060, "center")
+    love.graphics.printf("随机构筑，每局不同", 160, 590, 580, "center")
+    color(C.muted)
+    love.graphics.printf("战斗、奖励、商店，三步把白板推成怪物。", 160, 625, 580, "center")
 
-    panel(Game.w / 2 - 500, 410, 1000, 210)
+    -- 右侧玩法选择
+    panel(895, 225, 935, 440)
     love.graphics.setFont(Game.fonts.big)
     color(C.cyan)
-    love.graphics.printf(obj.name, Game.w / 2 - 500, 438, 1000, "center")
+    love.graphics.printf(obj.name, 925, 260, 875, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf(obj.desc, Game.w / 2 - 440, 504, 880, "center")
-    color(C.gold)
-    local dangerText = Game.danger == 0 and "危险等级 0：基础难度，无额外修正" or ("危险等级 " .. Game.danger .. "：敌人强化，战后补给增加")
-    love.graphics.printf(dangerText, Game.w / 2 - 440, 558, 880, "center")
+    love.graphics.printf(obj.desc, 980, 342, 765, "center")
 
-    love.graphics.setFont(Game.fonts.small)
+    local dangerText = Game.danger == 0 and "危险等级 0：基础难度" or ("危险等级 " .. Game.danger .. "：敌人强化，补给增加")
+    color(C.gold)
+    love.graphics.printf(dangerText, 980, 414, 765, "center")
+
     color(C.muted)
-    love.graphics.printf("当前：白板构筑 / " .. obj.name .. " / 危险 " .. Game.danger, 0, 622, Game.w, "center")
+    love.graphics.printf("当前：白板构筑 / " .. obj.name .. " / 危险 " .. Game.danger, 980, 470, 765, "center")
+
+    uiButton("目标 ◀", 980, 535, 170, 54, C.cyan)
+    uiButton("危险 -", 1180, 535, 160, 54, C.white)
+    uiButton("危险 +", 1370, 535, 160, 54, C.white)
+    uiButton("目标 ▶", 1560, 535, 170, 54, C.cyan)
+
+    uiButton("开始实验", Game.w / 2 - 190, 720, 380, 76, C.gold, C.white, Game.fonts.normal)
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf("键盘：A/D 目标 · Q/E 危险 · Enter 开始｜鼠标/触摸：直接点按钮", 0, 815, Game.w, "center")
 end
 
 local function drawLevelUp()
@@ -1757,7 +1801,7 @@ local function drawLevelUp()
         wr.coins or 0
     )
     love.graphics.printf(settlement, Game.w / 2 - 560, 258, 1120, "center")
-    local detail = string.format("收获 +%d｜通关奖励 +%d｜按 1 / 2 / 3 选择，随后进入商店。", wr.harvest or 0, wr.clear or 0)
+    local detail = string.format("收获 +%d｜通关奖励 +%d｜按 1 / 2 / 3 或点击卡牌选择，随后进入商店。", wr.harvest or 0, wr.clear or 0)
     love.graphics.printf(detail, Game.w / 2 - 560, 296, 1120, "center")
     local w, h, gap = 330, 210, 34
     local sx = Game.w / 2 - (w * 3 + gap * 2) / 2
@@ -1909,29 +1953,35 @@ local function drawBuildPanel(x, y, w, h)
 end
 
 local function drawShop()
-    panel(54, 78, Game.w - 108, Game.h - 100)
+    panel(54, 66, Game.w - 108, Game.h - 86)
     love.graphics.setFont(Game.fonts.big)
     color(C.white)
     local clearedWave = math.max(1, Game.wave - 1)
-    love.graphics.printf("商店 / 第 " .. clearedWave .. " 波战后补给", 70, 102, Game.w - 140, "center")
+    love.graphics.printf("商店 / 第 " .. clearedWave .. " 波战后补给", 70, 88, Game.w - 140, "center")
     love.graphics.setFont(Game.fonts.small)
     local rerollCost = 3 + Game.shopRefresh * 2
     local refreshText = Game.freeRefresh > 0 and ("免费刷新 " .. Game.freeRefresh .. " 次") or ("刷新 " .. rerollCost .. " 晶币")
     color(C.gold)
     local shieldName = Game.player.shieldItem and Game.player.shieldItem.name or "无护盾"
-    love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  护盾：" .. shieldName .. "  ·  " .. refreshText .. "  ·  回车下一波", 70, 150, Game.w - 140, "center")
+    love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  护盾：" .. shieldName, 70, 150, Game.w - 140, "center")
     color(C.muted)
-    love.graphics.printf("1-4 购买/合成  ·  点按锁定  ·  Shift+R 刷新  ·  E 回收最后武器", 70, 176, Game.w - 140, "center")
+    love.graphics.printf("点击购买/锁定 · 下方按钮刷新、回收、进入下一波", 70, 184, Game.w - 140, "center")
 
     local sideW = 360
-    local cardY = 238
+    local cardY = 252
+    local cardH = 420
     local cardW = (Game.w - 190 - sideW) / 4
     for i, item in ipairs(Game.shop) do
         local x = 72 + (i - 1) * (cardW + 10)
-        drawShopCard(item, i, x, cardY, cardW, 420)
+        drawShopCard(item, i, x, cardY, cardW, cardH)
     end
 
-    drawBuildPanel(Game.w - 72 - sideW, cardY, sideW, 420)
+    drawBuildPanel(Game.w - 72 - sideW, cardY, sideW, cardH)
+
+    local actionY = cardY + cardH + 30
+    uiButton(refreshText, 274, actionY, 240, 56, C.cyan)
+    uiButton("回收最后武器", 548, actionY, 240, 56, C.white)
+    uiButton("进入下一波", Game.w / 2 - 180, actionY - 8, 360, 72, C.gold, C.white, Game.fonts.normal)
 end
 
 local function drawEnd(title, subtitle, c)
@@ -1997,20 +2047,67 @@ local function recycleWeapon()
     toast("回收 " .. w.name .. "：+" .. value .. " 晶币")
 end
 
-function love.mousepressed(x, y, button)
-    if button == 1 and Game.state == "shop" then
-        local sideW = 282
-        local cardY = 234
+local function refreshShop()
+    if Game.freeRefresh and Game.freeRefresh > 0 then
+        Game.freeRefresh = Game.freeRefresh - 1
+        rollShop(true)
+        toast("免费刷新")
+        return
+    end
+    local cost = 3 + Game.shopRefresh * 2
+    if Game.coins >= cost then
+        Game.coins = Game.coins - cost
+        Game.shopRefresh = Game.shopRefresh + 1
+        Game.runStats.rerolls = (Game.runStats.rerolls or 0) + 1
+        rollShop(true)
+        toast("商店已刷新")
+    else
+        toast("晶币不足，无法刷新")
+    end
+end
+
+local function handlePointer(x, y)
+    if Game.state == "menu" then
+        if hitRect(x, y, 980, 535, 170, 54) then Game.selectedObjective = Game.selectedObjective - 1; if Game.selectedObjective < 1 then Game.selectedObjective = #objectiveDefs end; return true end
+        if hitRect(x, y, 1180, 535, 160, 54) then Game.danger = math.max(0, Game.danger - 1); return true end
+        if hitRect(x, y, 1370, 535, 160, 54) then Game.danger = math.min(6, Game.danger + 1); return true end
+        if hitRect(x, y, 1560, 535, 170, 54) then Game.selectedObjective = Game.selectedObjective + 1; if Game.selectedObjective > #objectiveDefs then Game.selectedObjective = 1 end; return true end
+        if hitRect(x, y, Game.w / 2 - 190, 720, 380, 76) then resetRun(); return true end
+    elseif Game.state == "levelup" then
+        local w, h, gap = 330, 210, 34
+        local sx = Game.w / 2 - (w * 3 + gap * 2) / 2
+        for i = 1, 3 do
+            local cx = sx + (i - 1) * (w + gap)
+            if hitRect(x, y, cx, 350, w, h) then chooseLevelReward(i); return true end
+        end
+    elseif Game.state == "shop" then
+        local sideW = 360
+        local cardY = 252
+        local cardH = 420
         local cardW = (Game.w - 190 - sideW) / 4
         for i = 1, 4 do
             local cardX = 72 + (i - 1) * (cardW + 10)
-            if x >= cardX and x <= cardX + cardW and y >= cardY and y <= cardY + 285 then
-                Game.locked[i] = not Game.locked[i]
-                toast(Game.locked[i] and "已锁定商品" or "已取消锁定")
-                return
-            end
+            local buyY = cardY + cardH - 74
+            local lockY = cardY + cardH - 34
+            if hitRect(x, y, cardX + 16, buyY, cardW - 32, 34) then buySlot(i); return true end
+            if hitRect(x, y, cardX + 16, lockY, cardW - 32, 28) then Game.locked[i] = not Game.locked[i]; toast(Game.locked[i] and "已锁定商品" or "已取消锁定"); return true end
         end
+        local actionY = cardY + cardH + 30
+        if hitRect(x, y, 274, actionY, 240, 56) then refreshShop(); return true end
+        if hitRect(x, y, 548, actionY, 240, 56) then recycleWeapon(); return true end
+        if hitRect(x, y, Game.w / 2 - 180, actionY - 8, 360, 72) then startWave(); return true end
+    elseif Game.state == "gameover" or Game.state == "victory" then
+        if hitRect(x, y, Game.w / 2 - 300, 205, 600, 260) then Game.state = "menu"; return true end
     end
+    return false
+end
+
+function love.mousepressed(x, y, button)
+    if button == 1 then handlePointer(x, y) end
+end
+
+function love.touchpressed(id, x, y, dx, dy, pressure)
+    handlePointer(x, y)
 end
 
 function love.keypressed(key)
@@ -2043,14 +2140,7 @@ function love.keypressed(key)
         if key == "e" then recycleWeapon() end
         if key == "r" then
             if not (love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")) then toast("刷新需按 Shift+R，避免误触"); return end
-            if Game.freeRefresh and Game.freeRefresh > 0 then
-                Game.freeRefresh = Game.freeRefresh - 1
-                rollShop(true)
-                toast("免费刷新")
-                return
-            end
-            local cost = 3 + Game.shopRefresh * 2
-            if Game.coins >= cost then Game.coins = Game.coins - cost; Game.shopRefresh = Game.shopRefresh + 1; Game.runStats.rerolls = (Game.runStats.rerolls or 0) + 1; rollShop(true); toast("商店已刷新") else toast("晶币不足，无法刷新") end
+            refreshShop()
         end
     end
 end
