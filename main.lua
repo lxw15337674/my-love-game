@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.27"
+local VERSION = "v2026.05.22.28"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2699,14 +2699,11 @@ local function itemTooltip(item)
         end
         return tip
     end
-    local slotDesc = item.kind == "shield" and "护盾组件 · 安装到护盾槽。" or "构筑装备 · 进入道具槽或作为战术生效。"
     local lines = {
         "价格：◆ " .. (item.price or 0),
         {text = "类型：" .. kindText .. " · " .. kindDesc, color = C.muted},
-        {text = "槽位：" .. slotDesc, color = C.muted},
         {text = "效果：" .. modText(item.desc or "无说明"), color = C.white, gap = 6}
     }
-    if item.kind == "temp" then lines[#lines + 1] = "生效：仅下一波" else lines[#lines + 1] = "生效：本局永久" end
     if item.flag then lines[#lines + 1] = "特殊协议：" .. item.flag end
     return {title = "商品：" .. (item.name or "未知道具"), lines = lines}
 end
@@ -2747,20 +2744,19 @@ local function drawShopCard(item, i, x, y, w, h)
 
     local rarityText = rarityLabel[rarity] or rarity
     local kindText = kindLabel[item.kind] or item.kind
-    local cardTags = {
-        {text = rarityText, color = rc},
-        {text = kindText, color = accent}
-    }
+    local cardTags
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
         local elem = elements[def.element]
-        cardTags[#cardTags + 1] = {text = brand and brand.name or "武器", color = brand and brand.color or C.white}
-        cardTags[#cardTags + 1] = {text = elem and elem.name or "动能", color = elem and elem.color or C.white}
-    elseif item.kind == "shield" then
-        cardTags[#cardTags + 1] = {text = "护盾组件", color = accent}
+        cardTags = {
+            {text = rarityText, color = rc},
+            {text = kindText, color = accent},
+            {text = brand and brand.name or "武器", color = brand and brand.color or C.white},
+            {text = elem and elem.name or "动能", color = elem and elem.color or C.white}
+        }
     else
-        cardTags[#cardTags + 1] = {text = "构筑装备", color = accent}
+        cardTags = {{text = kindText, color = accent}}
     end
     love.graphics.setFont(Game.fonts.tiny)
     drawTagRow(cardTags, x + 18, y + 13, w - 82)
