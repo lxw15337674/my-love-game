@@ -41,7 +41,7 @@ jobs:
             t.identity = "heartcore_survivor"
             t.version = "11.4"
             t.console = false
-            t.window.title = "仙凡之争"
+            t.window.title = "心核幸存者"
             t.window.width = 1920
             t.window.height = 1080
             t.window.resizable = false
@@ -51,7 +51,7 @@ jobs:
 
       - name: Build web version with love.js
         run: |
-          npx --yes love.js@11.4.1 build/game-src dist -c -t "仙凡之争" -m 134217728
+          npx --yes love.js@11.4.1 build/game-src dist -c -t "心核幸存者" -m 134217728
           ./scripts/patch-web-export.py dist
           touch dist/.nojekyll
 
