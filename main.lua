@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.10"
+local VERSION = "v2026.05.22.11"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 
 local Game = {
@@ -472,6 +472,17 @@ local function makeTone(freq, duration, volume)
         data:setSample(i, math.sin(TAU * freq * t) * (volume or 0.18) * fade)
     end
     return love.audio.newSource(data, "static")
+end
+
+local function loadSound(path, fallbackFreq, fallbackDuration, volume)
+    if love.audio then
+        local ok, src = pcall(love.audio.newSource, path, "static")
+        if ok and src then
+            src:setVolume(volume or 0.35)
+            return src
+        end
+    end
+    return makeTone(fallbackFreq, fallbackDuration, volume)
 end
 
 local function playCue(name)
@@ -1599,11 +1610,11 @@ function love.load()
     Game.fonts = {tiny = uiFont(18), subtitle = uiFont(22), small = uiFont(24), normal = uiFont(31), big = uiFont(50), title = uiFont(84)}
     loadImages()
     Game.sounds = {
-        pickup = makeTone(880, 0.06, 0.12),
-        hit = makeTone(180, 0.05, 0.10),
-        level = makeTone(660, 0.16, 0.14),
-        shop = makeTone(520, 0.10, 0.12),
-        elite = makeTone(120, 0.22, 0.16)
+        pickup = loadSound("assets/sfx/ui_select.ogg", 880, 0.06, 0.18),
+        hit = loadSound("assets/sfx/player_hit.ogg", 180, 0.05, 0.28),
+        level = loadSound("assets/sfx/level_open.ogg", 660, 0.16, 0.30),
+        shop = loadSound("assets/sfx/shop_confirm.ogg", 520, 0.10, 0.26),
+        elite = loadSound("assets/sfx/elite_down.ogg", 120, 0.22, 0.34)
     }
     for _ = 1, 130 do
         Game.stars[#Game.stars + 1] = {x = rnd() * Game.w, y = rnd() * Game.h, r = rnd(7, 21) / 10, speed = rnd(8, 38), phase = rnd() * TAU}
@@ -2318,43 +2329,44 @@ local function drawShopCard(item, i, x, y, w, h)
 
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf(item.name, x + 18, y + 48, w - 36, "left")
+    love.graphics.printf(compactDesc(item.name, 16), x + 18, y + 50, w - 36, "left")
     love.graphics.setFont(Game.fonts.tiny)
-    local desc = compactDesc(item.desc, w < 420 and 34 or 42)
+    local desc = compactDesc(item.desc, 28)
     local descColor = desc:find("%-") and C.red or (desc:find("%+") and C.green or C.muted)
     color(descColor)
-    love.graphics.printf(desc, x + 18, y + 76, w - 36, "left")
+    love.graphics.printf(desc, x + 18, y + 82, w - 36, "left")
 
+    local displayY, displayH = y + 112, 58
     if item.kind == "weapon" then
-        color(accent, 0.10)
-        love.graphics.rectangle("fill", x + 18, y + 102, w - 36, 54, 12, 12)
+        color(accent, 0.11)
+        love.graphics.rectangle("fill", x + 18, displayY, w - 36, displayH, 12, 12)
         color(C.white, 0.08)
-        love.graphics.rectangle("fill", x + 32, y + 116, w - 64, 4, 2, 2)
-        love.graphics.rectangle("fill", x + 32, y + 138, w - 64, 4, 2, 2)
+        love.graphics.rectangle("fill", x + 34, displayY + 18, w - 68, 5, 3, 3)
+        love.graphics.rectangle("fill", x + 48, displayY + 36, w - 96, 5, 3, 3)
         color(accent, 0.30)
-        love.graphics.rectangle("line", x + 18.5, y + 102.5, w - 37, 53, 12, 12)
+        love.graphics.rectangle("line", x + 18.5, displayY + 0.5, w - 37, displayH - 1, 12, 12)
     else
-        color(accent, 0.10)
-        love.graphics.rectangle("fill", x + 18, y + 102, w - 36, 54, 10, 10)
+        color(accent, 0.11)
+        love.graphics.rectangle("fill", x + 18, displayY, w - 36, displayH, 10, 10)
         color(accent, 0.25)
-        love.graphics.rectangle("line", x + 18.5, y + 102.5, w - 37, 53, 10, 10)
+        love.graphics.rectangle("line", x + 18.5, displayY + 0.5, w - 37, displayH - 1, 10, 10)
         color(C.white, 0.07)
-        love.graphics.line(x + 32, y + 129, x + w - 32, y + 129)
-        love.graphics.line(x + w / 2, y + 108, x + w / 2, y + 150)
+        love.graphics.line(x + 34, displayY + 29, x + w - 34, displayY + 29)
+        love.graphics.line(x + w / 2, displayY + 10, x + w / 2, displayY + displayH - 10)
     end
 
-    local chipY = y + 116
+    local chipY = displayY + 18
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
         local elem = elements[def.element]
         color(brand.color)
-        love.graphics.printf(brand.name, x + 32, chipY, 96, "left")
+        love.graphics.printf(brand.name, x + 34, chipY, 82, "left")
         color(elem.color)
-        love.graphics.printf(elem.name .. " · " .. def.damage .. "伤 · " .. string.format("%.2f", def.cooldown) .. "CD", x + 126, chipY, w - 154, "left")
+        love.graphics.printf(elem.name .. " · " .. def.damage .. "伤 · " .. string.format("%.2f", def.cooldown) .. "CD", x + 118, chipY, w - 146, "left")
     else
         color(accent, 0.64)
-        love.graphics.printf(item.kind == "shield" and "护盾组件" or "构筑装备", x + 32, chipY, w - 64, "left")
+        love.graphics.printf(item.kind == "shield" and "护盾组件" or "构筑装备", x + 34, chipY, w - 68, "left")
     end
 
     local buyY = y + h - 36
