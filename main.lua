@@ -2,11 +2,11 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.16"
+local VERSION = "v2026.05.22.17"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
-local ACTIVE_SKILL_SPEED_MULT = 4.2
+local ACTIVE_SKILL_SPEED_MULT = 2.1
 
 local Game = {
     w = VIRTUAL_W,
@@ -1743,7 +1743,16 @@ function love.update(dt)
         Game.autoActiveDone = true
         useActiveSkill()
     end
-    if os.getenv("LOVE_AUTOMENU") == "1" and not Game.autoMenuDone then
+    if os.getenv("LOVE_AUTOPAUSE") == "1" and not Game.autoPauseDone then
+        if Game.state == "menu" then resetRun() end
+        Game.autoPauseClock = (Game.autoPauseClock or 0) + dt
+        if Game.autoPauseClock > 0.7 and Game.state == "playing" then Game.state = "paused" end
+        if Game.autoPauseClock > 1.0 then
+            Game.autoPauseDone = true
+            love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-pause.png")
+            love.event.quit()
+        end
+    elseif os.getenv("LOVE_AUTOMENU") == "1" and not Game.autoMenuDone then
         Game.autoMenuClock = (Game.autoMenuClock or 0) + dt
         if Game.autoMenuClock > 0.4 then
             Game.autoMenuDone = true
@@ -2027,6 +2036,28 @@ local function drawWorld()
         end
         color(C.cyan, 0.58)
         love.graphics.circle("line", p.x, p.y, p.r + 14)
+        local barW, barH = 72, 5
+        local barX = p.x - barW / 2
+        local barY = p.y - p.r - 42
+        if p.hp < p.maxHp then
+            love.graphics.setColor(0, 0, 0, 0.62)
+            love.graphics.rectangle("fill", barX - 1, barY - 8, barW + 2, barH + 2, 3, 3)
+            color(C.pink, 0.95)
+            love.graphics.rectangle("fill", barX, barY - 7, barW * clamp(p.hp / math.max(1, p.maxHp), 0, 1), barH, 3, 3)
+            color(C.white, 0.42)
+            love.graphics.rectangle("line", barX - 0.5, barY - 7.5, barW + 1, barH + 1, 3, 3)
+        end
+        if skill then
+            local cdMax = skill.cooldown or ACTIVE_SKILL_CD
+            local ready = (skill.cd or 0) <= 0
+            local pctReady = ready and 1 or clamp(1 - ((skill.cd or 0) / math.max(0.1, cdMax)), 0, 1)
+            love.graphics.setColor(0, 0, 0, 0.64)
+            love.graphics.rectangle("fill", barX - 1, barY, barW + 2, barH + 2, 3, 3)
+            color(C.white, ready and 0.98 or 0.72)
+            love.graphics.rectangle("fill", barX, barY + 1, barW * pctReady, barH, 3, 3)
+            color(C.white, 0.42)
+            love.graphics.rectangle("line", barX - 0.5, barY + 0.5, barW + 1, barH + 1, 3, 3)
+        end
     end
 
     for _, q in ipairs(Game.particles) do color(q.color, clamp(q.life / q.max, 0, 1)); love.graphics.circle("fill", q.x, q.y, q.r) end
@@ -2416,31 +2447,45 @@ local function drawTooltip(tip)
 end
 
 local weaponCompareValue
+local compareColor
 
-local function weaponTooltip(weapon, titlePrefix)
+local function diffText(delta, suffix)
+    if math.abs(delta) < 0.001 then return "（±0" .. (suffix or "") .. "）" end
+    local sign = delta > 0 and "+" or ""
+    return "（" .. sign .. delta .. (suffix or "") .. "）"
+end
+
+local function weaponTooltip(weapon, titlePrefix, compareWeapon)
     local p = Game.player
     local brand = brands[weapon.brand]
     local elem = elements[weapon.element] or elements.kinetic
     local v = weaponCompareValue(weapon)
+    local base = compareWeapon and weaponCompareValue(compareWeapon) or nil
+    local function attr(label, value, key, higherBetter, suffix, gap)
+        if not base then return {text = label .. "：" .. value .. (suffix or ""), color = C.white, gap = gap} end
+        local delta = key == "cooldown" and tonumber(string.format("%.2f", v[key] - base[key])) or (v[key] - base[key])
+        return {text = label .. "：" .. value .. (suffix or "") .. " " .. diffText(delta, suffix), color = compareColor(delta, higherBetter), gap = gap}
+    end
     local lines = {
         {text = "品牌：" .. (brand and brand.name or "武器"), color = brand and brand.color or C.white},
         {text = "元素：" .. elem.name, color = elem.color},
         {text = "标签：" .. (brand and brand.tag or elem.desc), color = C.muted},
-        {text = "单发伤害：" .. v.damage, color = C.white, gap = 6},
-        {text = "弹体数量：" .. v.count, color = C.white},
-        {text = "总伤害：" .. v.totalDamage, color = C.white},
-        {text = "冷却：" .. string.format("%.2f", v.cooldown) .. "s", color = C.white},
-        {text = "射程：" .. v.range, color = C.white},
-        {text = "弹速：" .. v.speed, color = C.white},
-        {text = "穿透：" .. v.pierce, color = C.white},
-        {text = "弹射：" .. v.bounce, color = C.white},
+        attr("单发伤害", v.damage, "damage", true, nil, 6),
+        attr("弹体数量", v.count, "count", true),
+        attr("总伤害", v.totalDamage, "totalDamage", true),
+        attr("冷却", string.format("%.2f", v.cooldown), "cooldown", false, "s"),
+        attr("射程", v.range, "range", true),
+        attr("弹速", v.speed, "speed", true),
+        attr("穿透", v.pierce, "pierce", true),
+        attr("弹射", v.bounce, "bounce", true),
         {text = "散布：" .. string.format("%.2f", weapon.spread or 0), color = C.white}
     }
+    if compareWeapon then lines[#lines + 1] = {text = "差值基准：" .. (compareWeapon.name or "当前武器"), color = C.gold, gap = 6} end
     if weapon.splash then lines[#lines + 1] = {text = "特殊：爆炸半径 " .. weapon.splash, color = C.gold, gap = 6} end
     if weapon.chain then lines[#lines + 1] = {text = "特殊：连锁 " .. (weapon.chain + math.floor((p.stats.bounce or 0) / 2)) .. " 次", color = C.gold, gap = 6} end
     if weapon.aura then lines[#lines + 1] = {text = "特殊：牵引光环 " .. weapon.aura, color = C.gold, gap = 6} end
     if weapon.desc then lines[#lines + 1] = {text = "说明：" .. weapon.desc, color = C.muted, gap = 6} end
-    return {title = (titlePrefix or "武器") .. "：" .. (weapon.name or "未知武器"), lines = lines, width = 400}
+    return {title = (titlePrefix or "武器") .. "：" .. (weapon.name or "未知武器"), lines = lines, width = compareWeapon and 430 or 400}
 end
 
 weaponCompareValue = function(weapon)
@@ -2457,7 +2502,7 @@ weaponCompareValue = function(weapon)
     }
 end
 
-local function compareColor(delta, higherBetter)
+compareColor = function(delta, higherBetter)
     if math.abs(delta) < 0.001 then return C.muted end
     local good = higherBetter and delta > 0 or delta < 0
     return good and C.green or C.red
@@ -2486,13 +2531,10 @@ local function itemTooltip(item)
     if not item then return nil end
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
-        local tip = weaponTooltip(def, "商品武器")
-        table.insert(tip.lines, 1, (rarityLabel[item.rarity] or item.rarity or "普通") .. " · 价格 " .. item.price .. " 材料")
         local selected = Game.player.weapons[Game.selectedWeaponIndex or 1]
-        if selected then
-            for _, entry in ipairs(weaponComparisonLines(selected, def)) do tip.lines[#tip.lines + 1] = entry end
-            tip.width = 440
-        else
+        local tip = weaponTooltip(def, "商品武器", selected)
+        table.insert(tip.lines, 1, (rarityLabel[item.rarity] or item.rarity or "普通") .. " · 价格 " .. item.price .. " 材料")
+        if not selected then
             tip.lines[#tip.lines + 1] = {text = "提示：先点击右侧武器槽，选择要对比的武器。", color = C.muted, gap = 8}
         end
         return tip
@@ -2565,32 +2607,42 @@ local function drawShopCard(item, i, x, y, w, h)
         love.graphics.arc("line", topLockX + 15, topLockY + 8, 5, math.pi, TAU)
     end
 
+    local identityY = y + 48
+    if item.kind == "weapon" and item.id and weaponDefs[item.id] then
+        local def = item.weaponDef or weaponDefs[item.id]
+        local brand = brands[def.brand]
+        local elem = elements[def.element]
+        local tx = x + 18
+        tx = tx + tagPill(brand.name, tx, identityY, brand.color, C.bgA) + 8
+        tagPill(elem.name, tx, identityY, elem.color, C.bgA)
+    else
+        tagPill(item.kind == "shield" and "护盾组件" or "构筑装备", x + 18, identityY, accent, C.bgA)
+    end
+
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf(compactDesc(item.name, 16), x + 18, y + 50, w - 36, "left")
+    love.graphics.printf(compactDesc(item.name, 16), x + 18, y + 80, w - 36, "left")
     love.graphics.setFont(Game.fonts.tiny)
-    local desc = compactDesc(item.desc, 28)
+    local desc = compactDesc(item.desc, 30)
     color(C.muted)
-    love.graphics.printf(desc, x + 18, y + 82, w - 36, "left")
+    love.graphics.printf(desc, x + 18, y + 112, w - 36, "left")
 
-    local displayY, displayH = y + 112, 58
+    local displayY, displayH = y + 144, 36
     color(C.white, 0.045)
     love.graphics.rectangle("fill", x + 18, displayY, w - 36, displayH, 12, 12)
     color(C.white, 0.18)
     love.graphics.rectangle("line", x + 18.5, displayY + 0.5, w - 37, displayH - 1, 12, 12)
 
-    local chipY = displayY + 17
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
-        local brand = brands[def.brand]
-        local elem = elements[def.element]
-        local tx = x + 34
-        tx = tx + tagPill(brand.name, tx, chipY - 3, brand.color, C.bgA) + 8
-        tx = tx + tagPill(elem.name, tx, chipY - 3, elem.color, C.bgA) + 8
         color(C.white)
-        love.graphics.printf(def.damage .. "伤 · " .. string.format("%.2f", def.cooldown) .. "CD", tx, chipY + 2, x + w - 34 - tx, "left")
+        love.graphics.printf(def.damage .. " 伤害", x + 34, displayY + 11, 88, "left")
+        color(C.muted)
+        love.graphics.printf(string.format("%.2f", def.cooldown) .. " CD", x + 122, displayY + 11, 82, "left")
+        love.graphics.printf(math.floor(def.range or 0) .. " 射程", x + 204, displayY + 11, w - 238, "left")
     else
-        tagPill(item.kind == "shield" and "护盾组件" or "构筑装备", x + 34, chipY - 3, accent, C.bgA)
+        color(C.white)
+        love.graphics.printf(compactDesc(item.desc, 34), x + 34, displayY + 11, w - 68, "left")
     end
 
     local buyY = y + h - 36
@@ -2657,8 +2709,10 @@ end
 
 local sellWeapon, sellShield, sellItem
 
-local function drawCompactBuildPanel(x, y, w, h)
+local function drawCompactBuildPanel(x, y, w, h, opts)
     local p = Game.player
+    opts = opts or {}
+    local showSell = opts.showSell ~= false
     love.graphics.setColor(0.04, 0.08, 0.14, 0.58)
     love.graphics.rectangle("fill", x, y, w, h, 18, 18)
     color(C.cyan, 0.18)
@@ -2728,8 +2782,8 @@ local function drawCompactBuildPanel(x, y, w, h)
         love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 33, 9, 9)
         love.graphics.setLineWidth(1)
         color(weapon and C.white or C.muted)
-        love.graphics.printf(weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, 10) or "空武器", sx + 10, sy + 9, slotW - 56, "left")
-        if weapon then
+        love.graphics.printf(weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, showSell and 10 or 14) or "空武器", sx + 10, sy + 9, slotW - (showSell and 56 or 20), "left")
+        if weapon and showSell then
             color(C.red, 0.14)
             love.graphics.rectangle("fill", sx + slotW - 42, sy + 6, 32, 22, 7, 7)
             color(C.red, 0.58)
@@ -2738,7 +2792,7 @@ local function drawCompactBuildPanel(x, y, w, h)
         end
         if weapon and hitRect(mx, my, sx, sy, slotW, 34) then
             local tip = weaponTooltip(weapon, selected and "当前武器 · 对比中" or "当前武器")
-            tip.lines[#tip.lines + 1] = {text = "操作：点击槽位选中；点击右侧“卖”出售。", color = C.gold, gap = 8}
+            tip.lines[#tip.lines + 1] = {text = showSell and "操作：点击槽位选中；点击右侧“卖”出售。" or "当前暂停中：构筑信息只读展示。", color = C.gold, gap = 8}
             return tip
         end
     end
@@ -2755,8 +2809,8 @@ local function drawCompactBuildPanel(x, y, w, h)
     color(C.cyan, shield and 0.52 or 0.22)
     love.graphics.rectangle("line", x + 14.5, shieldY + 0.5, w - 29, 41, 10, 10)
     color(shield and C.white or C.muted)
-    love.graphics.printf(shield and compactDesc(shield.name, 16) or "空护盾槽", x + 26, shieldY + 12, w - 118, "left")
-    if shield then
+    love.graphics.printf(shield and compactDesc(shield.name, showSell and 16 or 22) or "空护盾槽", x + 26, shieldY + 12, w - (showSell and 118 or 92), "left")
+    if shield and showSell then
         color(C.red, 0.14)
         love.graphics.rectangle("fill", x + w - 66, shieldY + 9, 38, 24, 7, 7)
         color(C.red, 0.58)
@@ -2764,11 +2818,11 @@ local function drawCompactBuildPanel(x, y, w, h)
         love.graphics.printf("卖", x + w - 66, shieldY + 15, 38, "center")
     else
         color(C.cyan)
-        love.graphics.printf("0/1", x + w - 72, shieldY + 12, 44, "right")
+        love.graphics.printf(shield and "1/1" or "0/1", x + w - 72, shieldY + 12, 44, "right")
     end
     if shield and hitRect(mx, my, x + 14, shieldY, w - 28, 42) then
         local tip = itemTooltip(shield)
-        tip.lines[#tip.lines + 1] = {text = "操作：点击右侧“卖”出售护盾。", color = C.gold, gap = 8}
+        tip.lines[#tip.lines + 1] = {text = showSell and "操作：点击右侧“卖”出售护盾。" or "当前暂停中：构筑信息只读展示。", color = C.gold, gap = 8}
         return tip
     end
 
@@ -2789,15 +2843,17 @@ local function drawCompactBuildPanel(x, y, w, h)
         color(accent, 0.40)
         love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 29, 8, 8)
         color(C.white)
-        love.graphics.printf(compactDesc(item.name, 9), sx + 10, sy + 8, slotW - 54, "left")
-        color(C.red, 0.14)
-        love.graphics.rectangle("fill", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
-        color(C.red, 0.58)
-        love.graphics.rectangle("line", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
-        love.graphics.printf("卖", sx + slotW - 40, sy + 9, 30, "center")
+        love.graphics.printf(compactDesc(item.name, showSell and 9 or 13), sx + 10, sy + 8, slotW - (showSell and 54 or 20), "left")
+        if showSell then
+            color(C.red, 0.14)
+            love.graphics.rectangle("fill", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
+            color(C.red, 0.58)
+            love.graphics.rectangle("line", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
+            love.graphics.printf("卖", sx + slotW - 40, sy + 9, 30, "center")
+        end
         if hitRect(mx, my, sx, sy, slotW, 30) then
             local tip = itemTooltip(item)
-            tip.lines[#tip.lines + 1] = {text = "操作：点击右侧“卖”出售道具。", color = C.gold, gap = 8}
+            tip.lines[#tip.lines + 1] = {text = showSell and "操作：点击右侧“卖”出售道具。" or "当前暂停中：构筑信息只读展示。", color = C.gold, gap = 8}
             return tip
         end
     end
@@ -3168,18 +3224,26 @@ local function drawShop()
 end
 
 local function drawPauseOverlay()
-    love.graphics.setColor(0, 0, 0, 0.50)
+    love.graphics.setColor(0, 0, 0, 0.58)
     love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
-    local x, y, w, h = Game.w / 2 - 270, Game.h / 2 - 150, 540, 300
+    local x, y, w, h = Game.w / 2 - 510, Game.h / 2 - 345, 1020, 690
     panel(x, y, w, h)
+    local leftW, gap = 420, 28
+    local rightX, rightW = x + leftW + gap, w - leftW - gap - 24
+
     love.graphics.setFont(Game.fonts.big)
     color(C.gold)
-    love.graphics.printf("暂停", x + 20, y + 34, w - 40, "center")
+    love.graphics.printf("暂停", x + 28, y + 38, leftW - 56, "left")
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
-    love.graphics.printf("战斗已冻结 · Esc 继续", x + 20, y + 96, w - 40, "center")
-    uiButton("继续游戏", Game.w / 2 - 170, y + 146, 340, 58, C.cyan, C.white, Game.fonts.normal)
-    uiButton("退出本局", Game.w / 2 - 170, y + 220, 340, 58, C.red, C.white, Game.fonts.normal)
+    love.graphics.printf("战斗已冻结 · Esc 继续", x + 28, y + 104, leftW - 56, "left")
+    uiButton("继续游戏", x + 40, y + 180, leftW - 80, 58, C.cyan, C.white, Game.fonts.normal)
+    uiButton("设置", x + 40, y + 260, leftW - 80, 52, C.white, C.white, Game.fonts.small)
+    uiButton("退出本局", x + 40, y + 334, leftW - 80, 52, C.red, C.white, Game.fonts.small)
+
+    color(C.white, 0.10)
+    love.graphics.rectangle("fill", x + leftW + 10, y + 28, 1, h - 56)
+    drawCompactBuildPanel(rightX, y + 28, rightW, h - 56, {showSell = false})
 end
 
 local function drawEnd(title, subtitle, c)
@@ -3373,9 +3437,10 @@ local function handlePointer(x, y)
             if hitRect(x, y, Game.w / 2 - buttonW / 2, 190 + 430 - 96, buttonW, buttonH) then spinSlotMachine(); return true end
         end
     elseif Game.state == "paused" then
-        local menuY = Game.h / 2 - 150
-        if hitRect(x, y, Game.w / 2 - 170, menuY + 146, 340, 58) then Game.state = "playing"; toast("继续战斗"); return true end
-        if hitRect(x, y, Game.w / 2 - 170, menuY + 220, 340, 58) then Game.state = "menu"; toast("已退出本局"); return true end
+        local px, py = Game.w / 2 - 510, Game.h / 2 - 345
+        if hitRect(x, y, px + 40, py + 180, 340, 58) then Game.state = "playing"; toast("继续战斗"); return true end
+        if hitRect(x, y, px + 40, py + 260, 340, 52) then toast("设置面板待接入"); return true end
+        if hitRect(x, y, px + 40, py + 334, 340, 52) then Game.state = "menu"; toast("已退出本局"); return true end
     elseif Game.state == "gameover" or Game.state == "victory" then
         if hitRect(x, y, Game.w / 2 - 300, 205, 600, 260) then Game.state = "menu"; return true end
     end
