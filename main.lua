@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.2"
+local VERSION = "v2026.05.22.3"
 
 local Game = {
     w = 1280,
@@ -1625,6 +1625,9 @@ function love.update(dt)
             enterShop()
         end
         if os.getenv("LOVE_AUTOSHOP_TAB") then Game.shopTab = os.getenv("LOVE_AUTOSHOP_TAB") end
+        if os.getenv("LOVE_AUTOHOVER_X") and os.getenv("LOVE_AUTOHOVER_Y") then
+            love.mouse.setPosition(tonumber(os.getenv("LOVE_AUTOHOVER_X")) or 0, tonumber(os.getenv("LOVE_AUTOHOVER_Y")) or 0)
+        end
         Game.autoShopClock = (Game.autoShopClock or 0) + dt
         if Game.autoShopClock > 0.4 then
             Game.autoShopDone = true
@@ -2168,6 +2171,44 @@ local function drawTooltip(tip)
     end
 end
 
+local function weaponTooltip(weapon, titlePrefix)
+    local p = Game.player
+    local brand = brands[weapon.brand]
+    local elem = elements[weapon.element] or elements.kinetic
+    local actualDamage = math.floor((weapon.damage or 0) * (p.stats.damage or 1) + 0.5)
+    local cooldown = (weapon.cooldown or 0) / math.max(0.25, p.stats.fireRate or 1)
+    local lines = {
+        (brand and brand.name or "武器") .. " · " .. elem.name .. " · " .. (brand and brand.tag or elem.desc),
+        "伤害 " .. actualDamage .. " × " .. (weapon.count or 1) .. "    冷却 " .. string.format("%.2f", cooldown) .. "s",
+        "射程 " .. math.floor((weapon.range or 0) * (p.stats.range or 1)) .. "    弹速 " .. math.floor((weapon.speed or 0) * (p.stats.projectileSpeed or 1)),
+        "穿透 " .. ((weapon.pierce or 0)) .. "    弹射 " .. ((weapon.bounce or 0) + (p.stats.bounce or 0)) .. "    散布 " .. string.format("%.2f", weapon.spread or 0)
+    }
+    if weapon.splash then lines[#lines + 1] = "特殊：爆炸半径 " .. weapon.splash end
+    if weapon.chain then lines[#lines + 1] = "特殊：连锁 " .. (weapon.chain + math.floor((p.stats.bounce or 0) / 2)) .. " 次" end
+    if weapon.aura then lines[#lines + 1] = "特殊：牵引光环 " .. weapon.aura end
+    if weapon.desc then lines[#lines + 1] = "说明：" .. weapon.desc end
+    return {title = (titlePrefix or "武器") .. "：" .. (weapon.name or "未知武器"), lines = lines}
+end
+
+local function itemTooltip(item)
+    if not item then return nil end
+    if item.kind == "weapon" and item.id and weaponDefs[item.id] then
+        local def = item.weaponDef or weaponDefs[item.id]
+        local tip = weaponTooltip(def, "商品武器")
+        table.insert(tip.lines, 1, (rarityLabel[item.rarity] or item.rarity or "普通") .. " · 价格 " .. item.price .. " 材料")
+        return tip
+    end
+    local kindText = kindLabel[item.kind] or item.kind or "道具"
+    local rarityText = rarityLabel[item.rarity] or item.rarity or "普通"
+    local lines = {
+        rarityText .. " · " .. kindText .. " · 价格 " .. (item.price or 0) .. " 材料",
+        "效果：" .. modText(item.desc or "无说明")
+    }
+    if item.kind == "temp" then lines[#lines + 1] = "生效：仅下一波" else lines[#lines + 1] = "生效：本局永久" end
+    if item.flag then lines[#lines + 1] = "特殊协议：" .. item.flag end
+    return {title = "商品：" .. (item.name or "未知道具"), lines = lines}
+end
+
 local function drawShopCard(item, i, x, y, w, h)
     local rarity = item.rarity or "common"
     local rc = rarityColor[rarity] or C.white
@@ -2234,8 +2275,8 @@ local function drawShopCard(item, i, x, y, w, h)
         love.graphics.setColor(0, 0, 0, 0.30)
         love.graphics.rectangle("fill", x, y, w, h, 16, 16)
     end
-    return
-
+    if hover then return itemTooltip(item) end
+    return nil
 end
 
 local function drawBuildPanel(x, y, w, h)
@@ -2342,6 +2383,10 @@ local function drawCompactBuildPanel(x, y, w, h)
         local count = weapon.count or 1
         local line = "伤 " .. actualDamage .. "×" .. count .. "  CD " .. string.format("%.2f", weapon.cooldown or 0) .. "  射程 " .. math.floor(weapon.range or 0)
         love.graphics.printf(line, x + 24, rowY + 18, w - 48, "left")
+        local mx, my = love.mouse.getPosition()
+        if hitRect(mx, my, x + 14, rowY, w - 28, 32) then
+            return weaponTooltip(weapon, "当前武器")
+        end
     end
     if #p.weapons > 2 then
         color(C.gold)
@@ -2634,9 +2679,9 @@ local function drawShop()
             local row = math.floor((i - 1) / 2)
             local x = 72 + col * (cardW + gap)
             local y = cardY + row * (cardH + gap)
-            drawShopCard(item, i, x, y, cardW, cardH)
+            tip = drawShopCard(item, i, x, y, cardW, cardH) or tip
         end
-        drawCompactBuildPanel(sideX, cardY, sideW, gridH)
+        tip = drawCompactBuildPanel(sideX, cardY, sideW, gridH) or tip
     end
 
     local actionY = 646
