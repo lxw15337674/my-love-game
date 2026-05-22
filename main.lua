@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.18"
+local VERSION = "v2026.05.22.19"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2170,13 +2170,12 @@ local function drawWorld()
             color(C.white, 0.42)
             love.graphics.rectangle("line", barX - 0.5, barY - 7.5, barW + 1, barH + 1, 3, 3)
         end
-        if skill then
+        if skill and (skill.cd or 0) > 0 then
             local cdMax = skill.cooldown or ACTIVE_SKILL_CD
-            local ready = (skill.cd or 0) <= 0
-            local pctReady = ready and 1 or clamp(1 - ((skill.cd or 0) / math.max(0.1, cdMax)), 0, 1)
+            local pctReady = clamp(1 - ((skill.cd or 0) / math.max(0.1, cdMax)), 0, 1)
             love.graphics.setColor(0, 0, 0, 0.64)
             love.graphics.rectangle("fill", barX - 1, barY, barW + 2, barH + 2, 3, 3)
-            color(C.white, ready and 0.98 or 0.72)
+            color(C.white, 0.72)
             love.graphics.rectangle("fill", barX, barY + 1, barW * pctReady, barH, 3, 3)
             color(C.white, 0.42)
             love.graphics.rectangle("line", barX - 0.5, barY + 0.5, barW + 1, barH + 1, 3, 3)
@@ -2682,11 +2681,8 @@ local function drawShopCard(item, i, x, y, w, h)
     local mx, my = mousePosition()
     local hover = Game.state == "shop" and (Game.shopTab or "shop") == "shop" and hitRect(mx, my, x, y, w, h)
     if not item then
-        local label = i <= 3 and ("武器架 " .. i) or ("装备箱 " .. (i - 3))
         drawMetalCard(x, y, w, h, C.white, false, false, false)
         love.graphics.setFont(Game.fonts.tiny)
-        color(C.muted)
-        love.graphics.printf(label, x + 18, y + 20, w - 36, "left")
         color(C.white, 0.045)
         love.graphics.rectangle("fill", x + 18, y + 72, w - 36, 92, 14, 14)
         color(C.white, 0.18)
@@ -2714,15 +2710,12 @@ local function drawShopCard(item, i, x, y, w, h)
 
     local rarityText = rarityLabel[rarity] or rarity
     local kindText = kindLabel[item.kind] or item.kind
-    local shelfText = item.kind == "weapon" and ("武器架 " .. i) or ("装备箱 " .. (i - 3))
     love.graphics.setFont(Game.fonts.tiny)
-    color(C.muted)
-    love.graphics.printf(shelfText, x + 18, y + 19, 68, "left")
-    local tagX = x + 86
+    local tagX = x + 18
     tagX = tagX + tagPill(rarityText, tagX, y + 13, rc, C.bgA) + 6
     tagPill(kindText, tagX, y + 13, accent, C.bgA)
     color(affordable and C.gold or C.muted)
-    love.graphics.printf(item.price .. " 材", x + w - 128, y + 19, 72, "right")
+    love.graphics.printf("◆ " .. item.price, x + w - 128, y + 19, 72, "right")
     local topLockX, topLockY = x + w - 48, y + 13
     color(C.white, Game.locked[i] and 0.16 or 0.05)
     love.graphics.rectangle("fill", topLockX, topLockY, 30, 24, 8, 8)
@@ -2755,31 +2748,44 @@ local function drawShopCard(item, i, x, y, w, h)
     color(C.muted)
     love.graphics.printf(desc, x + 18, y + 112, w - 36, "left")
 
-    local displayY, displayH = y + 144, 36
+    local buyY = y + h - 36
+    local displayY, displayH = y + 144, math.max(42, buyY - y - 154)
     color(C.white, 0.045)
     love.graphics.rectangle("fill", x + 18, displayY, w - 36, displayH, 12, 12)
     color(C.white, 0.18)
     love.graphics.rectangle("line", x + 18.5, displayY + 0.5, w - 37, displayH - 1, 12, 12)
 
+    love.graphics.setFont(Game.fonts.tiny)
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
-        color(C.white)
-        love.graphics.printf(def.damage .. " 伤害", x + 34, displayY + 11, 88, "left")
-        color(C.muted)
-        love.graphics.printf(string.format("%.2f", def.cooldown) .. " CD", x + 122, displayY + 11, 82, "left")
-        love.graphics.printf(math.floor(def.range or 0) .. " 射程", x + 204, displayY + 11, w - 238, "left")
+        local rows = {
+            {"伤害", tostring(def.damage)},
+            {"CD", string.format("%.2f", def.cooldown)},
+            {"射程", tostring(math.floor(def.range or 0))},
+            {"弹速", tostring(math.floor(def.speed or 0))},
+            {"数量", tostring(def.count or 1)},
+            {"弹射", tostring(def.bounce or 0)}
+        }
+        for ri, row in ipairs(rows) do
+            local ry = displayY + 10 + (ri - 1) * 18
+            if ry + 16 < displayY + displayH then
+                textInBox(row[1] .. "  " .. row[2], x + 34, ry, w - 68, 16, Game.fonts.tiny, ri == 1 and C.white or C.muted, "left")
+            end
+        end
     else
-        color(C.white)
-        love.graphics.printf(compactDesc(item.desc, 34), x + 34, displayY + 11, w - 68, "left")
+        local effectMode = item.kind == "temp" and "下一波生效" or "永久生效"
+        textInBox(effectMode, x + 34, displayY + 10, w - 68, 18, Game.fonts.tiny, C.white, "left")
+        textInBox(kindText, x + 34, displayY + 30, w - 68, 18, Game.fonts.tiny, C.muted, "left")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.muted)
+        love.graphics.printf(modText(item.desc or "无说明"), x + 34, displayY + 54, w - 68, "left")
     end
-
-    local buyY = y + h - 36
     local buyColor = affordable and C.gold or C.muted
     color(buyColor, hover and 0.18 or 0.075)
     love.graphics.rectangle("fill", x + 18, buyY, w - 36, 28, 10, 10)
     color(buyColor, hover and 0.64 or 0.30)
     love.graphics.rectangle("line", x + 18, buyY, w - 36, 28, 10, 10)
-    centeredText("购买 " .. i, x + 18, buyY, w - 36, 28, Game.fonts.tiny, buyColor, "center")
+    centeredText("◆ " .. item.price, x + 18, buyY, w - 36, 28, Game.fonts.tiny, buyColor, "center")
 
     if Game.shopRollTimer and Game.shopRollTimer > 0 then
         local a = clamp(Game.shopRollTimer / 0.55, 0, 1)
@@ -2938,15 +2944,14 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         {"材料", "×" .. string.format("%.2f", p.stats.economy or 1)}, {"收获", tostring(p.stats.harvest or 0)},
         {"弹射", tostring(p.stats.bounce or 0)}, {"弹速", pct(p.stats.projectileSpeed or 1)}
     }
+    local statGap = 18
+    local statW = (w - 28 - statGap) / 2
     for i, row in ipairs(stats) do
-        local sx = x + 14 + ((i - 1) % 2) * ((w - 36) / 2 + 8)
+        local sx = x + 14 + ((i - 1) % 2) * (statW + statGap)
         local sy = y + 130 + math.floor((i - 1) / 2) * 22
         color(C.white, 0.06)
-        love.graphics.rectangle("fill", sx, sy, (w - 44) / 2, 18, 6, 6)
-        color(C.muted)
-        textInBox(row[1], sx + 8, sy, 46, 18, Game.fonts.tiny, C.muted, "left")
-        color(C.white)
-        textInBox(row[2], sx + 58, sy, (w - 132) / 2, 18, Game.fonts.tiny, C.white, "right")
+        love.graphics.rectangle("fill", sx, sy, statW, 18, 6, 6)
+        textInBox(row[1] .. "  " .. row[2], sx + 8, sy, statW - 16, 18, Game.fonts.tiny, C.white, "center")
     end
 
     love.graphics.setFont(Game.fonts.tiny)
@@ -2969,8 +2974,8 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         love.graphics.setLineWidth(selected and 2 or 1)
         love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 33, 9, 9)
         love.graphics.setLineWidth(1)
-        color(weapon and C.white or C.muted)
-        textInBox(weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, showSell and 10 or 14) or "空武器", sx + 10, sy, slotW - (showSell and 56 or 20), 34, Game.fonts.tiny, weapon and C.white or C.muted, "left")
+        local weaponText = weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, showSell and 10 or 14) or "空武器"
+        textInBox(weaponText, sx + 10, sy, slotW - (showSell and 56 or 20), 34, Game.fonts.tiny, weapon and C.white or C.muted, weapon and "left" or "center")
         if weapon and showSell then
             color(C.red, 0.14)
             love.graphics.rectangle("fill", sx + slotW - 42, sy + 6, 32, 22, 7, 7)
@@ -2996,8 +3001,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
     love.graphics.rectangle("fill", x + 14, shieldY, w - 28, 42, 10, 10)
     color(C.cyan, shield and 0.52 or 0.22)
     love.graphics.rectangle("line", x + 14.5, shieldY + 0.5, w - 29, 41, 10, 10)
-    color(shield and C.white or C.muted)
-    textInBox(shield and compactDesc(shield.name, showSell and 16 or 22) or "空护盾槽", x + 26, shieldY, w - (showSell and 118 or 92), 42, Game.fonts.tiny, shield and C.white or C.muted, "left")
+    textInBox(shield and compactDesc(shield.name, showSell and 16 or 22) or "空护盾槽", x + 26, shieldY, w - (showSell and 118 or 92), 42, Game.fonts.tiny, shield and C.white or C.muted, shield and "left" or "center")
     if shield and showSell then
         color(C.red, 0.14)
         love.graphics.rectangle("fill", x + w - 66, shieldY + 9, 38, 24, 7, 7)
@@ -3345,9 +3349,12 @@ local function drawShop()
         local sideX = Game.w - marginX - sideW
         local shelfW = sideX - marginX - sideGap
         local cardW = (shelfW - gap * 2) / 3
-        local cardH = 268
-        local weaponY = 204
-        local supportY = 554
+        local shelfTitleH = 34
+        local rowGap = 54
+        local bottomPad = 0
+        local cardH = math.floor((contentH - shelfTitleH * 2 - rowGap - bottomPad) / 2)
+        local weaponY = contentY + shelfTitleH
+        local supportY = contentY + contentH - bottomPad - cardH
         love.graphics.setFont(Game.fonts.small)
         color(C.white)
         love.graphics.printf("武器架 · 3 选 1", marginX, weaponY - 34, shelfW, "left")
@@ -3360,7 +3367,7 @@ local function drawShop()
         color(C.white, 0.07)
         love.graphics.rectangle("fill", marginX, supportY - 8, shelfW, 10, 5, 5)
         color(C.white, 0.14)
-        love.graphics.rectangle("fill", marginX, supportY + cardH + 10, shelfW, 8, 4, 4)
+        love.graphics.rectangle("fill", marginX, supportY + cardH - 8, shelfW, 8, 4, 4)
         for i = 1, 6 do
             local item = Game.shop[i]
             local col = (i - 1) % 3
@@ -3572,10 +3579,12 @@ local function handlePointer(x, y)
             local sideX = Game.w - marginX - sideW
             local shelfW = sideX - marginX - sideGap
             local cardW = (shelfW - gap * 2) / 3
-            local cardH = 268
-            local weaponY = 204
-            local supportY = 554
-            if handleBuildPanelClick(x, y, sideX, 154, sideW, Game.h - 200) then return true end
+            local contentY, contentH = 154, Game.h - 200
+            local shelfTitleH, rowGap, bottomPad = 34, 54, 0
+            local cardH = math.floor((contentH - shelfTitleH * 2 - rowGap - bottomPad) / 2)
+            local weaponY = contentY + shelfTitleH
+            local supportY = contentY + contentH - bottomPad - cardH
+            if handleBuildPanelClick(x, y, sideX, contentY, sideW, contentH) then return true end
             for i = 1, 6 do
                 local col = (i - 1) % 3
                 local cardX = marginX + col * (cardW + gap)
