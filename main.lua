@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.30"
+local VERSION = "v2026.05.22.31"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2059,35 +2059,51 @@ local waveThreatSummary
 
 local function drawHud()
     local p = Game.player
-    local hudY, hudH = 14, 100
+    local hpPct = clamp(p.hp / math.max(1, p.maxHp), 0, 1)
+    local shieldPct = clamp(p.shield / math.max(1, p.maxShield), 0, 1)
+    local dangerPulse = 0.5 + 0.5 * math.sin((love.timer.getTime() or 0) * 8.0)
+    local hudY, hudH = 14, 116
     panel(18, hudY, Game.w - 36, hudH)
 
-    -- 左：生存状态。只展示玩家战斗中最需要扫一眼的内容。
+    -- 左：生存状态必须比材料/击杀更抢眼。原型可以乱，战斗 HUD 不能乱。
     local lx = 36
-    drawBarCapsule("生命", math.ceil(p.hp) .. "/" .. p.maxHp, lx, hudY + 10, 292, 28, p.hp / p.maxHp, C.pink)
-    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 46, 292, 28, p.shield / p.maxShield, C.cyan)
-    drawCapsule("材料 " .. Game.coins, lx + 310, hudY + 10, 112, 28, {fg = C.gold, border = C.gold, align = "center", padX = 14})
-    drawCapsule("击杀 " .. Game.kills, lx + 310, hudY + 46, 112, 28, {fg = C.white, border = C.white, align = "center", padX = 14})
+    local hpColor = hpPct < 0.35 and C.red or C.pink
+    drawBarCapsule("生命", math.ceil(p.hp) .. "/" .. p.maxHp, lx, hudY + 12, 346, 34, hpPct, hpColor)
+    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 54, 346, 30, shieldPct, C.cyan)
+    if hpPct < 0.35 then
+        color(C.red, 0.16 + dangerPulse * 0.18)
+        love.graphics.rectangle("line", lx - 4, hudY + 8, 354, 42, 12, 12)
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.red, 0.90)
+        love.graphics.printf("核心受损", lx + 236, hudY + 20, 96, "right")
+    end
+    drawCapsule("材料 " .. Game.coins, lx + 370, hudY + 18, 118, 28, {fg = C.gold, border = C.gold, align = "center", padX = 14, bgAlpha = 0.22, borderAlpha = 0.16})
+    drawCapsule("击杀 " .. Game.kills, lx + 370, hudY + 56, 118, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.white, align = "center", padX = 14, bgAlpha = 0.16, borderAlpha = 0.10})
 
-    -- 中：战斗焦点。倒计时是唯一主视觉，波次/目标弱化成辅助标签。
+    -- 中：倒计时就是战斗主任务。让它像任务，不像装饰。
     local midX = Game.w / 2
-    local timerW, timerH = 126, 62
+    local timerW, timerH = 156, 76
     local timerX, timerY = midX - timerW / 2, hudY + 12
-    color(C.white, 0.085)
-    love.graphics.rectangle("fill", timerX, timerY, timerW, timerH, 16, 16)
-    color(C.cyan, 0.32)
-    love.graphics.rectangle("line", timerX + 0.5, timerY + 0.5, timerW - 1, timerH - 1, 16, 16)
+    color(C.white, 0.10)
+    love.graphics.rectangle("fill", timerX, timerY, timerW, timerH, 18, 18)
+    color(C.cyan, 0.42)
+    love.graphics.setLineWidth(2)
+    love.graphics.rectangle("line", timerX + 0.5, timerY + 0.5, timerW - 1, timerH - 1, 18, 18)
+    love.graphics.setLineWidth(1)
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf("剩余生存", timerX, timerY + 8, timerW, "center")
     love.graphics.setFont(Game.fonts.big)
     color(C.white)
-    love.graphics.printf(string.format("%02d", math.max(0, math.ceil(Game.waveTime))), timerX, timerY + math.floor((timerH - Game.fonts.big:getHeight()) / 2) + 1, timerW, "center")
+    love.graphics.printf(string.format("%02d", math.max(0, math.ceil(Game.waveTime))), timerX, timerY + 24, timerW, "center")
 
-    drawCapsule(chapterWaveLabel(Game.wave), midX - 218, hudY + 18, 122, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.18})
-    drawCapsule(currentWavePlan().name or "生存波次", midX - 218, hudY + 52, 122, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.32, borderAlpha = 0.16})
-    drawCapsule(Game.objectiveText or selectedObjective().name, midX + 96, hudY + 18, 150, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.18})
-    drawCapsule("危险 " .. Game.danger, midX + 96, hudY + 52, 150, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.32, borderAlpha = 0.16})
+    drawCapsule(chapterWaveLabel(Game.wave), midX - 252, hudY + 22, 130, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.18})
+    drawCapsule(currentWavePlan().name or "生存波次", midX - 252, hudY + 58, 130, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.26, borderAlpha = 0.12})
+    drawCapsule(Game.objectiveText or selectedObjective().name, midX + 122, hudY + 22, 162, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.20})
+    drawCapsule("危险 " .. Game.danger, midX + 122, hudY + 58, 162, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.26, borderAlpha = 0.12})
 
-    -- 右：战斗中只留主动技能、主要威胁和 Boss 血条，词缀细节挪到下一波情报。
-    local rx, rw = Game.w - 392, 354
+    -- 右：即时操作/威胁。长说明留给商店情报，战斗中别念小作文。
+    local rx, rw = Game.w - 430, 392
     local skill = p.activeSkill or {}
     local skillText = "空格 " .. (skill.name or "主动技能")
     local skillFg = C.cyan
@@ -2098,16 +2114,35 @@ local function drawHud()
         skillText = "空格 冷却 " .. string.format("%.1f", skill.cd) .. "s"
         skillFg = C.muted
     end
-    drawCapsule(skillText, rx, hudY + 10, rw, 28, {font = Game.fonts.tiny, fg = skillFg, border = skillFg, bgAlpha = 0.26, borderAlpha = 0.18, align = "left", padX = 14})
-    drawCapsule("威胁 " .. waveThreatSummary(Game.wave), rx, hudY + 46, rw, 24, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, bgAlpha = 0.22, borderAlpha = 0.14, align = "left", padX = 14})
+    drawCapsule(skillText, rx, hudY + 14, rw, 30, {font = Game.fonts.tiny, fg = skillFg, border = skillFg, bgAlpha = 0.28, borderAlpha = 0.22, align = "left", padX = 14})
+    drawCapsule("威胁：" .. waveThreatSummary(Game.wave), rx, hudY + 52, rw, 28, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, bgAlpha = 0.24, borderAlpha = 0.16, align = "left", padX = 14})
 
     local boss = nil
     for _, e in ipairs(Game.enemies or {}) do if e.boss then boss = e; break end end
     if boss then
-        drawBarCapsule("Boss", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), rx, hudY + 72, rw, 20, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
+        drawBarCapsule("Boss", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), rx, hudY + 86, rw, 22, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
     else
-        drawCapsule("敌群 " .. #Game.enemies, rx, hudY + 72, rw, 20, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.18, borderAlpha = 0.10, align = "left", padX = 14})
+        drawCapsule("敌群 " .. #Game.enemies, rx, hudY + 86, rw, 22, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.16, borderAlpha = 0.10, align = "left", padX = 14})
     end
+end
+
+local function drawCombatWarningOverlay()
+    if Game.state ~= "playing" then return end
+    local p = Game.player
+    local hpPct = clamp(p.hp / math.max(1, p.maxHp), 0, 1)
+    if hpPct >= 0.35 then return end
+    local t = love.timer.getTime() or 0
+    local pulse = 0.45 + 0.55 * math.sin(t * 8.0)
+    love.graphics.setBlendMode("add")
+    color(C.red, 0.08 + pulse * 0.08)
+    love.graphics.rectangle("fill", 0, 0, Game.w, 38)
+    love.graphics.rectangle("fill", 0, Game.h - 38, Game.w, 38)
+    love.graphics.rectangle("fill", 0, 0, 38, Game.h)
+    love.graphics.rectangle("fill", Game.w - 38, 0, 38, Game.h)
+    love.graphics.setBlendMode("alpha")
+    love.graphics.setFont(Game.fonts.small)
+    color(C.red, 0.72 + pulse * 0.18)
+    love.graphics.printf("警告：核心生命过低", 0, 142, Game.w, "center")
 end
 
 local function drawWorld()
@@ -2179,6 +2214,20 @@ local function drawWorld()
         love.graphics.setColor(e.color[1], e.color[2], e.color[3], 0.80)
         love.graphics.circle("line", e.x, e.y, e.r * 1.62)
         love.graphics.setLineWidth(1)
+        -- UX：敌人必须从背景里“站出来”，否则玩家不是战死，是被背景谋杀。
+        color(C.white, e.boss and 0.72 or (e.elite and 0.56 or 0.30))
+        love.graphics.setLineWidth(e.boss and 5 or (e.elite and 4 or 2))
+        love.graphics.circle("line", e.x, e.y, e.r * (e.boss and 2.25 or 2.05))
+        love.graphics.setLineWidth(1)
+        if e.boss or e.elite or e.behavior == "shooter" or e.behavior == "bomber" then
+            local tag = e.boss and "BOSS" or (e.elite and "精英" or (e.behavior == "bomber" and "火力" or "远程"))
+            local tagW = e.boss and 74 or 52
+            color(e.color, 0.82)
+            love.graphics.rectangle("fill", e.x - tagW / 2, e.y - e.r - 34, tagW, 20, 6, 6)
+            color(C.bgA, 0.92)
+            love.graphics.setFont(Game.fonts.tiny)
+            love.graphics.printf(tag, e.x - tagW / 2, e.y - e.r - 30, tagW, "center")
+        end
         local size = e.boss and e.r * 3.55 or math.max(62, e.r * 5.20)
         if not drawSprite(e.sprite, e.x, e.y, size, 0, 0.96) then
             color(e.color)
@@ -2190,7 +2239,11 @@ local function drawWorld()
                 love.graphics.circle("fill", e.x, e.y, e.r)
             end
         end
-        if e.hp < e.maxHp then bar(e.x - e.r, e.y - e.r - 13, e.r * 2, 4, e.hp / e.maxHp, C.red) end
+        if e.hp < e.maxHp then
+            local bw = e.boss and e.r * 3.0 or e.r * 2.55
+            local bh = e.boss and 8 or 6
+            bar(e.x - bw / 2, e.y - e.r - 16, bw, bh, e.hp / e.maxHp, C.red)
+        end
     end
 
     if not (p.invuln > 0 and math.floor(p.invuln * 16) % 2 == 0) then
@@ -2201,6 +2254,14 @@ local function drawWorld()
             love.graphics.circle("fill", p.x, p.y, p.r + 34)
             color(C.cyan, 0.42)
             love.graphics.circle("line", p.x, p.y, p.r + 28)
+            love.graphics.setBlendMode("alpha")
+        end
+        local hpPct = clamp(p.hp / math.max(1, p.maxHp), 0, 1)
+        if hpPct < 0.35 then
+            local pulse = 0.45 + 0.55 * math.sin((love.timer.getTime() or 0) * 8)
+            love.graphics.setBlendMode("add")
+            color(C.red, 0.22 + pulse * 0.18)
+            love.graphics.circle("line", p.x, p.y, p.r + 26 + pulse * 8)
             love.graphics.setBlendMode("alpha")
         end
         if not drawSprite("player_heartcore", p.x, p.y, 96, 0, 1) then
@@ -2333,8 +2394,11 @@ local function drawMenu()
     love.graphics.printf("机器人大战", 0, titleY - 2, w, "center")
 
     love.graphics.setFont(Game.fonts.subtitle or Game.fonts.small)
-    color(C.muted, 0.62)
-    love.graphics.printf("ROBOT WAR  ·  BUILD / SURVIVE / EVOLVE", 0, 126, w, "center")
+    color(C.cyan, 0.78)
+    love.graphics.printf("60秒生存 · 自动射击 · 战后构筑升级", 0, 126, w, "center")
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted, 0.70)
+    love.graphics.printf("撑住倒计时，收集材料，把一台白板机体养成怪物。", 0, 156, w, "center")
 
     local heroX, heroY = w / 2, h / 2
     local cx, cy = heroX, heroY
@@ -2359,7 +2423,7 @@ local function drawMenu()
     drawHeart(cx, cy + 5, 1.22)
     love.graphics.setFont(Game.fonts.normal)
     color(C.white)
-    love.graphics.printf("白板开局，构筑成怪物", cx - 260, cy + 160, 520, "center")
+    love.graphics.printf("活过 60 秒，然后嘲笑废铁", cx - 300, cy + 160, 600, "center")
 
     local deckX, deckY, deckW, deckH = 90, h - 168, w - 180, 126
     love.graphics.setColor(0.012, 0.016, 0.040, 0.78)
@@ -2371,19 +2435,26 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.small)
     color(C.cyan)
-    love.graphics.printf("模式  60秒生存", deckX + 28, deckY + 32, 360, "left")
+    love.graphics.printf("当前模式", deckX + 28, deckY + 26, 360, "left")
+    love.graphics.setFont(Game.fonts.normal)
+    color(C.white)
+    love.graphics.printf("60 秒生存", deckX + 28, deckY + 56, 360, "left")
+    love.graphics.setFont(Game.fonts.small)
 
-    local dangerText = Game.danger == 0 and "难度  基础" or ("难度  危险 " .. Game.danger)
+    local dangerText = Game.danger == 0 and "基础难度" or ("危险等级 " .. Game.danger)
     color(C.gold)
-    love.graphics.printf(dangerText, deckX + deckW - 358, deckY + 32, 330, "right")
+    love.graphics.printf("难度选择", deckX + deckW - 358, deckY + 26, 330, "right")
+    love.graphics.setFont(Game.fonts.small)
+    color(C.white)
+    love.graphics.printf(dangerText, deckX + deckW - 358, deckY + 52, 330, "right")
 
     uiButton("开始实验", w / 2 - 140, deckY + 30, 280, 62, C.gold, C.white, Game.fonts.normal)
     -- 首页不再提供模式切换，只保留生存模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("目标：只需生存 60 秒，撑到计时结束", deckX + 28, deckY + 86, 360, "left")
-    uiButton("-", deckX + deckW - 158, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
-    uiButton("+", deckX + deckW - 86, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
+    love.graphics.printf("目标：移动躲避，武器自动开火；撑到倒计时归零。", deckX + 430, deckY + 94, 520, "center")
+    uiButton("Q  降低", deckX + deckW - 220, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
+    uiButton("E  提高", deckX + deckW - 112, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
 end
 
 local function drawLevelUp()
@@ -2894,18 +2965,22 @@ local function drawShopCard(item, i, x, y, w, h)
         end
     else
         local effectMode = item.kind == "temp" and "下一波生效" or "永久生效"
-        textInBox(effectMode, x + 34, displayY + 10, w - 68, 18, Game.fonts.tiny, C.white, "left")
-        textInBox(kindText, x + 34, displayY + 30, w - 68, 18, Game.fonts.tiny, C.muted, "left")
+        textInBox(effectMode .. " · " .. kindText, x + 34, displayY + 10, w - 68, 18, Game.fonts.tiny, C.white, "left")
         love.graphics.setFont(Game.fonts.tiny)
-        color(C.muted)
-        love.graphics.printf(modText(item.desc or "无说明"), x + 34, displayY + 54, w - 68, "left")
+        local descText = modText(item.desc or "无说明")
+        local effectColor = descText:find("%-") and C.red or (descText:find("%+") and C.green or C.muted)
+        color(effectColor)
+        love.graphics.printf(descText, x + 34, displayY + 36, w - 68, "left")
     end
     local buyColor = affordable and C.gold or C.muted
-    color(buyColor, hover and 0.18 or 0.075)
-    love.graphics.rectangle("fill", x + 18, buyY, w - 36, 28, 10, 10)
-    color(buyColor, hover and 0.64 or 0.30)
-    love.graphics.rectangle("line", x + 18, buyY, w - 36, 28, 10, 10)
-    centeredText("◆ " .. item.price, x + 18, buyY, w - 36, 28, Game.fonts.tiny, buyColor, "center")
+    color(buyColor, hover and 0.28 or 0.12)
+    love.graphics.rectangle("fill", x + 18, buyY - 4, w - 36, 34, 10, 10)
+    color(buyColor, hover and 0.78 or 0.42)
+    love.graphics.setLineWidth(hover and 2 or 1)
+    love.graphics.rectangle("line", x + 18, buyY - 4, w - 36, 34, 10, 10)
+    love.graphics.setLineWidth(1)
+    local buyText = affordable and ("购买  " .. i .. "  · ◆ " .. item.price) or ("材料不足 · ◆ " .. item.price)
+    centeredText(buyText, x + 18, buyY - 4, w - 36, 34, Game.fonts.tiny, buyColor, "center")
 
     if Game.shopRollTimer and Game.shopRollTimer > 0 then
         local a = clamp(Game.shopRollTimer / 0.55, 0, 1)
@@ -3431,8 +3506,8 @@ local function drawShop()
     local marginX = 40
     local tabY = 38
     local contentY, contentH = 154, Game.h - 200
-    local actionY, actionH = 38, 42
-    local refreshW, nextW, sellW, actionGap = 210, 220, 220, 12
+    local actionY, actionH = 32, 56
+    local refreshW, nextW, sellW, actionGap = 190, 270, 190, 12
     local actionX = Game.w - marginX - refreshW - nextW - sellW - actionGap * 2
     drawShopTabs(marginX, tabY)
 
@@ -3448,9 +3523,9 @@ local function drawShop()
 
     local rerollCost = 3 + Game.shopRefresh * 2
     local refreshText = Game.freeRefresh > 0 and ("免费刷新 " .. Game.freeRefresh .. " 次") or ("刷新 " .. rerollCost .. " 材料")
-    uiButton(refreshText, actionX, actionY, refreshW, actionH, C.cyan)
-    uiButton("进入下一波", actionX + refreshW + actionGap, actionY, nextW, actionH, C.gold, C.white, Game.fonts.small)
-    uiButton("卖出选中武器", actionX + refreshW + actionGap + nextW + actionGap, actionY, sellW, actionH, C.white)
+    uiButton(refreshText, actionX, actionY + 8, refreshW, actionH - 12, C.cyan)
+    uiButton("进入下一波", actionX + refreshW + actionGap, actionY, nextW, actionH, C.gold, C.white, Game.fonts.normal)
+    uiButton("卖出武器", actionX + refreshW + actionGap + nextW + actionGap, actionY + 8, sellW, actionH - 12, C.white)
 
     color(C.white, 0.08)
     love.graphics.rectangle("fill", marginX, 108, Game.w - marginX * 2, 1)
@@ -3571,6 +3646,7 @@ function love.draw()
     if Game.state == "levelup" then drawWorld(); drawHud(); drawLevelUp(); drawVersion(); love.graphics.pop(); return end
     drawWorld()
     drawHud()
+    drawCombatWarningOverlay()
     if Game.state == "paused" then drawPauseOverlay(); love.graphics.pop(); return end
     if Game.messageTimer > 0 then
         local toastY = 140
@@ -3671,8 +3747,8 @@ end
 local function handlePointer(x, y)
     if Game.state == "menu" then
         local deckX, deckY, deckW = 90, Game.h - 168, Game.w - 180
-        if hitRect(x, y, deckX + deckW - 158, deckY + 82, 58, 32) then Game.danger = math.max(0, Game.danger - 1); return true end
-        if hitRect(x, y, deckX + deckW - 86, deckY + 82, 58, 32) then Game.danger = math.min(6, Game.danger + 1); return true end
+        if hitRect(x, y, deckX + deckW - 220, deckY + 88, 94, 30) then Game.danger = math.max(0, Game.danger - 1); return true end
+        if hitRect(x, y, deckX + deckW - 112, deckY + 88, 94, 30) then Game.danger = math.min(6, Game.danger + 1); return true end
         if hitRect(x, y, Game.w / 2 - 140, deckY + 30, 280, 62) then resetRun(); return true end
     elseif Game.state == "levelup" then
         local w, h, gap = 330, 210, 34
@@ -3683,12 +3759,12 @@ local function handlePointer(x, y)
         end
     elseif Game.state == "shop" then
         local marginX = 40
-        local actionY, actionH = 38, 42
-        local refreshW, nextW, sellW, actionGap = 210, 220, 220, 12
+        local actionY, actionH = 32, 56
+        local refreshW, nextW, sellW, actionGap = 190, 270, 190, 12
         local actionX = Game.w - marginX - refreshW - nextW - sellW - actionGap * 2
-        if hitRect(x, y, actionX, actionY, refreshW, actionH) then refreshShop(); return true end
+        if hitRect(x, y, actionX, actionY + 8, refreshW, actionH - 12) then refreshShop(); return true end
         if hitRect(x, y, actionX + refreshW + actionGap, actionY, nextW, actionH) then startWave(); return true end
-        if hitRect(x, y, actionX + refreshW + actionGap + nextW + actionGap, actionY, sellW, actionH) then recycleWeapon(); return true end
+        if hitRect(x, y, actionX + refreshW + actionGap + nextW + actionGap, actionY + 8, sellW, actionH - 12) then recycleWeapon(); return true end
 
         local tab = shopTabHit(x, y)
         if tab then Game.shopTab = tab; return true end
