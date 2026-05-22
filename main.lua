@@ -1596,58 +1596,50 @@ end
 
 local function drawHud()
     local p = Game.player
-    local hudY, hudH = 14, 108
+    local hudY, hudH = 14, 86
     panel(18, hudY, Game.w - 36, hudH)
 
-    -- 左侧状态组：所有文字进入胶囊，避免裸文字贴在背景上。
+    -- 左：生存状态。只展示玩家战斗中最需要扫一眼的内容。
     local lx = 36
-    drawBarCapsule("生命", math.ceil(p.hp) .. "/" .. p.maxHp, lx, hudY + 12, 314, 30, p.hp / p.maxHp, C.pink)
-    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 48, 314, 30, p.shield / p.maxShield, C.cyan)
-    drawCapsule("材料 " .. Game.coins, lx + 330, hudY + 12, 118, 32, {fg = C.gold, border = C.gold, align = "center", padX = 16})
-    drawCapsule("击杀 " .. Game.kills, lx + 330, hudY + 52, 118, 32, {fg = C.white, border = C.white, align = "center", padX = 16})
-    drawCapsule("等级 " .. Game.level, lx + 462, hudY + 32, 104, 32, {fg = C.green, border = C.green, align = "center", padX = 16})
+    drawBarCapsule("生命", math.ceil(p.hp) .. "/" .. p.maxHp, lx, hudY + 10, 292, 28, p.hp / p.maxHp, C.pink)
+    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 46, 292, 28, p.shield / p.maxShield, C.cyan)
+    drawCapsule("材料 " .. Game.coins, lx + 310, hudY + 10, 112, 28, {fg = C.gold, border = C.gold, align = "center", padX = 14})
+    drawCapsule("击杀 " .. Game.kills, lx + 310, hudY + 46, 112, 28, {fg = C.white, border = C.white, align = "center", padX = 14})
+    drawCapsule("Lv " .. Game.level, lx + 432, hudY + 28, 74, 28, {fg = C.green, border = C.green, align = "center", padX = 12})
 
-    -- 中央战斗组：倒计时作为核心，其它信息以垂直居中的小容器包裹。
+    -- 中：战斗焦点。倒计时是唯一主视觉，波次/目标弱化成辅助标签。
     local midX = Game.w / 2
-    local timerW, timerH = 124, 66
-    local timerX, timerY = midX - timerW / 2, hudY + 16
-    color(C.white, 0.09)
+    local timerW, timerH = 126, 62
+    local timerX, timerY = midX - timerW / 2, hudY + 12
+    color(C.white, 0.085)
     love.graphics.rectangle("fill", timerX, timerY, timerW, timerH, 16, 16)
-    color(C.cyan, 0.34)
+    color(C.cyan, 0.32)
     love.graphics.rectangle("line", timerX + 0.5, timerY + 0.5, timerW - 1, timerH - 1, 16, 16)
     love.graphics.setFont(Game.fonts.big)
     color(C.white)
-    local timerText = string.format("%02d", math.max(0, math.ceil(Game.waveTime)))
-    love.graphics.printf(timerText, timerX, timerY + math.floor((timerH - Game.fonts.big:getHeight()) / 2) + 1, timerW, "center")
+    love.graphics.printf(string.format("%02d", math.max(0, math.ceil(Game.waveTime))), timerX, timerY + math.floor((timerH - Game.fonts.big:getHeight()) / 2) + 1, timerW, "center")
 
-    drawTwoLineCapsule("波次", "第 " .. Game.wave .. " 波", midX - 278, hudY + 18, 158, 58, C.gold)
-    drawCapsule(currentWavePlan().name or "生存波次", midX - 278, hudY + 82, 158, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.34, borderAlpha = 0.18})
-    drawTwoLineCapsule("目标", Game.objectiveText or selectedObjective().name, midX + 120, hudY + 18, 166, 58, C.cyan)
-    drawCapsule("危险 " .. Game.danger, midX + 120, hudY + 82, 166, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.34, borderAlpha = 0.18})
+    drawCapsule("第 " .. Game.wave .. " 波", midX - 218, hudY + 18, 122, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.18})
+    drawCapsule(currentWavePlan().name or "生存波次", midX - 218, hudY + 52, 122, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.32, borderAlpha = 0.16})
+    drawCapsule(Game.objectiveText or selectedObjective().name, midX + 96, hudY + 18, 150, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.18})
+    drawCapsule("危险 " .. Game.danger, midX + 96, hudY + 52, 150, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.32, borderAlpha = 0.16})
 
-    -- 右侧词缀和武器组：短信息胶囊化，武器名/标签垂直居中。
-    local rx, rw = Game.w - 404, 366
+    -- 右：当前影响。只保留词缀和一行武器摘要，不再堆列表。
+    local rx, rw = Game.w - 392, 354
     local reward, penalty = currentAffixes()
-    drawCapsule("奖励 " .. (reward and reward.name or "无"), rx, hudY + 12, rw / 2 - 7, 28, {fg = C.green, border = C.green, align = "left"})
-    drawCapsule("惩罚 " .. (penalty and penalty.name or "无"), rx + rw / 2 + 7, hudY + 12, rw / 2 - 7, 28, {fg = C.red, border = C.red, align = "right"})
+    drawCapsule("奖励 " .. (reward and reward.name or "无"), rx, hudY + 10, 168, 28, {fg = C.green, border = C.green, borderAlpha = 0.16, align = "left", padX = 14})
+    drawCapsule("惩罚 " .. (penalty and penalty.name or "无"), rx + 180, hudY + 10, 174, 28, {fg = C.red, border = C.red, borderAlpha = 0.16, align = "left", padX = 14})
 
-    local y = hudY + 48
-    local shown = 0
-    for i, weapon in ipairs(p.weapons) do
-        if shown >= 2 then break end
+    local weaponText = "武器 0/4"
+    local tagText = "等待构筑"
+    if p.weapons[1] then
+        local weapon = p.weapons[1]
         local brand = brands[weapon.brand]
-        color(C.panel, 0.50)
-        love.graphics.rectangle("fill", rx, y, rw, 24, 8, 8)
-        color(brand.color, 0.34)
-        love.graphics.rectangle("line", rx + 0.5, y + 0.5, rw - 1, 23, 8, 8)
-        love.graphics.setFont(Game.fonts.tiny)
-        color(brand.color)
-        love.graphics.printf(weapon.name .. " Lv" .. weapon.level, rx + 10, y + math.floor((24 - Game.fonts.tiny:getHeight()) / 2), 154, "left")
-        color(C.white, 0.78)
-        love.graphics.printf(brand.tag, rx + 166, y + math.floor((24 - Game.fonts.tiny:getHeight()) / 2), rw - 178, "right")
-        y = y + 31
-        shown = shown + 1
+        weaponText = "武器 " .. #p.weapons .. "/4 · " .. weapon.name .. " Lv" .. weapon.level
+        tagText = brand and brand.tag or "构筑中"
     end
+    drawCapsule(weaponText, rx, hudY + 48, rw, 28, {fg = C.white, border = C.cyan, align = "left", padX = 14})
+    drawCapsule(tagText, rx + rw - 150, hudY + 50, 140, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.20, borderAlpha = 0.10})
 end
 
 local function drawWorld()
@@ -1743,11 +1735,11 @@ local function uiButton(text, x, y, w, h, bg, fg, font)
     color(c, strong and (0.30 + pulse * 0.10) or 0.20)
     love.graphics.rectangle("fill", x, y, w, h, 14, 14)
     if strong then
-        color(c, 0.22 + pulse * 0.24)
-        love.graphics.rectangle("fill", x - 22, y - 22, w + 44, h + 44, 26, 26)
-        color(C.gold, 0.18 + pulse * 0.20)
+        color(c, 0.15 + pulse * 0.12)
+        love.graphics.rectangle("fill", x - 16, y - 16, w + 32, h + 32, 22, 22)
+        color(C.gold, 0.10 + pulse * 0.10)
         love.graphics.setLineWidth(3)
-        love.graphics.rectangle("line", x - 24, y - 24, w + 48, h + 48, 28, 28)
+        love.graphics.rectangle("line", x - 18, y - 18, w + 36, h + 36, 24, 24)
         love.graphics.setLineWidth(1)
     end
     color(c, strong and (0.86 + pulse * 0.14) or 0.74)
@@ -1755,8 +1747,8 @@ local function uiButton(text, x, y, w, h, bg, fg, font)
     love.graphics.rectangle("line", x, y, w, h, 14, 14)
     if strong then
         local teeth = 9
-        color(C.gold, 0.64 + pulse * 0.32)
-        for i = 0, teeth - 1 do
+        color(C.gold, 0.34 + pulse * 0.14)
+        for i = 1, teeth - 2 do
             local tx = x + 18 + i * ((w - 36) / (teeth - 1))
             love.graphics.rectangle("fill", tx - 4, y - 8, 8, 8, 2, 2)
             love.graphics.rectangle("fill", tx - 4, y + h, 8, 8, 2, 2)
@@ -1814,15 +1806,15 @@ local function drawMenu()
     for _, off in ipairs({{-7, 0}, {7, 0}, {0, -7}, {0, 7}, {-6, -6}, {6, 6}, {-6, 6}, {6, -6}, {-4, 0}, {4, 0}, {0, -4}, {0, 4}}) do
         love.graphics.printf("机器人大战", off[1], titleY + off[2], w, "center")
     end
-    color({0.52, 0.38, 0.16}, 0.92)
+    color({0.34, 0.27, 0.16}, 0.78)
     for _, off in ipairs({{-4, -3}, {4, -2}, {-3, 4}, {3, 4}, {-2, 0}, {2, 0}, {0, -2}, {0, 2}}) do
         love.graphics.printf("机器人大战", off[1], titleY + off[2], w, "center")
     end
-    color(C.gold, 0.88)
+    color(C.gold, 0.58)
     for _, off in ipairs({{-2, -2}, {2, -1}, {-1, 2}, {1, 2}}) do
         love.graphics.printf("机器人大战", off[1], titleY + off[2], w, "center")
     end
-    color(C.cyan, 0.26)
+    color(C.cyan, 0.16)
     love.graphics.printf("机器人大战", 3, titleY + 3, w, "center")
     color({0.72, 0.77, 0.88}, 0.96)
     love.graphics.printf("机器人大战", 0, titleY + 1, w, "center")
@@ -1830,7 +1822,7 @@ local function drawMenu()
     love.graphics.printf("机器人大战", 0, titleY - 2, w, "center")
 
     love.graphics.setFont(Game.fonts.subtitle or Game.fonts.small)
-    color(C.muted, 0.86)
+    color(C.muted, 0.62)
     love.graphics.printf("ROBOT WAR  ·  BUILD / SURVIVE / EVOLVE", 0, 126, w, "center")
 
     local heroX, heroY = w / 2, h / 2
@@ -1886,24 +1878,18 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.small)
     color(C.cyan)
-    love.graphics.printf(obj.name, deckX + 24, deckY + 22, 270, "left")
-    love.graphics.setFont(Game.fonts.tiny)
-    color(C.muted)
-    love.graphics.printf("目标模式 · 可切换", deckX + 24, deckY + 60, 330, "left")
+    love.graphics.printf("模式  " .. obj.name, deckX + 28, deckY + 32, 330, "left")
 
-    local dangerText = Game.danger == 0 and "危险 0 / 基础难度" or ("危险 " .. Game.danger .. " / 敌人强化")
-    love.graphics.setFont(Game.fonts.small)
+    local dangerText = Game.danger == 0 and "难度  基础" or ("难度  危险 " .. Game.danger)
     color(C.gold)
-    love.graphics.printf(dangerText, deckX + deckW - 330, deckY + 24, 300, "right")
-    color(C.muted)
-    love.graphics.printf("补给随风险提高", deckX + deckW - 330, deckY + 60, 300, "right")
+    love.graphics.printf(dangerText, deckX + deckW - 358, deckY + 32, 330, "right")
 
     uiButton("开始实验", w / 2 - 140, deckY + 30, 280, 62, C.gold, C.white, Game.fonts.normal)
-    -- 控件间距扩大约 15%，减轻底部密度。
-    uiButton("目标 ◀", deckX + 24, deckY + 88, 104, 34, C.cyan, C.white, Game.fonts.tiny)
-    uiButton("目标 ▶", deckX + 162, deckY + 88, 104, 34, C.cyan, C.white, Game.fonts.tiny)
-    uiButton("危险 -", deckX + deckW - 280, deckY + 88, 104, 34, C.cyan, C.white, Game.fonts.tiny)
-    uiButton("危险 +", deckX + deckW - 142, deckY + 88, 104, 34, C.cyan, C.white, Game.fonts.tiny)
+    -- 控制项只保留必要动作，减少系统堆叠感。
+    uiButton("◀", deckX + 28, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
+    uiButton("▶", deckX + 100, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
+    uiButton("-", deckX + deckW - 158, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
+    uiButton("+", deckX + deckW - 86, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
 end
 
 local function drawLevelUp()
@@ -2142,7 +2128,7 @@ function love.draw()
     drawWorld()
     drawHud()
     if Game.messageTimer > 0 then
-        local toastY = 158
+        local toastY = 140
         panel(Game.w / 2 - 260, toastY, 520, 40)
         love.graphics.setFont(Game.fonts.small)
         color(C.white)
@@ -2196,10 +2182,10 @@ end
 local function handlePointer(x, y)
     if Game.state == "menu" then
         local deckX, deckY, deckW = 90, Game.h - 168, Game.w - 180
-        if hitRect(x, y, deckX + 24, deckY + 88, 104, 34) then Game.selectedObjective = Game.selectedObjective - 1; if Game.selectedObjective < 1 then Game.selectedObjective = #objectiveDefs end; return true end
-        if hitRect(x, y, deckX + 162, deckY + 88, 104, 34) then Game.selectedObjective = Game.selectedObjective + 1; if Game.selectedObjective > #objectiveDefs then Game.selectedObjective = 1 end; return true end
-        if hitRect(x, y, deckX + deckW - 280, deckY + 88, 104, 34) then Game.danger = math.max(0, Game.danger - 1); return true end
-        if hitRect(x, y, deckX + deckW - 142, deckY + 88, 104, 34) then Game.danger = math.min(6, Game.danger + 1); return true end
+        if hitRect(x, y, deckX + 28, deckY + 82, 58, 32) then Game.selectedObjective = Game.selectedObjective - 1; if Game.selectedObjective < 1 then Game.selectedObjective = #objectiveDefs end; return true end
+        if hitRect(x, y, deckX + 100, deckY + 82, 58, 32) then Game.selectedObjective = Game.selectedObjective + 1; if Game.selectedObjective > #objectiveDefs then Game.selectedObjective = 1 end; return true end
+        if hitRect(x, y, deckX + deckW - 158, deckY + 82, 58, 32) then Game.danger = math.max(0, Game.danger - 1); return true end
+        if hitRect(x, y, deckX + deckW - 86, deckY + 82, 58, 32) then Game.danger = math.min(6, Game.danger + 1); return true end
         if hitRect(x, y, Game.w / 2 - 140, deckY + 30, 280, 62) then resetRun(); return true end
     elseif Game.state == "levelup" then
         local w, h, gap = 330, 210, 34
