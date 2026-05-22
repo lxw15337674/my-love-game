@@ -2396,14 +2396,31 @@ local function centeredText(text, x, y, w, h, font, c, align)
     textInBox(text, x, y, w, h, font, c, align or "center")
 end
 
-local function tagPill(text, x, y, bg, fg)
+local function tagPill(text, x, y, bg, fg, maxW)
     local font = Game.fonts.tiny
     local tw = math.max(50, font:getWidth(text) + 24)
+    if maxW then tw = math.min(tw, maxW) end
     local th = 24
     color(bg, 0.92)
     love.graphics.rectangle("fill", x, y, tw, th, 8, 8)
     centeredText(text, x, y, tw, th, font, fg or C.bgA, "center")
     return tw
+end
+
+local function drawTagRow(tags, x, y, maxW)
+    local cursor = x
+    local mx, my = mousePosition()
+    local tip = nil
+    for _, tag in ipairs(tags) do
+        local remain = maxW - (cursor - x)
+        if remain < 48 then break end
+        local tw = tagPill(tag.text, cursor, y, tag.color or C.white, tag.fg or C.bgA, remain)
+        if hitRect(mx, my, cursor, y, tw, 24) then
+            tip = {title = tag.title or ("标签：" .. tostring(tag.text or "")), lines = tag.lines or {tag.desc or "用于区分商品属性。"}, anchor = {x = cursor, y = y, w = tw, h = 24}, width = tag.width or 340}
+        end
+        cursor = cursor + tw + 6
+    end
+    return tip
 end
 
 local function shopItemAccent(item)
@@ -2698,6 +2715,9 @@ local function drawShopCard(item, i, x, y, w, h)
         color(C.muted, 0.34)
         love.graphics.rectangle("line", x + 18, y + h - 36, w - 36, 28, 10, 10)
         centeredText("已售罄", x + 18, y + h - 36, w - 36, 28, Game.fonts.tiny, C.muted, "center")
+        if hover then
+            return {title = "商品已售罄", lines = {"这个位置已被购买。", "刷新商店后会重新补货。"}, anchor = {x = x, y = y, w = w, h = h}, width = 360}
+        end
         return nil
     end
 
@@ -2710,46 +2730,60 @@ local function drawShopCard(item, i, x, y, w, h)
 
     local rarityText = rarityLabel[rarity] or rarity
     local kindText = kindLabel[item.kind] or item.kind
-    love.graphics.setFont(Game.fonts.tiny)
-    local tagX = x + 18
-    tagX = tagX + tagPill(rarityText, tagX, y + 13, rc, C.bgA) + 6
-    tagPill(kindText, tagX, y + 13, accent, C.bgA)
-    color(affordable and C.gold or C.muted)
-    love.graphics.printf("◆ " .. item.price, x + w - 128, y + 19, 72, "right")
-    local topLockX, topLockY = x + w - 48, y + 13
-    color(C.white, Game.locked[i] and 0.16 or 0.05)
-    love.graphics.rectangle("fill", topLockX, topLockY, 30, 24, 8, 8)
-    color(Game.locked[i] and C.white or C.muted, Game.locked[i] and 0.82 or 0.42)
-    if Game.locked[i] then
-        love.graphics.setFont(Game.fonts.tiny)
-        love.graphics.printf("锁", topLockX, topLockY + 5, 30, "center")
-    else
-        love.graphics.rectangle("line", topLockX + 9, topLockY + 7, 12, 10, 2, 2)
-        love.graphics.arc("line", topLockX + 15, topLockY + 8, 5, math.pi, TAU)
-    end
-
-    local identityY = y + 48
+    local rarityLines = {
+        common = {"普通稀有度：价格低，属性稳定。"},
+        rare = {"稀有：属性和词缀强于普通。"},
+        epic = {"史诗：更高属性，并可能带更强词缀。"},
+        legend = {"传说：高价值构筑件，通常带特殊协议。"}
+    }
+    local kindLines = {
+        weapon = {"武器：购买后装备到武器槽；同名武器会升级。"},
+        shield = {"护盾：安装到护盾槽，替换当前护盾组件。"},
+        temp = {"战术：只影响下一波战斗。"},
+        item = {"强化：购买后进入道具槽，本局永久生效。"},
+        mod = {"模组：改变核心战斗属性或武器表现。"},
+        relic = {"遗物：偏构筑联动的永久效果。"},
+        legend = {"传说装备：带特殊协议的永久构筑件。"}
+    }
+    local cardTags = {
+        {text = rarityText, color = rc, title = "稀有度：" .. rarityText, lines = rarityLines[rarity] or {"稀有度影响价格和属性强度。"}},
+        {text = kindText, color = accent, title = "类型：" .. kindText, lines = kindLines[item.kind] or {"商品类型决定购买后的生效位置。"}}
+    }
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
         local elem = elements[def.element]
-        local tx = x + 18
-        tx = tx + tagPill(brand.name, tx, identityY, brand.color, C.bgA) + 8
-        tagPill(elem.name, tx, identityY, elem.color, C.bgA)
+        cardTags[#cardTags + 1] = {text = brand and brand.name or "武器", color = brand and brand.color or C.white, title = "品牌：" .. (brand and brand.name or "武器"), lines = {brand and brand.tag or "武器品牌影响基础风格。"}}
+        cardTags[#cardTags + 1] = {text = elem and elem.name or "动能", color = elem and elem.color or C.white, title = "元素：" .. (elem and elem.name or "动能"), lines = {elem and elem.desc or "直接伤害。"}}
+    elseif item.kind == "shield" then
+        cardTags[#cardTags + 1] = {text = "护盾组件", color = accent, title = "槽位：护盾组件", lines = {"安装到护盾槽，通常提供护盾上限、回复或护甲。"}}
     else
-        tagPill(item.kind == "shield" and "护盾组件" or "构筑装备", x + 18, identityY, accent, C.bgA)
+        cardTags[#cardTags + 1] = {text = "构筑装备", color = accent, title = "槽位：构筑装备", lines = {item.kind == "temp" and "战术道具只影响下一波。" or "进入道具槽，提供永久构筑属性。"}}
+    end
+    love.graphics.setFont(Game.fonts.tiny)
+    local tagTip = drawTagRow(cardTags, x + 18, y + 13, w - 82)
+    local topLockX, topLockY, topLockW, topLockH = x + w - 58, y + 10, 40, 30
+    color(C.white, Game.locked[i] and 0.18 or 0.07)
+    love.graphics.rectangle("fill", topLockX, topLockY, topLockW, topLockH, 9, 9)
+    color(Game.locked[i] and C.white or C.muted, Game.locked[i] and 0.86 or 0.48)
+    love.graphics.rectangle("line", topLockX + 0.5, topLockY + 0.5, topLockW - 1, topLockH - 1, 9, 9)
+    if Game.locked[i] then
+        textInBox("锁", topLockX, topLockY, topLockW, topLockH, Game.fonts.tiny, C.white, "center")
+    else
+        love.graphics.rectangle("line", topLockX + 13, topLockY + 13, 14, 11, 3, 3)
+        love.graphics.arc("line", topLockX + 20, topLockY + 13, 6, math.pi, TAU)
     end
 
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf(compactDesc(item.name, 16), x + 18, y + 80, w - 36, "left")
+    love.graphics.printf(compactDesc(item.name, 16), x + 18, y + 56, w - 36, "left")
     love.graphics.setFont(Game.fonts.tiny)
     local desc = compactDesc(item.desc, 30)
     color(C.muted)
-    love.graphics.printf(desc, x + 18, y + 112, w - 36, "left")
+    love.graphics.printf(desc, x + 18, y + 88, w - 36, "left")
 
     local buyY = y + h - 36
-    local displayY, displayH = y + 144, math.max(42, buyY - y - 154)
+    local displayY, displayH = y + 120, math.max(42, buyY - y - 130)
     color(C.white, 0.045)
     love.graphics.rectangle("fill", x + 18, displayY, w - 36, displayH, 12, 12)
     color(C.white, 0.18)
@@ -2798,6 +2832,7 @@ local function drawShopCard(item, i, x, y, w, h)
         love.graphics.rectangle("fill", x, y, w, h, 16, 16)
     end
     if hover then
+        if tagTip then return tagTip end
         local tip = itemTooltip(item)
         if tip then tip.anchor = {x = x, y = y, w = w, h = h}; tip.width = 400 end
         return tip
