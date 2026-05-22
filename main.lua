@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.14"
+local VERSION = "v2026.05.22.15"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -3042,7 +3042,7 @@ local function drawShopTabs(x, y)
 end
 
 local function shopTabHit(x, y)
-    local startX, startY = 96, 152
+    local startX, startY = 40, 38
     local tabW, tabH, gap = 168, 44, 12
     for i, tab in ipairs(shopTabs) do
         local tx = startX + (i - 1) * (tabW + gap)
@@ -3107,21 +3107,35 @@ local function drawBuildTabContent(x, y, w, h)
 end
 
 local function drawShop()
-    panel(54, 66, Game.w - 108, Game.h - 86)
-    love.graphics.setFont(Game.fonts.normal)
-    color(C.white)
+    panel(18, 18, Game.w - 36, Game.h - 36)
     local clearedWave = math.max(1, Game.wave - 1)
-    local marginX = 96
-    local titleY = 92
-    local tabY = 152
-    local contentY, contentH = 228, 656
-    local actionY = 938
-    love.graphics.printf("商店 / 第 " .. clearedWave .. " 波战后补给", marginX, titleY, Game.w - marginX * 2, "center")
+    local marginX = 40
+    local tabY = 38
+    local contentY, contentH = 154, Game.h - 200
+    local actionY, actionH = 38, 42
+    local refreshW, nextW, sellW, actionGap = 210, 220, 220, 12
+    local actionX = Game.w - marginX - refreshW - nextW - sellW - actionGap * 2
     drawShopTabs(marginX, tabY)
 
-    love.graphics.setFont(Game.fonts.small)
+    love.graphics.setFont(Game.fonts.normal)
+    color(C.white)
+    local infoX, infoW = 590, actionX - 610
+    love.graphics.printf("商店 / 第 " .. clearedWave .. " 波战后补给", infoX, 38, infoW, "center")
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
+    love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4 · " .. shieldText .. " · 道具槽 " .. #(Game.player.items or {}) .. " · 购买后售罄，刷新后补货", infoX, 74, infoW, "center")
+
     local rerollCost = 3 + Game.shopRefresh * 2
     local refreshText = Game.freeRefresh > 0 and ("免费刷新 " .. Game.freeRefresh .. " 次") or ("刷新 " .. rerollCost .. " 材料")
+    uiButton(refreshText, actionX, actionY, refreshW, actionH, C.cyan)
+    uiButton("进入下一波", actionX + refreshW + actionGap, actionY, nextW, actionH, C.gold, C.white, Game.fonts.small)
+    uiButton("卖出选中武器", actionX + refreshW + actionGap + nextW + actionGap, actionY, sellW, actionH, C.white)
+
+    color(C.white, 0.08)
+    love.graphics.rectangle("fill", marginX, 108, Game.w - marginX * 2, 1)
+
+    love.graphics.setFont(Game.fonts.small)
     local active = Game.shopTab or "shop"
     local tip = nil
 
@@ -3130,9 +3144,6 @@ local function drawShop()
     elseif active == "slot" then
         drawSlotTabContent(marginX, contentY, Game.w - marginX * 2, contentH)
     else
-        color(C.gold)
-        local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
-        love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  " .. shieldText .. "  ·  道具槽 " .. #(Game.player.items or {}), marginX, 196, Game.w - marginX * 2, "center")
         local gap = 28
         local sideW = 430
         local sideGap = 32
@@ -3140,8 +3151,8 @@ local function drawShop()
         local shelfW = sideX - marginX - sideGap
         local cardW = (shelfW - gap * 2) / 3
         local cardH = 268
-        local weaponY = 254
-        local supportY = 604
+        local weaponY = 204
+        local supportY = 554
         love.graphics.setFont(Game.fonts.small)
         color(C.orange)
         love.graphics.printf("武器架 · 3 选 1", marginX, weaponY - 34, shelfW, "left")
@@ -3166,15 +3177,6 @@ local function drawShop()
         tip = drawCompactBuildPanel(sideX, contentY, sideW, contentH) or tip
     end
 
-    local secondaryW, primaryW, gap = 260, 360, 36
-    local groupW = secondaryW * 2 + primaryW + gap * 2
-    local groupX = Game.w / 2 - groupW / 2
-    uiButton(refreshText, groupX, actionY, secondaryW, 42, C.cyan)
-    local pulse = 0.08 + (math.sin((love.timer.getTime() or 0) * 4) + 1) * 0.045
-    color(C.gold, pulse)
-    love.graphics.rectangle("fill", Game.w / 2 - primaryW / 2 - 8, actionY - 7, primaryW + 16, 56, 16, 16)
-    uiButton("进入下一波", Game.w / 2 - primaryW / 2, actionY - 3, primaryW, 48, C.gold, C.white, Game.fonts.normal)
-    uiButton("卖出选中武器", groupX + groupW - secondaryW, actionY, secondaryW, 42, C.white)
     drawTooltip(tip)
 end
 
@@ -3349,11 +3351,18 @@ local function handlePointer(x, y)
             if hitRect(x, y, cx, 350, w, h) then chooseLevelReward(i); return true end
         end
     elseif Game.state == "shop" then
+        local marginX = 40
+        local actionY, actionH = 38, 42
+        local refreshW, nextW, sellW, actionGap = 210, 220, 220, 12
+        local actionX = Game.w - marginX - refreshW - nextW - sellW - actionGap * 2
+        if hitRect(x, y, actionX, actionY, refreshW, actionH) then refreshShop(); return true end
+        if hitRect(x, y, actionX + refreshW + actionGap, actionY, nextW, actionH) then startWave(); return true end
+        if hitRect(x, y, actionX + refreshW + actionGap + nextW + actionGap, actionY, sellW, actionH) then recycleWeapon(); return true end
+
         local tab = shopTabHit(x, y)
         if tab then Game.shopTab = tab; return true end
 
         if (Game.shopTab or "shop") == "shop" then
-            local marginX = 96
             local gap = 28
             local sideW = 430
             local sideGap = 32
@@ -3361,9 +3370,9 @@ local function handlePointer(x, y)
             local shelfW = sideX - marginX - sideGap
             local cardW = (shelfW - gap * 2) / 3
             local cardH = 268
-            local weaponY = 254
-            local supportY = 604
-            if handleBuildPanelClick(x, y, sideX, 228, sideW, 656) then return true end
+            local weaponY = 204
+            local supportY = 554
+            if handleBuildPanelClick(x, y, sideX, 154, sideW, Game.h - 200) then return true end
             for i = 1, 6 do
                 local col = (i - 1) % 3
                 local cardX = marginX + col * (cardW + gap)
@@ -3376,14 +3385,6 @@ local function handlePointer(x, y)
             local buttonW, buttonH = 320, 64
             if hitRect(x, y, Game.w / 2 - buttonW / 2, 190 + 430 - 96, buttonW, buttonH) then spinSlotMachine(); return true end
         end
-
-        local actionY = 938
-        local secondaryW, primaryW, gap = 260, 360, 36
-        local groupW = secondaryW * 2 + primaryW + gap * 2
-        local groupX = Game.w / 2 - groupW / 2
-        if hitRect(x, y, groupX, actionY, secondaryW, 56) then refreshShop(); return true end
-        if hitRect(x, y, Game.w / 2 - primaryW / 2, actionY - 8, primaryW, 72) then startWave(); return true end
-        if hitRect(x, y, groupX + groupW - secondaryW, actionY, secondaryW, 56) then recycleWeapon(); return true end
     elseif Game.state == "paused" then
         local menuY = Game.h / 2 - 150
         if hitRect(x, y, Game.w / 2 - 170, menuY + 146, 340, 58) then Game.state = "playing"; toast("继续战斗"); return true end
