@@ -2386,10 +2386,15 @@ local function modText(text)
     return text
 end
 
-local function centeredText(text, x, y, w, h, font, c, align)
+local function textInBox(text, x, y, w, h, font, c, align)
+    font = font or Game.fonts.tiny
     love.graphics.setFont(font)
     color(c or C.white)
-    love.graphics.printf(text, x, y + math.floor((h - font:getHeight()) / 2) + 1, w, align or "center")
+    love.graphics.printf(tostring(text or ""), x, y + math.floor((h - font:getHeight()) / 2), w, align or "center")
+end
+
+local function centeredText(text, x, y, w, h, font, c, align)
+    textInBox(text, x, y, w, h, font, c, align or "center")
 end
 
 local function tagPill(text, x, y, bg, fg)
@@ -2878,7 +2883,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         love.graphics.rectangle("fill", tx, tabY, tabW, tabH, 8, 8)
         color(active and C.gold or C.muted, active and 0.72 or 0.36)
         love.graphics.rectangle("line", tx + 0.5, tabY + 0.5, tabW - 1, tabH - 1, 8, 8)
-        love.graphics.printf(tab.label, tx, tabY + 7, tabW, "center")
+        textInBox(tab.label, tx, tabY, tabW, tabH, Game.fonts.tiny, active and C.gold or C.muted, "center")
     end
 
     local slotW = (w - 44) / 2
@@ -2900,13 +2905,13 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
             color(accent, 0.40)
             love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 29, 8, 8)
             color(C.white)
-            love.graphics.printf(compactDesc(item.name, showSell and 9 or 13), sx + 10, sy + 8, slotW - (showSell and 54 or 20), "left")
+            textInBox(compactDesc(item.name, showSell and 9 or 13), sx + 10, sy, slotW - (showSell and 54 or 20), 30, Game.fonts.tiny, C.white, "left")
             if showSell then
                 color(C.red, 0.14)
                 love.graphics.rectangle("fill", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
                 color(C.red, 0.58)
                 love.graphics.rectangle("line", sx + slotW - 40, sy + 5, 30, 20, 7, 7)
-                love.graphics.printf("卖", sx + slotW - 40, sy + 9, 30, "center")
+                textInBox("卖", sx + slotW - 40, sy + 5, 30, 20, Game.fonts.tiny, C.red, "center")
             end
             if hitRect(mx, my, sx, sy, slotW, 30) then
                 local tip = itemTooltip(item)
@@ -2918,7 +2923,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
             color(C.white, 0.05)
             love.graphics.rectangle("fill", x + 14, itemY, w - 28, 34, 8, 8)
             color(C.muted)
-            love.graphics.printf("暂无道具", x + 26, itemY + 10, w - 52, "left")
+            textInBox("暂无道具", x + 26, itemY, w - 52, 34, Game.fonts.tiny, C.muted, "left")
         end
         return nil
     end
@@ -2939,9 +2944,9 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         color(C.white, 0.06)
         love.graphics.rectangle("fill", sx, sy, (w - 44) / 2, 18, 6, 6)
         color(C.muted)
-        love.graphics.printf(row[1], sx + 8, sy + 4, 46, "left")
+        textInBox(row[1], sx + 8, sy, 46, 18, Game.fonts.tiny, C.muted, "left")
         color(C.white)
-        love.graphics.printf(row[2], sx + 58, sy + 4, (w - 132) / 2, "right")
+        textInBox(row[2], sx + 58, sy, (w - 132) / 2, 18, Game.fonts.tiny, C.white, "right")
     end
 
     love.graphics.setFont(Game.fonts.tiny)
@@ -2965,13 +2970,13 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 33, 9, 9)
         love.graphics.setLineWidth(1)
         color(weapon and C.white or C.muted)
-        love.graphics.printf(weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, showSell and 10 or 14) or "空武器", sx + 10, sy + 9, slotW - (showSell and 56 or 20), "left")
+        textInBox(weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, showSell and 10 or 14) or "空武器", sx + 10, sy, slotW - (showSell and 56 or 20), 34, Game.fonts.tiny, weapon and C.white or C.muted, "left")
         if weapon and showSell then
             color(C.red, 0.14)
             love.graphics.rectangle("fill", sx + slotW - 42, sy + 6, 32, 22, 7, 7)
             color(C.red, 0.58)
             love.graphics.rectangle("line", sx + slotW - 42, sy + 6, 32, 22, 7, 7)
-            love.graphics.printf("卖", sx + slotW - 42, sy + 11, 32, "center")
+            textInBox("卖", sx + slotW - 42, sy + 6, 32, 22, Game.fonts.tiny, C.red, "center")
         end
         if weapon and hitRect(mx, my, sx, sy, slotW, 34) then
             local tip = weaponTooltip(weapon, selected and "当前武器 · 对比中" or "当前武器")
@@ -2992,16 +2997,16 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
     color(C.cyan, shield and 0.52 or 0.22)
     love.graphics.rectangle("line", x + 14.5, shieldY + 0.5, w - 29, 41, 10, 10)
     color(shield and C.white or C.muted)
-    love.graphics.printf(shield and compactDesc(shield.name, showSell and 16 or 22) or "空护盾槽", x + 26, shieldY + 12, w - (showSell and 118 or 92), "left")
+    textInBox(shield and compactDesc(shield.name, showSell and 16 or 22) or "空护盾槽", x + 26, shieldY, w - (showSell and 118 or 92), 42, Game.fonts.tiny, shield and C.white or C.muted, "left")
     if shield and showSell then
         color(C.red, 0.14)
         love.graphics.rectangle("fill", x + w - 66, shieldY + 9, 38, 24, 7, 7)
         color(C.red, 0.58)
         love.graphics.rectangle("line", x + w - 66, shieldY + 9, 38, 24, 7, 7)
-        love.graphics.printf("卖", x + w - 66, shieldY + 15, 38, "center")
+        textInBox("卖", x + w - 66, shieldY + 9, 38, 24, Game.fonts.tiny, C.red, "center")
     else
         color(C.cyan)
-        love.graphics.printf(shield and "1/1" or "0/1", x + w - 72, shieldY + 12, 44, "right")
+        textInBox(shield and "1/1" or "0/1", x + w - 72, shieldY, 44, 42, Game.fonts.tiny, C.cyan, "right")
     end
     if shield and hitRect(mx, my, x + 14, shieldY, w - 28, 42) then
         local tip = itemTooltip(shield)
