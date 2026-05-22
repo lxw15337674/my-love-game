@@ -180,7 +180,7 @@ local itemPool = {
     {name = "虹吸针管", kind = "relic", rarity = "rare", price = 30, desc = "生命偷取 +3%，暴击 -2%", apply = function(p) p.stats.lifesteal = p.stats.lifesteal + 0.03; p.stats.crit = p.stats.crit - 0.02 end},
     {name = "自动索敌芯片", kind = "relic", rarity = "epic", price = 46, desc = "电弧伤害 +18%，弹射 +1", apply = function(p) p.stats.elementDamage = p.stats.elementDamage + 0.18; p.stats.bounce = p.stats.bounce + 1 end},
     {name = "收获协议", kind = "relic", rarity = "epic", price = 44, desc = "收获 +4：战后额外材料", apply = function(p) p.stats.harvest = p.stats.harvest + 4 end},
-    {name = "赌徒电容", kind = "legend", rarity = "legend", price = 70, desc = "幸运 +6，闪避 +8%，护甲 -2", apply = function(p) p.stats.luck = p.stats.luck + 6; p.stats.dodge = p.stats.dodge + 0.08; p.stats.armor = p.stats.armor - 2 end}
+    {name = "幸运电容", kind = "legend", rarity = "legend", price = 70, desc = "幸运 +6，闪避 +8%，护甲 -2", apply = function(p) p.stats.luck = p.stats.luck + 6; p.stats.dodge = p.stats.dodge + 0.08; p.stats.armor = p.stats.armor - 2 end}
 }
 
 local tempItemPool = {
@@ -891,7 +891,7 @@ end
 
 local function placeSlotPrize(item)
     item.price = 0
-    item.name = "老虎机 " .. item.name
+    item.name = "补给转轮 " .. item.name
     for i = 1, 4 do
         if not Game.locked[i] then
             Game.shop[i] = item
@@ -923,7 +923,7 @@ local function grantSlotReward(reels)
         if count > bestCount then bestId, bestCount = id, count end
     end
     local jackpot = bestCount == 3
-    local label = jackpot and "三连大奖" or (bestCount == 2 and "双符奖励" or "安慰奖励")
+    local label = jackpot and "三符奖励" or (bestCount == 2 and "双符奖励" or "基础补给")
     if jackpot then
         if bestId == "coin" then
             addCoins(90, "slot"); return label .. "：材料 +90"
@@ -955,13 +955,13 @@ local function grantSlotReward(reels)
 end
 
 local function spinSlotMachine()
-    if not slotUnlocked() then toast("清完第 5 波后解锁老虎机"); return end
+    if not slotUnlocked() then toast("清完第 5 波后解锁补给转轮"); return end
     local free = slotHasFreeUse()
     local cost = slotSpinCost()
     if free then
         Game.slotFreeUsed[slotMilestone()] = true
     else
-        if Game.coins < cost then toast("材料不足，老虎机需要 " .. cost); return end
+        if Game.coins < cost then toast("材料不足，补给转轮需要 " .. cost); return end
         Game.coins = Game.coins - cost
         Game.slotPaidSpins = (Game.slotPaidSpins or 0) + 1
     end
@@ -969,7 +969,7 @@ local function spinSlotMachine()
     local rewardText = grantSlotReward(reels)
     Game.slotResult = {reels = reels, text = rewardText, free = free}
     playCue("shop")
-    toast("老虎机：" .. rewardText)
+    toast("补给转轮：" .. rewardText)
 end
 
 local function startWave()
@@ -2343,7 +2343,7 @@ local function drawSlotMachinePanel(x, y, w, h)
     panel(x, y, w, h)
     love.graphics.setFont(Game.fonts.tiny)
     color(C.white)
-    love.graphics.printf("老虎机", x + 12, y + 8, 64, "left")
+    love.graphics.printf("补给转轮", x + 12, y + 8, 64, "left")
     local milestone = slotMilestone()
     local unlocked = slotUnlocked()
     local free = slotHasFreeUse()
@@ -2366,10 +2366,10 @@ local function drawSlotMachinePanel(x, y, w, h)
     end
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三连大奖 / 双符中奖 / 散符返材料", x + 142, y + 34, w - 246, "left")
+    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三符奖励 / 双符奖励 / 基础补给返材料", x + 142, y + 34, w - 246, "left")
 
     local by = y + 28
-    local label = unlocked and (free and "免费拉杆" or ("拉杆 · " .. slotSpinCost())) or "未解锁"
+    local label = unlocked and (free and "免费启动" or ("启动 · " .. slotSpinCost())) or "未解锁"
     uiButton(label, x + w - 94, by, 80, 34, unlocked and C.gold or C.white, C.white, Game.fonts.tiny)
 end
 
@@ -2380,10 +2380,10 @@ local function drawSlotTabContent(x, y, w, h)
     local free = slotHasFreeUse()
     love.graphics.setFont(Game.fonts.normal)
     color(C.white)
-    love.graphics.printf("老虎机", x + 28, y + 26, w - 56, "left")
+    love.graphics.printf("补给转轮", x + 28, y + 26, w - 56, "left")
     love.graphics.setFont(Game.fonts.small)
     color(unlocked and C.gold or C.muted)
-    local status = unlocked and ("第 " .. milestone .. " 关奖励机 · " .. (free and "本轮免费 1 次" or ("本次消耗 " .. slotSpinCost() .. " 材料"))) or "清完第 5 关后解锁；之后每 5 关补 1 次免费拉杆"
+    local status = unlocked and ("第 " .. milestone .. " 关奖励机 · " .. (free and "本轮免费 1 次" or ("本次消耗 " .. slotSpinCost() .. " 材料"))) or "清完第 5 关后解锁；之后每 5 关补 1 次免费启动"
     love.graphics.printf(status, x + 28, y + 66, w - 56, "left")
 
     local reels = Game.slotResult and Game.slotResult.reels or nil
@@ -2407,13 +2407,13 @@ local function drawSlotTabContent(x, y, w, h)
 
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三连大奖，双符中奖，散符返材料。奖品会直接给材料/治疗，或以 0 材料商品放入商店。", x + 28, y + 248, w - 56, "center")
+    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三符奖励，双符奖励，基础补给返材料。奖励会直接给材料/治疗，或以 0 材料商品放入商店。", x + 28, y + 248, w - 56, "center")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("符号：材料、武器、战术、护盾、修复、稀有。老虎机只影响商店阶段，不会替你自动进入下一波。", x + 28, y + 292, w - 56, "center")
+    love.graphics.printf("符号：材料、武器、战术、护盾、修复、稀有。补给转轮只影响商店阶段，不会替你自动进入下一波。", x + 28, y + 292, w - 56, "center")
 
     local buttonW, buttonH = 320, 64
-    local label = unlocked and (free and "免费拉杆" or ("拉杆 · " .. slotSpinCost() .. " 材料")) or "未解锁"
+    local label = unlocked and (free and "免费启动" or ("启动 · " .. slotSpinCost() .. " 材料")) or "未解锁"
     uiButton(label, x + w / 2 - buttonW / 2, y + h - 96, buttonW, buttonH, unlocked and C.gold or C.white, C.white, Game.fonts.normal)
 end
 
@@ -2421,7 +2421,7 @@ local shopTabs = {
     {id = "shop", label = "商店"},
     {id = "intel", label = "下一波情报"},
     {id = "build", label = "当前构筑"},
-    {id = "slot", label = "老虎机"}
+    {id = "slot", label = "补给转轮"}
 }
 
 local function drawShopTabs(x, y)
