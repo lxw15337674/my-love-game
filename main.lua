@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.22"
+local VERSION = "v2026.05.22.23"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2664,34 +2664,32 @@ end
 
 local function itemTooltip(item)
     if not item then return nil end
-    local rarity = item.rarity or "common"
-    local rarityText = rarityLabel[rarity] or rarity or "普通"
     local kindText = kindLabel[item.kind] or item.kind or "道具"
     local kindDesc = ({
-        weapon = "武器：购买后装备到武器槽；同名武器会升级。",
-        shield = "护盾：安装到护盾槽，替换当前护盾组件。",
-        temp = "战术：只影响下一波战斗。",
-        item = "强化：购买后进入道具槽，本局永久生效。",
-        mod = "模组：改变核心战斗属性或武器表现。",
-        relic = "遗物：偏构筑联动的永久效果。",
-        legend = "传说装备：带特殊协议的永久构筑件。"
-    })[item.kind] or "商品类型决定购买后的生效位置。"
+        weapon = "购买后装备到武器槽；同名武器会升级。",
+        shield = "安装到护盾槽，替换当前护盾组件。",
+        temp = "只影响下一波战斗。",
+        item = "进入道具槽，本局永久生效。",
+        mod = "改变核心战斗属性或武器表现。",
+        relic = "偏构筑联动的永久效果。",
+        legend = "带特殊协议的永久构筑件。"
+    })[item.kind] or "决定购买后的生效位置。"
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local selected = Game.player.weapons[Game.selectedWeaponIndex or 1]
         local tip = weaponTooltip(def, "商品武器", selected)
-        table.insert(tip.lines, 1, rarityText .. " · " .. kindText .. " · 价格 ◆ " .. item.price)
-        table.insert(tip.lines, 2, {text = "类型：" .. kindDesc, color = C.muted})
+        table.insert(tip.lines, 1, "价格：◆ " .. item.price)
+        table.insert(tip.lines, 2, {text = "类型：" .. kindText .. " · " .. kindDesc, color = C.muted})
         if not selected then
             tip.lines[#tip.lines + 1] = {text = "提示：先点击右侧武器槽，选择要对比的武器。", color = C.muted, gap = 8}
         end
         return tip
     end
-    local slotDesc = item.kind == "shield" and "槽位：护盾组件 · 安装到护盾槽。" or "槽位：构筑装备 · 进入道具槽或作为战术生效。"
+    local slotDesc = item.kind == "shield" and "护盾组件 · 安装到护盾槽。" or "构筑装备 · 进入道具槽或作为战术生效。"
     local lines = {
-        rarityText .. " · " .. kindText .. (item.price and (" · 价格 ◆ " .. item.price) or ""),
-        {text = "类型：" .. kindDesc, color = C.muted},
-        {text = slotDesc, color = C.muted},
+        "价格：◆ " .. (item.price or 0),
+        {text = "类型：" .. kindText .. " · " .. kindDesc, color = C.muted},
+        {text = "槽位：" .. slotDesc, color = C.muted},
         {text = "效果：" .. modText(item.desc or "无说明"), color = C.white, gap = 6}
     }
     if item.kind == "temp" then lines[#lines + 1] = "生效：仅下一波" else lines[#lines + 1] = "生效：本局永久" end
@@ -2735,35 +2733,20 @@ local function drawShopCard(item, i, x, y, w, h)
 
     local rarityText = rarityLabel[rarity] or rarity
     local kindText = kindLabel[item.kind] or item.kind
-    local rarityLines = {
-        common = {"普通稀有度：价格低，属性稳定。"},
-        rare = {"稀有：属性和词缀强于普通。"},
-        epic = {"史诗：更高属性，并可能带更强词缀。"},
-        legend = {"传说：高价值构筑件，通常带特殊协议。"}
-    }
-    local kindLines = {
-        weapon = {"武器：购买后装备到武器槽；同名武器会升级。"},
-        shield = {"护盾：安装到护盾槽，替换当前护盾组件。"},
-        temp = {"战术：只影响下一波战斗。"},
-        item = {"强化：购买后进入道具槽，本局永久生效。"},
-        mod = {"模组：改变核心战斗属性或武器表现。"},
-        relic = {"遗物：偏构筑联动的永久效果。"},
-        legend = {"传说装备：带特殊协议的永久构筑件。"}
-    }
     local cardTags = {
-        {text = rarityText, color = rc, title = "稀有度：" .. rarityText, lines = rarityLines[rarity] or {"稀有度影响价格和属性强度。"}},
-        {text = kindText, color = accent, title = "类型：" .. kindText, lines = kindLines[item.kind] or {"商品类型决定购买后的生效位置。"}}
+        {text = rarityText, color = rc},
+        {text = kindText, color = accent}
     }
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
         local elem = elements[def.element]
-        cardTags[#cardTags + 1] = {text = brand and brand.name or "武器", color = brand and brand.color or C.white, title = "品牌：" .. (brand and brand.name or "武器"), lines = {brand and brand.tag or "武器品牌影响基础风格。"}}
-        cardTags[#cardTags + 1] = {text = elem and elem.name or "动能", color = elem and elem.color or C.white, title = "元素：" .. (elem and elem.name or "动能"), lines = {elem and elem.desc or "直接伤害。"}}
+        cardTags[#cardTags + 1] = {text = brand and brand.name or "武器", color = brand and brand.color or C.white}
+        cardTags[#cardTags + 1] = {text = elem and elem.name or "动能", color = elem and elem.color or C.white}
     elseif item.kind == "shield" then
-        cardTags[#cardTags + 1] = {text = "护盾组件", color = accent, title = "槽位：护盾组件", lines = {"安装到护盾槽，通常提供护盾上限、回复或护甲。"}}
+        cardTags[#cardTags + 1] = {text = "护盾组件", color = accent}
     else
-        cardTags[#cardTags + 1] = {text = "构筑装备", color = accent, title = "槽位：构筑装备", lines = {item.kind == "temp" and "战术道具只影响下一波。" or "进入道具槽，提供永久构筑属性。"}}
+        cardTags[#cardTags + 1] = {text = "构筑装备", color = accent}
     end
     love.graphics.setFont(Game.fonts.tiny)
     drawTagRow(cardTags, x + 18, y + 13, w - 82)
