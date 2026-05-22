@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.9"
+local VERSION = "v2026.05.22.10"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 
 local Game = {
@@ -839,22 +839,22 @@ local function randomShopItem()
 end
 
 local function randomShopItemForSlot(i)
-    return i <= 2 and randomWeaponShopItem() or randomSupportShopItem()
+    return i <= 3 and randomWeaponShopItem() or randomSupportShopItem()
 end
 
 local function preferredSlotRangeForItem(item)
-    if item and item.kind == "weapon" then return 1, 2 end
-    return 3, 4
+    if item and item.kind == "weapon" then return 1, 3 end
+    return 4, 6
 end
 
 local function rollShop(keepLocks)
     local used = {}
     if keepLocks then
-        for i = 1, 4 do
+        for i = 1, 6 do
             if Game.locked[i] and Game.shop[i] then used[Game.shop[i].name] = true end
         end
     end
-    for i = 1, 4 do
+    for i = 1, 6 do
         if not keepLocks or not Game.locked[i] then
             local item = randomShopItemForSlot(i)
             for _ = 1, 10 do
@@ -923,7 +923,7 @@ local function placeSlotPrize(item)
             return
         end
     end
-    for i = 1, 4 do
+    for i = 1, 6 do
         if not Game.locked[i] then
             Game.shop[i] = item
             Game.locked[i] = false
@@ -1635,16 +1635,16 @@ function love.update(dt)
     Game.shopRollTimer = math.max(0, (Game.shopRollTimer or 0) - dt)
     if Game.state == "shop" and (Game.shopTab or "shop") == "shop" then
         local mx, my = mousePosition()
-        local cardY, gridH, gap, sideW, sideGap = 214, 392, 24, 300, 20
-        local sideX = Game.w - 72 - sideW
-        local cardW = (sideX - 72 - gap - sideGap) / 2
-        local cardH = (gridH - gap) / 2
+        local marginX, gap, sideW, sideGap = 96, 28, 430, 32
+        local sideX = Game.w - marginX - sideW
+        local cardW = (sideX - marginX - gap * 2 - sideGap) / 3
+        local cardH = 268
+        local weaponY, supportY = 254, 604
         local hovered = nil
-        for i = 1, 4 do
-            local col = (i - 1) % 2
-            local row = math.floor((i - 1) / 2)
-            local x = 72 + col * (cardW + gap)
-            local y = cardY + row * (cardH + gap)
+        for i = 1, 6 do
+            local col = (i - 1) % 3
+            local x = marginX + col * (cardW + gap)
+            local y = i <= 3 and weaponY or supportY
             if mx >= x and mx <= x + cardW and my >= y and my <= y + cardH then hovered = i end
         end
         if hovered and hovered ~= Game.hoveredShopItem then playCue("pickup") end
@@ -2297,10 +2297,11 @@ local function drawShopCard(item, i, x, y, w, h)
 
     local rarityText = rarityLabel[rarity] or rarity
     local kindText = kindLabel[item.kind] or item.kind
+    local shelfText = item.kind == "weapon" and ("武器架 " .. i) or ("装备箱 " .. (i - 3))
     love.graphics.setFont(Game.fonts.tiny)
     drawKindIcon(item.kind, x + 30, y + 25, accent)
     color(C.muted)
-    love.graphics.printf(rarityText .. " · " .. kindText, x + 50, y + 19, w - 160, "left")
+    love.graphics.printf(shelfText .. " · " .. rarityText .. " · " .. kindText, x + 50, y + 19, w - 170, "left")
     color(affordable and C.gold or C.muted)
     love.graphics.printf(item.price .. " 材", x + w - 128, y + 19, 72, "right")
     local topLockX, topLockY = x + w - 48, y + 13
@@ -2319,23 +2320,41 @@ local function drawShopCard(item, i, x, y, w, h)
     color(C.white)
     love.graphics.printf(item.name, x + 18, y + 48, w - 36, "left")
     love.graphics.setFont(Game.fonts.tiny)
-    local desc = compactDesc(item.desc, 42)
+    local desc = compactDesc(item.desc, w < 420 and 34 or 42)
     local descColor = desc:find("%-") and C.red or (desc:find("%+") and C.green or C.muted)
     color(descColor)
     love.graphics.printf(desc, x + 18, y + 76, w - 36, "left")
 
-    local chipY = y + 108
+    if item.kind == "weapon" then
+        color(accent, 0.10)
+        love.graphics.rectangle("fill", x + 18, y + 102, w - 36, 54, 12, 12)
+        color(C.white, 0.08)
+        love.graphics.rectangle("fill", x + 32, y + 116, w - 64, 4, 2, 2)
+        love.graphics.rectangle("fill", x + 32, y + 138, w - 64, 4, 2, 2)
+        color(accent, 0.30)
+        love.graphics.rectangle("line", x + 18.5, y + 102.5, w - 37, 53, 12, 12)
+    else
+        color(accent, 0.10)
+        love.graphics.rectangle("fill", x + 18, y + 102, w - 36, 54, 10, 10)
+        color(accent, 0.25)
+        love.graphics.rectangle("line", x + 18.5, y + 102.5, w - 37, 53, 10, 10)
+        color(C.white, 0.07)
+        love.graphics.line(x + 32, y + 129, x + w - 32, y + 129)
+        love.graphics.line(x + w / 2, y + 108, x + w / 2, y + 150)
+    end
+
+    local chipY = y + 116
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
         local elem = elements[def.element]
         color(brand.color)
-        love.graphics.printf(brand.name, x + 18, chipY, 96, "left")
+        love.graphics.printf(brand.name, x + 32, chipY, 96, "left")
         color(elem.color)
-        love.graphics.printf(elem.name .. " · " .. def.damage .. "伤 · " .. string.format("%.2f", def.cooldown) .. "CD", x + 110, chipY, w - 128, "left")
+        love.graphics.printf(elem.name .. " · " .. def.damage .. "伤 · " .. string.format("%.2f", def.cooldown) .. "CD", x + 126, chipY, w - 154, "left")
     else
         color(accent, 0.64)
-        love.graphics.printf("永久", x + 18, chipY, w - 36, "left")
+        love.graphics.printf(item.kind == "shield" and "护盾组件" or "构筑装备", x + 32, chipY, w - 64, "left")
     end
 
     local buyY = y + h - 36
@@ -2792,22 +2811,31 @@ local function drawShop()
         color(C.gold)
         local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
         love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  " .. shieldText .. "  ·  道具槽 " .. #(Game.player.items or {}), marginX, 196, Game.w - marginX * 2, "center")
-        local gap = 32
+        local gap = 28
         local sideW = 430
         local sideGap = 32
         local sideX = Game.w - marginX - sideW
-        local cardW = (sideX - marginX - gap - sideGap) / 2
-        local cardH = 284
-        local weaponY = 252
-        local supportY = 602
+        local shelfW = sideX - marginX - sideGap
+        local cardW = (shelfW - gap * 2) / 3
+        local cardH = 268
+        local weaponY = 254
+        local supportY = 604
         love.graphics.setFont(Game.fonts.small)
         color(C.orange)
-        love.graphics.printf("武器货架", marginX, weaponY - 34, sideX - marginX - sideGap, "left")
+        love.graphics.printf("武器架 · 3 选 1", marginX, weaponY - 34, shelfW, "left")
+        color(C.white, 0.08)
+        love.graphics.rectangle("fill", marginX, weaponY - 8, shelfW, 10, 5, 5)
+        color(C.orange, 0.28)
+        love.graphics.rectangle("fill", marginX, weaponY + cardH + 10, shelfW, 8, 4, 4)
         color(C.gold)
-        love.graphics.printf("道具 / 护盾货架", marginX, supportY - 34, sideX - marginX - sideGap, "left")
+        love.graphics.printf("装备箱 · 道具 / 护盾 / 战术", marginX, supportY - 34, shelfW, "left")
+        color(C.white, 0.07)
+        love.graphics.rectangle("fill", marginX, supportY - 8, shelfW, 10, 5, 5)
+        color(C.gold, 0.24)
+        love.graphics.rectangle("fill", marginX, supportY + cardH + 10, shelfW, 8, 4, 4)
         for i, item in ipairs(Game.shop) do
-            local col = (i - 1) % 2
-            local rowY = i <= 2 and weaponY or supportY
+            local col = (i - 1) % 3
+            local rowY = i <= 3 and weaponY or supportY
             local x = marginX + col * (cardW + gap)
             local y = rowY
             tip = drawShopCard(item, i, x, y, cardW, cardH) or tip
@@ -2966,18 +2994,19 @@ local function handlePointer(x, y)
 
         if (Game.shopTab or "shop") == "shop" then
             local marginX = 96
-            local gap = 32
+            local gap = 28
             local sideW = 430
             local sideGap = 32
             local sideX = Game.w - marginX - sideW
-            local cardW = (sideX - marginX - gap - sideGap) / 2
-            local cardH = 284
-            local weaponY = 252
-            local supportY = 602
-            for i = 1, 4 do
-                local col = (i - 1) % 2
+            local shelfW = sideX - marginX - sideGap
+            local cardW = (shelfW - gap * 2) / 3
+            local cardH = 268
+            local weaponY = 254
+            local supportY = 604
+            for i = 1, 6 do
+                local col = (i - 1) % 3
                 local cardX = marginX + col * (cardW + gap)
-                local cardTop = i <= 2 and weaponY or supportY
+                local cardTop = i <= 3 and weaponY or supportY
                 local buyY = cardTop + cardH - 36
                 if hitRect(x, y, cardX + 18, buyY, cardW - 36, 28) then buySlot(i); return true end
                 if hitRect(x, y, cardX + cardW - 48, cardTop + 13, 30, 24) then Game.locked[i] = not Game.locked[i]; playCue("shop"); toast(Game.locked[i] and "已锁定商品" or "已取消锁定"); return true end
@@ -3048,6 +3077,8 @@ function love.keypressed(key)
         if key == "2" then buySlot(2) end
         if key == "3" then buySlot(3) end
         if key == "4" then buySlot(4) end
+        if key == "5" then buySlot(5) end
+        if key == "6" then buySlot(6) end
         if key == "e" then recycleWeapon() end
         if key == "s" then spinSlotMachine(); return end
         if key == "r" then
