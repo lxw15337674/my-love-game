@@ -2,11 +2,13 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.23"
+local VERSION = "v2026.05.22.26"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
 local ACTIVE_SKILL_SPEED_MULT = 2.1
+local CHAPTER_SIZE = 5
+local CHAPTER_NAMES = {"铁幕", "赤炉", "断链", "黑箱", "天灾", "归零"}
 
 local Game = {
     w = VIRTUAL_W,
@@ -232,6 +234,19 @@ local wavePlans = {
 
 local function wavePlanAt(wave)
     return wavePlans[wave] or wavePlans[#wavePlans]
+end
+
+local function chapterInfoAt(wave)
+    local safeWave = math.max(1, wave or 1)
+    local chapterIndex = math.floor((safeWave - 1) / CHAPTER_SIZE) + 1
+    local chapterName = CHAPTER_NAMES[chapterIndex] or CHAPTER_NAMES[#CHAPTER_NAMES]
+    local chapterWave = ((safeWave - 1) % CHAPTER_SIZE) + 1
+    return chapterName, chapterWave, CHAPTER_SIZE, chapterIndex
+end
+
+local function chapterWaveLabel(wave)
+    local name, chapterWave, chapterSize = chapterInfoAt(wave)
+    return name .. " " .. chapterWave .. "/" .. chapterSize
 end
 
 local function currentWavePlan()
@@ -1033,7 +1048,7 @@ local function grantSlotReward(reels)
 end
 
 local function spinSlotMachine()
-    if not slotUnlocked() then toast("清完第 5 波后解锁补给转轮"); return end
+    if not slotUnlocked() then toast("清完" .. chapterWaveLabel(5) .. "后解锁补给转轮"); return end
     local free = slotHasFreeUse()
     local cost = slotSpinCost()
     if free then
@@ -1084,7 +1099,7 @@ local function startWave()
     Game.tempBuffs = {}
     Game.spawnTimer = 0.25
     Game.player.shieldDelay = 0
-    toast("第 " .. Game.wave .. " 波：" .. (plan.name or "战斗") .. " / " .. affixLabel())
+    toast(chapterWaveLabel(Game.wave) .. "：" .. (plan.name or "战斗") .. " / " .. affixLabel())
 end
 
 local function enterShop()
@@ -2025,7 +2040,7 @@ local function drawHud()
     color(C.white)
     love.graphics.printf(string.format("%02d", math.max(0, math.ceil(Game.waveTime))), timerX, timerY + math.floor((timerH - Game.fonts.big:getHeight()) / 2) + 1, timerW, "center")
 
-    drawCapsule("第 " .. Game.wave .. " 波", midX - 218, hudY + 18, 122, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.18})
+    drawCapsule(chapterWaveLabel(Game.wave), midX - 218, hudY + 18, 122, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.18})
     drawCapsule(currentWavePlan().name or "生存波次", midX - 218, hudY + 52, 122, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.32, borderAlpha = 0.16})
     drawCapsule(Game.objectiveText or selectedObjective().name, midX + 96, hudY + 18, 150, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.18})
     drawCapsule("危险 " .. Game.danger, midX + 96, hudY + 52, 150, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.32, borderAlpha = 0.16})
@@ -2347,8 +2362,8 @@ local function drawLevelUp()
     color(C.muted)
     local wr = Game.waveRewards or {}
     local settlement = string.format(
-        "第 %d 波结算：%s｜击杀 %d｜材料 +%d",
-        wr.wave or Game.wave,
+        "%s 结算：%s｜击杀 %d｜材料 +%d",
+        chapterWaveLabel(wr.wave or Game.wave),
         wr.reason or "波次完成",
         wr.kills or 0,
         wr.coins or 0
@@ -2613,8 +2628,7 @@ local function weaponTooltip(weapon, titlePrefix, compareWeapon)
         attr("射程", v.range, "range", true),
         attr("弹速", v.speed, "speed", true),
         attr("穿透", v.pierce, "pierce", true),
-        attr("弹射", v.bounce, "bounce", true),
-        {text = "散布：" .. string.format("%.2f", weapon.spread or 0), color = C.white}
+        attr("弹射", v.bounce, "bounce", true)
     }
     if compareWeapon then lines[#lines + 1] = {text = "对比对象：当前装备的「" .. (compareWeapon.name or "武器") .. "」", color = C.gold, gap = 6} end
     if weapon.splash then lines[#lines + 1] = {text = "特殊：爆炸半径 " .. weapon.splash, color = C.gold, gap = 6} end
@@ -3113,7 +3127,7 @@ local function drawNextWavePanel(x, y, w, h)
     color(C.white)
     love.graphics.printf("下一波情报", x + 24, y + 18, w - 48, "left")
     color(C.gold)
-    love.graphics.printf("第 " .. Game.wave .. " 波 · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
+    love.graphics.printf(chapterWaveLabel(Game.wave) .. " · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
     love.graphics.printf("生存 30 秒 · 根据词条和敌群选择临时道具", x + 24, y + 84, w - 48, "left")
@@ -3341,7 +3355,7 @@ local function drawShop()
     love.graphics.setFont(Game.fonts.normal)
     color(C.white)
     local infoX, infoW = 590, actionX - 610
-    love.graphics.printf("商店 / 第 " .. clearedWave .. " 波战后补给", infoX, 38, infoW, "center")
+    love.graphics.printf("商店 / " .. chapterWaveLabel(clearedWave) .. " 战后补给", infoX, 38, infoW, "center")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
     local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
@@ -3439,7 +3453,7 @@ local function drawEnd(title, subtitle, c)
     love.graphics.printf(subtitle, Game.w / 2 - 300, 305, 600, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.gold)
-    love.graphics.printf("波次 " .. Game.wave .. "   击杀 " .. Game.kills .. "   材料 " .. Game.coins, Game.w / 2 - 300, 355, 600, "center")
+    love.graphics.printf(chapterWaveLabel(Game.wave) .. "   击杀 " .. Game.kills .. "   材料 " .. Game.coins, Game.w / 2 - 300, 355, 600, "center")
     color(C.cyan)
     love.graphics.printf("总伤害 " .. math.floor(Game.runStats.damage or 0) .. "   收入 " .. math.floor(Game.runStats.coinsEarned or 0) .. "   危险 " .. Game.danger, Game.w / 2 - 300, 388, 600, "center")
     color(C.muted)
