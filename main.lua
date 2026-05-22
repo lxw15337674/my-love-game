@@ -2,8 +2,11 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.12"
+local VERSION = "v2026.05.22.13"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
+local ACTIVE_SKILL_CD = 3.0
+local ACTIVE_SKILL_DURATION = 0.5
+local ACTIVE_SKILL_SPEED_MULT = 4.2
 
 local Game = {
     w = VIRTUAL_W,
@@ -59,6 +62,7 @@ local Game = {
         speed = 250,
         pickup = 82,
         invuln = 0,
+        activeSkill = {name = "推进冲刺", cd = 0, cooldown = ACTIVE_SKILL_CD, duration = 0, maxDuration = ACTIVE_SKILL_DURATION, speedMult = ACTIVE_SKILL_SPEED_MULT, dirX = 0, dirY = -1},
         stats = {
             damage = 1.00,
             fireRate = 1.00,
@@ -1086,6 +1090,7 @@ local function resetRun()
     Game.player.shieldDelay, Game.player.shieldRegen = 0, 7
     Game.player.speed, Game.player.pickup = ch.speed, 0
     Game.player.invuln = 0
+    Game.player.activeSkill = {name = "推进冲刺", cd = 0, cooldown = ACTIVE_SKILL_CD, duration = 0, maxDuration = ACTIVE_SKILL_DURATION, speedMult = ACTIVE_SKILL_SPEED_MULT, dirX = 0, dirY = -1}
     Game.player.engineerTimer = 0
     Game.player.waveDamageBonus = 0
     Game.player.waveFireRateBonus = 0
@@ -1475,6 +1480,11 @@ end
 
 local function updatePlayer(dt)
     local p = Game.player
+    local skill = p.activeSkill
+    if skill then
+        skill.cd = math.max(0, (skill.cd or 0) - dt)
+        skill.duration = math.max(0, (skill.duration or 0) - dt)
+    end
     local dx, dy = 0, 0
     if love.keyboard.isDown("a", "left") then dx = dx - 1 end
     if love.keyboard.isDown("d", "right") then dx = dx + 1 end
@@ -1483,9 +1493,18 @@ local function updatePlayer(dt)
     if dx ~= 0 or dy ~= 0 then
         local len = math.sqrt(dx * dx + dy * dy)
         dx, dy = dx / len, dy / len
+        if not skill or (skill.duration or 0) <= 0 then
+            p.lastMoveX, p.lastMoveY = dx, dy
+        end
     end
-    p.x = clamp(p.x + dx * p.speed * dt, 24, Game.w - 24)
-    p.y = clamp(p.y + dy * p.speed * dt, 30, Game.h - 24)
+    local moveX, moveY, speedMult = dx, dy, 1
+    if skill and (skill.duration or 0) > 0 then
+        moveX = skill.dirX or p.lastMoveX or 0
+        moveY = skill.dirY or p.lastMoveY or -1
+        speedMult = skill.speedMult or 1
+    end
+    p.x = clamp(p.x + moveX * p.speed * speedMult * dt, 24, Game.w - 24)
+    p.y = clamp(p.y + moveY * p.speed * speedMult * dt, 30, Game.h - 24)
     p.invuln = math.max(0, p.invuln - dt)
     local bonus = currentAffixBonuses()
     if p.shieldDelay > 0 then
@@ -1493,6 +1512,33 @@ local function updatePlayer(dt)
     else
         p.shield = math.min(p.maxShield, p.shield + p.shieldRegen * bonus.shieldRegenMult * dt)
     end
+end
+
+local function useActiveSkill()
+    if Game.state ~= "playing" then return false end
+    local skill = Game.player.activeSkill
+    if not skill then return false end
+    if (skill.cd or 0) > 0 then
+        toast(skill.name .. " 冷却中：" .. string.format("%.1f", skill.cd) .. "s")
+        return false
+    end
+    local dx, dy = 0, 0
+    if love.keyboard.isDown("a", "left") then dx = dx - 1 end
+    if love.keyboard.isDown("d", "right") then dx = dx + 1 end
+    if love.keyboard.isDown("w", "up") then dy = dy - 1 end
+    if love.keyboard.isDown("s", "down") then dy = dy + 1 end
+    if dx == 0 and dy == 0 then
+        dx, dy = Game.player.lastMoveX or 0, Game.player.lastMoveY or -1
+    else
+        local len = math.sqrt(dx * dx + dy * dy)
+        dx, dy = dx / len, dy / len
+    end
+    skill.dirX, skill.dirY = dx, dy
+    skill.duration = skill.maxDuration or ACTIVE_SKILL_DURATION
+    skill.cd = skill.cooldown or ACTIVE_SKILL_CD
+    playCue("level")
+    toast(skill.name .. "：冲刺")
+    return true
 end
 
 local function completeWave(reason)
@@ -1664,6 +1710,10 @@ function love.update(dt)
         Game.hoveredShopItem = nil
     end
     if Game.state == "playing" then updatePlaying(dt) end
+    if os.getenv("LOVE_AUTOACTIVE") == "1" and Game.state == "playing" and not Game.autoActiveDone and Game.time > 0.35 then
+        Game.autoActiveDone = true
+        useActiveSkill()
+    end
     if os.getenv("LOVE_AUTOMENU") == "1" and not Game.autoMenuDone then
         Game.autoMenuClock = (Game.autoMenuClock or 0) + dt
         if Game.autoMenuClock > 0.4 then
@@ -1815,7 +1865,7 @@ end
 
 local function drawHud()
     local p = Game.player
-    local hudY, hudH = 14, 86
+    local hudY, hudH = 14, 100
     panel(18, hudY, Game.w - 36, hudH)
 
     -- 左：生存状态。只展示玩家战斗中最需要扫一眼的内容。
@@ -1842,11 +1892,23 @@ local function drawHud()
     drawCapsule(Game.objectiveText or selectedObjective().name, midX + 96, hudY + 18, 150, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.18})
     drawCapsule("危险 " .. Game.danger, midX + 96, hudY + 52, 150, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.32, borderAlpha = 0.16})
 
-    -- 右：当前影响。只保留词缀和一行武器摘要，不再堆列表。
+    -- 右：当前影响。只保留词缀、主动技能和一行武器摘要，不再堆列表。
     local rx, rw = Game.w - 392, 354
     local reward, penalty = currentAffixes()
     drawCapsule("奖励 " .. (reward and reward.name or "无"), rx, hudY + 10, 168, 28, {fg = C.green, border = C.green, borderAlpha = 0.16, align = "left", padX = 14})
     drawCapsule("惩罚 " .. (penalty and penalty.name or "无"), rx + 180, hudY + 10, 174, 28, {fg = C.red, border = C.red, borderAlpha = 0.16, align = "left", padX = 14})
+
+    local skill = p.activeSkill or {}
+    local skillText = "空格 " .. (skill.name or "主动技能")
+    local skillFg = C.cyan
+    if (skill.duration or 0) > 0 then
+        skillText = "空格 冲刺中 " .. string.format("%.1f", skill.duration) .. "s"
+        skillFg = C.gold
+    elseif (skill.cd or 0) > 0 then
+        skillText = "空格 冷却 " .. string.format("%.1f", skill.cd) .. "s"
+        skillFg = C.muted
+    end
+    drawCapsule(skillText, rx, hudY + 42, rw, 24, {font = Game.fonts.tiny, fg = skillFg, border = skillFg, bgAlpha = 0.26, borderAlpha = 0.18, align = "left", padX = 14})
 
     local weaponText = "武器 0/4"
     local tagText = "等待构筑"
@@ -1856,8 +1918,8 @@ local function drawHud()
         weaponText = "武器 " .. #p.weapons .. "/4 · " .. weapon.name .. " Lv" .. weapon.level
         tagText = brand and brand.tag or "构筑中"
     end
-    drawCapsule(weaponText, rx, hudY + 48, rw, 28, {fg = C.white, border = C.cyan, align = "left", padX = 14})
-    drawCapsule(tagText, rx + rw - 150, hudY + 50, 140, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.20, borderAlpha = 0.10})
+    drawCapsule(weaponText, rx, hudY + 66, rw, 24, {font = Game.fonts.tiny, fg = C.white, border = C.cyan, align = "left", padX = 14})
+    drawCapsule(tagText, rx + rw - 150, hudY + 68, 140, 20, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.20, borderAlpha = 0.10})
 end
 
 local function drawWorld()
@@ -1921,6 +1983,15 @@ local function drawWorld()
     end
 
     if not (p.invuln > 0 and math.floor(p.invuln * 16) % 2 == 0) then
+        local skill = p.activeSkill
+        if skill and (skill.duration or 0) > 0 then
+            love.graphics.setBlendMode("add")
+            color(C.gold, 0.22)
+            love.graphics.circle("fill", p.x, p.y, p.r + 34)
+            color(C.cyan, 0.42)
+            love.graphics.circle("line", p.x, p.y, p.r + 28)
+            love.graphics.setBlendMode("alpha")
+        end
         if not drawSprite("player_heartcore", p.x, p.y, 96, 0, 1) then
             color(C.pink)
             drawHeart(p.x, p.y + 2, 0.78)
@@ -3151,6 +3222,8 @@ function love.keypressed(key)
         if Game.state == "gameover" or Game.state == "victory" then Game.state = "menu"; return end
         love.event.quit()
     end
+
+    if key == "space" and Game.state == "playing" then useActiveSkill(); return end
 
     if Game.state == "paused" then return end
 
