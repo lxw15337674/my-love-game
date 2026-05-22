@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.11"
+local VERSION = "v2026.05.22.12"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 
 local Game = {
@@ -1689,6 +1689,11 @@ function love.update(dt)
             enterShop()
         end
         if os.getenv("LOVE_AUTOSHOP_TAB") then Game.shopTab = os.getenv("LOVE_AUTOSHOP_TAB") end
+        if os.getenv("LOVE_AUTOSOLDOUT_SLOT") and not Game.autoSoldoutApplied then
+            local slot = tonumber(os.getenv("LOVE_AUTOSOLDOUT_SLOT")) or 1
+            if slot >= 1 and slot <= 6 then Game.shop[slot] = nil; Game.locked[slot] = false end
+            Game.autoSoldoutApplied = true
+        end
         if os.getenv("LOVE_AUTOHOVER_X") and os.getenv("LOVE_AUTOHOVER_Y") then
             local sx, sy = gameToScreen(tonumber(os.getenv("LOVE_AUTOHOVER_X")) or 0, tonumber(os.getenv("LOVE_AUTOHOVER_Y")) or 0)
             love.mouse.setPosition(sx, sy)
@@ -2232,30 +2237,82 @@ local function drawMetalCard(x, y, w, h, accent, hover, locked, rare)
     return y
 end
 
-local function drawTooltip(tip)
-    if not tip then return end
-    local mx, my = mousePosition()
+local Tooltip = {}
+
+local function wrappedLineCount(font, text, width)
+    local _, wrapped = font:getWrap(tostring(text or ""), width)
+    return math.max(1, #wrapped)
+end
+
+function Tooltip.measure(tip, width)
     local title = tip.title or "详情"
     local lines = tip.lines or {}
     local fontTitle, fontBody = Game.fonts.tiny, Game.fonts.tiny
-    local width = fontTitle:getWidth(title) + 34
-    for _, line in ipairs(lines) do width = math.max(width, fontBody:getWidth(line) + 34) end
-    width = math.min(math.max(width, 240), 340)
-    local height = 38 + #lines * 20
-    local x = clamp(mx + 18, 12, Game.w - width - 12)
-    local y = clamp(my + 18, 12, Game.h - height - 12)
-    color(C.bgA, 0.96)
+    local innerW = width - 32
+    local height = 18 + wrappedLineCount(fontTitle, title, innerW) * 20 + 8
+    for _, entry in ipairs(lines) do
+        local text = type(entry) == "table" and entry.text or entry
+        local gap = type(entry) == "table" and entry.gap or 0
+        height = height + gap + wrappedLineCount(fontBody, text, innerW) * 19
+    end
+    return height + 14
+end
+
+function Tooltip.draw(tip, mx, my)
+    if not tip then return end
+    local title = tip.title or "详情"
+    local lines = tip.lines or {}
+    local fontTitle, fontBody = Game.fonts.tiny, Game.fonts.tiny
+    local width = clamp(tip.width or 380, 300, 460)
+    local height = math.min(Tooltip.measure(tip, width), Game.h - 24)
+    local anchor = tip.anchor
+    local x, y
+    if anchor then
+        -- 商品卡 tooltip 固定贴到右侧详情区，避免盖住货架和购买按钮。
+        x = Game.w - width - 32
+        if anchor.x < x + width and anchor.x + anchor.w > x then
+            x = anchor.x - width - 22
+        end
+        y = anchor.y + 4
+    else
+        x = mx + 22
+        if x + width > Game.w - 12 then x = mx - width - 22 end
+        y = my + 22
+        if y + height > Game.h - 12 then y = my - height - 22 end
+    end
+    x = clamp(x, 12, Game.w - width - 12)
+    y = clamp(y, 12, Game.h - height - 12)
+
+    color(C.bgA, 0.97)
     love.graphics.rectangle("fill", x, y, width, height, 12, 12)
     color(C.gold, 0.58)
     love.graphics.rectangle("line", x + 0.5, y + 0.5, width - 1, height - 1, 12, 12)
+    color(C.white, 0.07)
+    love.graphics.rectangle("fill", x + 8, y + 8, width - 16, 28, 9, 9)
+
+    local innerX, innerW = x + 16, width - 32
+    local cy = y + 13
     love.graphics.setFont(fontTitle)
     color(C.gold)
-    love.graphics.printf(title, x + 14, y + 12, width - 28, "left")
+    love.graphics.printf(title, innerX, cy, innerW, "left")
+    cy = cy + wrappedLineCount(fontTitle, title, innerW) * 20 + 10
+
     love.graphics.setFont(fontBody)
-    for i, line in ipairs(lines) do
-        color(i == 1 and C.white or C.muted)
-        love.graphics.printf(line, x + 14, y + 32 + (i - 1) * 20, width - 28, "left")
+    for i, entry in ipairs(lines) do
+        local text = type(entry) == "table" and entry.text or entry
+        local lineColor = type(entry) == "table" and entry.color or (i == 1 and C.white or C.muted)
+        local gap = type(entry) == "table" and entry.gap or 0
+        cy = cy + gap
+        color(lineColor)
+        love.graphics.printf(tostring(text or ""), innerX, cy, innerW, "left")
+        cy = cy + wrappedLineCount(fontBody, text, innerW) * 19
     end
+end
+
+local function drawTooltip(tip)
+    if not tip then return end
+    local mx, my = mousePosition()
+    Tooltip.draw(tip, mx, my)
 end
 
 local function weaponTooltip(weapon, titlePrefix)
@@ -2297,12 +2354,37 @@ local function itemTooltip(item)
 end
 
 local function drawShopCard(item, i, x, y, w, h)
+    local mx, my = mousePosition()
+    local hover = Game.state == "shop" and (Game.shopTab or "shop") == "shop" and hitRect(mx, my, x, y, w, h)
+    if not item then
+        local accent = i <= 3 and C.orange or C.gold
+        local label = i <= 3 and ("武器架 " .. i) or ("装备箱 " .. (i - 3))
+        drawMetalCard(x, y, w, h, accent, false, false, false)
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.muted)
+        love.graphics.printf(label, x + 18, y + 20, w - 36, "left")
+        color(accent, 0.12)
+        love.graphics.rectangle("fill", x + 18, y + 72, w - 36, 92, 14, 14)
+        color(accent, 0.34)
+        love.graphics.rectangle("line", x + 18.5, y + 72.5, w - 37, 91, 14, 14)
+        love.graphics.setFont(Game.fonts.normal)
+        color(C.muted, 0.80)
+        love.graphics.printf("售罄", x + 18, y + 101, w - 36, "center")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.muted)
+        love.graphics.printf("刷新商店后补货", x + 18, y + 144, w - 36, "center")
+        color(C.white, 0.05)
+        love.graphics.rectangle("fill", x + 18, y + h - 36, w - 36, 28, 10, 10)
+        color(C.muted, 0.34)
+        love.graphics.rectangle("line", x + 18, y + h - 36, w - 36, 28, 10, 10)
+        centeredText("已售罄", x + 18, y + h - 36, w - 36, 28, Game.fonts.tiny, C.muted, "center")
+        return nil
+    end
+
     local rarity = item.rarity or "common"
     local rc = rarityColor[rarity] or C.white
     local affordable = Game.coins >= item.price
     local accent = shopItemAccent(item)
-    local mx, my = mousePosition()
-    local hover = Game.state == "shop" and (Game.shopTab or "shop") == "shop" and hitRect(mx, my, x, y, w, h)
     local drawnY = drawMetalCard(x, y, w, h, accent, hover, Game.locked[i], rarity == "rare" or rarity == "epic" or rarity == "legend")
     y = drawnY
 
@@ -2387,7 +2469,11 @@ local function drawShopCard(item, i, x, y, w, h)
         love.graphics.setColor(0, 0, 0, 0.30)
         love.graphics.rectangle("fill", x, y, w, h, 16, 16)
     end
-    if hover then return itemTooltip(item) end
+    if hover then
+        local tip = itemTooltip(item)
+        if tip then tip.anchor = {x = x, y = y, w = w, h = h}; tip.width = 400 end
+        return tip
+    end
     return nil
 end
 
@@ -2845,7 +2931,8 @@ local function drawShop()
         love.graphics.rectangle("fill", marginX, supportY - 8, shelfW, 10, 5, 5)
         color(C.gold, 0.24)
         love.graphics.rectangle("fill", marginX, supportY + cardH + 10, shelfW, 8, 4, 4)
-        for i, item in ipairs(Game.shop) do
+        for i = 1, 6 do
+            local item = Game.shop[i]
             local col = (i - 1) % 3
             local rowY = i <= 3 and weaponY or supportY
             local x = marginX + col * (cardW + gap)
@@ -2943,13 +3030,13 @@ end
 
 local function buySlot(i)
     local item = Game.shop[i]
-    if not item then return end
+    if not item then toast("该商品已售罄：刷新商店后补货"); return end
     if Game.coins < item.price then toast("材料不足") return end
     local ok = true
     if item.buy then ok = item.buy() ~= false end
     if not ok then return end
     Game.coins = Game.coins - item.price
-    Game.shop[i] = randomShopItemForSlot(i)
+    Game.shop[i] = nil
     Game.locked[i] = false
 end
 
@@ -3021,7 +3108,7 @@ local function handlePointer(x, y)
                 local cardTop = i <= 3 and weaponY or supportY
                 local buyY = cardTop + cardH - 36
                 if hitRect(x, y, cardX + 18, buyY, cardW - 36, 28) then buySlot(i); return true end
-                if hitRect(x, y, cardX + cardW - 48, cardTop + 13, 30, 24) then Game.locked[i] = not Game.locked[i]; playCue("shop"); toast(Game.locked[i] and "已锁定商品" or "已取消锁定"); return true end
+                if Game.shop[i] and hitRect(x, y, cardX + cardW - 48, cardTop + 13, 30, 24) then Game.locked[i] = not Game.locked[i]; playCue("shop"); toast(Game.locked[i] and "已锁定商品" or "已取消锁定"); return true end
             end
         elseif Game.shopTab == "slot" then
             local buttonW, buttonH = 320, 64
