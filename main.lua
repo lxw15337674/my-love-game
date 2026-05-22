@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.8"
+local VERSION = "v2026.05.22.9"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 
 local Game = {
@@ -822,17 +822,29 @@ local function makeTempItem()
     return item
 end
 
-local function randomShopItem()
+local function randomWeaponShopItem()
+    local keys = {"needle", "swarm", "molten", "echo", "coil", "void"}
+    return makeWeaponItem(keys[rnd(1, #keys)])
+end
+
+local function randomSupportShopItem()
     local roll = rnd()
-    if roll < 0.34 then
-        local keys = {"needle", "swarm", "molten", "echo", "coil", "void"}
-        return makeWeaponItem(keys[rnd(1, #keys)])
-    elseif roll < 0.54 then
-        return makeShieldItem()
-    elseif roll < 0.74 then
-        return makeTempItem()
-    end
+    if roll < 0.34 then return makeShieldItem() end
+    if roll < 0.58 then return makeTempItem() end
     return makeStatItem()
+end
+
+local function randomShopItem()
+    return rnd() < 0.36 and randomWeaponShopItem() or randomSupportShopItem()
+end
+
+local function randomShopItemForSlot(i)
+    return i <= 2 and randomWeaponShopItem() or randomSupportShopItem()
+end
+
+local function preferredSlotRangeForItem(item)
+    if item and item.kind == "weapon" then return 1, 2 end
+    return 3, 4
 end
 
 local function rollShop(keepLocks)
@@ -844,10 +856,10 @@ local function rollShop(keepLocks)
     end
     for i = 1, 4 do
         if not keepLocks or not Game.locked[i] then
-            local item = randomShopItem()
+            local item = randomShopItemForSlot(i)
             for _ = 1, 10 do
                 if not used[item.name] then break end
-                item = randomShopItem()
+                item = randomShopItemForSlot(i)
             end
             Game.shop[i] = item
             Game.locked[i] = false
@@ -903,6 +915,14 @@ end
 local function placeSlotPrize(item)
     item.price = 0
     item.name = "补给转轮 " .. item.name
+    local startSlot, endSlot = preferredSlotRangeForItem(item)
+    for i = startSlot, endSlot do
+        if not Game.locked[i] then
+            Game.shop[i] = item
+            Game.locked[i] = false
+            return
+        end
+    end
     for i = 1, 4 do
         if not Game.locked[i] then
             Game.shop[i] = item
@@ -910,8 +930,8 @@ local function placeSlotPrize(item)
             return
         end
     end
-    Game.shop[1] = item
-    Game.locked[1] = false
+    Game.shop[startSlot] = item
+    Game.locked[startSlot] = false
 end
 
 local function slotPrizeItem(kind)
@@ -2772,22 +2792,27 @@ local function drawShop()
         color(C.gold)
         local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
         love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  " .. shieldText .. "  ·  道具槽 " .. #(Game.player.items or {}), marginX, 196, Game.w - marginX * 2, "center")
-        local cardY = contentY
-        local gridH = contentH
         local gap = 32
         local sideW = 430
         local sideGap = 32
         local sideX = Game.w - marginX - sideW
         local cardW = (sideX - marginX - gap - sideGap) / 2
-        local cardH = (gridH - gap) / 2
+        local cardH = 284
+        local weaponY = 252
+        local supportY = 602
+        love.graphics.setFont(Game.fonts.small)
+        color(C.orange)
+        love.graphics.printf("武器货架", marginX, weaponY - 34, sideX - marginX - sideGap, "left")
+        color(C.gold)
+        love.graphics.printf("道具 / 护盾货架", marginX, supportY - 34, sideX - marginX - sideGap, "left")
         for i, item in ipairs(Game.shop) do
             local col = (i - 1) % 2
-            local row = math.floor((i - 1) / 2)
+            local rowY = i <= 2 and weaponY or supportY
             local x = marginX + col * (cardW + gap)
-            local y = cardY + row * (cardH + gap)
+            local y = rowY
             tip = drawShopCard(item, i, x, y, cardW, cardH) or tip
         end
-        tip = drawCompactBuildPanel(sideX, cardY, sideW, gridH) or tip
+        tip = drawCompactBuildPanel(sideX, contentY, sideW, contentH) or tip
     end
 
     local secondaryW, primaryW, gap = 260, 360, 36
@@ -2884,7 +2909,7 @@ local function buySlot(i)
     if item.buy then ok = item.buy() ~= false end
     if not ok then return end
     Game.coins = Game.coins - item.price
-    Game.shop[i] = randomShopItem()
+    Game.shop[i] = randomShopItemForSlot(i)
     Game.locked[i] = false
 end
 
@@ -2941,19 +2966,18 @@ local function handlePointer(x, y)
 
         if (Game.shopTab or "shop") == "shop" then
             local marginX = 96
-            local cardY = 228
-            local gridH = 656
             local gap = 32
             local sideW = 430
             local sideGap = 32
             local sideX = Game.w - marginX - sideW
             local cardW = (sideX - marginX - gap - sideGap) / 2
-            local cardH = (gridH - gap) / 2
+            local cardH = 284
+            local weaponY = 252
+            local supportY = 602
             for i = 1, 4 do
                 local col = (i - 1) % 2
-                local row = math.floor((i - 1) / 2)
                 local cardX = marginX + col * (cardW + gap)
-                local cardTop = cardY + row * (cardH + gap)
+                local cardTop = i <= 2 and weaponY or supportY
                 local buyY = cardTop + cardH - 36
                 if hitRect(x, y, cardX + 18, buyY, cardW - 36, 28) then buySlot(i); return true end
                 if hitRect(x, y, cardX + cardW - 48, cardTop + 13, 30, 24) then Game.locked[i] = not Game.locked[i]; playCue("shop"); toast(Game.locked[i] and "已锁定商品" or "已取消锁定"); return true end
