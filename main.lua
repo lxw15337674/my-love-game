@@ -8,12 +8,9 @@ local Game = {
     state = "menu", -- menu, playing, paused, levelup, shop, gameover, victory
     time = 0,
     wave = 1,
-    waveTime = 60,
+    waveTime = 30,
     maxWave = 10,
     coins = 0,
-    xp = 0,
-    level = 1,
-    xpNeed = 24,
     kills = 0,
     shopRefresh = 0,
     shop = {},
@@ -32,6 +29,10 @@ local Game = {
     selectedObjective = 1,
     danger = 0,
     freeRefresh = 1,
+    slotFreeUsed = {},
+    slotPaidSpins = 0,
+    slotResult = nil,
+    shopTab = "shop",
     levelChoices = {},
     pendingRewardNextState = nil,
     objectiveProgress = 0,
@@ -213,13 +214,17 @@ local wavePlans = {
     {name = "裂心机核", duration = 60, interval = 0.95, pack = 2, sides = {"left", "right", "top", "bottom"}, boss = true, enemies = {{"splinter", 28}, {"drifter", 26}, {"wisp", 26}, {"shell", 20}}, events = {{time = 0.2, enemy = "boss", side = "right", toast = "Boss：裂心机核接入"}, {time = 20, enemy = "elite", side = "left"}, {time = 40, enemy = "elite", side = "right"}}}
 }
 
+local function wavePlanAt(wave)
+    return wavePlans[wave] or wavePlans[#wavePlans]
+end
+
 local function currentWavePlan()
-    return wavePlans[Game.wave] or wavePlans[#wavePlans]
+    return wavePlanAt(Game.wave)
 end
 local affixDefs = {
     bounty = {name = "赏金", kind = "reward", desc = "材料 +25%", coinMult = 1.25},
     overcharge = {name = "过载", kind = "reward", desc = "伤害 +10%", playerDamage = 1.10},
-    magnet = {name = "磁场", kind = "reward", desc = "经验 +15%", xpMult = 1.15},
+    magnet = {name = "磁场", kind = "reward", desc = "材料 +15%", coinMult = 1.15},
     calibrate = {name = "校准", kind = "reward", desc = "暴击 +6%", critBonus = 0.06},
     repair = {name = "修复", kind = "reward", desc = "护盾回复 +30%", shieldRegenMult = 1.30},
 
@@ -243,14 +248,18 @@ local waveAffixes = {
     {reward = "overcharge", penalty = "carapace"}
 }
 
-local function currentAffixes()
-    local pair = waveAffixes[Game.wave] or waveAffixes[#waveAffixes] or {}
+local function affixesAt(wave)
+    local pair = waveAffixes[wave] or waveAffixes[#waveAffixes] or {}
     return affixDefs[pair.reward], affixDefs[pair.penalty]
+end
+
+local function currentAffixes()
+    return affixesAt(Game.wave)
 end
 
 local function currentAffixBonuses()
     local bonus = {
-        coinMult = 1, xpMult = 1, playerDamage = 1, critBonus = 0,
+        coinMult = 1, playerDamage = 1, critBonus = 0,
         shieldRegenMult = 1, enemyHp = 1, enemySpeed = 1, enemyDamage = 1, enemyArmor = 0,
         extraPack = 0, intervalMult = 1
     }
@@ -258,7 +267,6 @@ local function currentAffixBonuses()
     for _, affix in ipairs({reward, penalty}) do
         if affix then
             bonus.coinMult = bonus.coinMult * (affix.coinMult or 1)
-            bonus.xpMult = bonus.xpMult * (affix.xpMult or 1)
             bonus.playerDamage = bonus.playerDamage * (affix.playerDamage or 1)
             bonus.critBonus = bonus.critBonus + (affix.critBonus or 0)
             bonus.shieldRegenMult = bonus.shieldRegenMult * (affix.shieldRegenMult or 1)
@@ -281,6 +289,22 @@ local function affixLabel()
     return "无词缀"
 end
 
+local function affixDetailLines(affix)
+    local lines = {affix.desc or "下一波生效"}
+    if affix.coinMult then lines[#lines + 1] = "材料获取倍率 ×" .. string.format("%.2f", affix.coinMult) end
+    if affix.playerDamage then lines[#lines + 1] = "玩家伤害倍率 ×" .. string.format("%.2f", affix.playerDamage) end
+    if affix.critBonus then lines[#lines + 1] = "暴击率 +" .. string.format("%d%%", math.floor(affix.critBonus * 100 + 0.5)) end
+    if affix.shieldRegenMult then lines[#lines + 1] = "护盾回复倍率 ×" .. string.format("%.2f", affix.shieldRegenMult) end
+    if affix.enemyHp then lines[#lines + 1] = "敌人生命倍率 ×" .. string.format("%.2f", affix.enemyHp) end
+    if affix.enemySpeed then lines[#lines + 1] = "敌人速度倍率 ×" .. string.format("%.2f", affix.enemySpeed) end
+    if affix.enemyDamage then lines[#lines + 1] = "敌人伤害倍率 ×" .. string.format("%.2f", affix.enemyDamage) end
+    if affix.enemyArmor then lines[#lines + 1] = "敌人护甲 +" .. affix.enemyArmor end
+    if affix.extraPack then lines[#lines + 1] = "每轮刷怪数量 +" .. affix.extraPack end
+    if affix.intervalMult then lines[#lines + 1] = "刷怪间隔倍率 ×" .. string.format("%.2f", affix.intervalMult) end
+    lines[#lines + 1] = "只影响下一波，用来决定商店购买。"
+    return lines
+end
+
 local basePlayerDef = {
     name = "机体白板",
     weapon = "needle",
@@ -301,10 +325,10 @@ local basePlayerDef = {
 
 local characterDefs = {basePlayerDef}
 
-local SURVIVAL_DURATION = 60
+local SURVIVAL_DURATION = 30
 
 local objectiveDefs = {
-    {name = "生存模式", desc = "生存 60 秒，撑到计时结束", mode = "survive"}
+    {name = "生存模式", desc = "生存 30 秒，撑到计时结束", mode = "survive"}
 }
 
 local levelRewardPool = {
@@ -821,6 +845,133 @@ local function rollShop(keepLocks)
     end
 end
 
+local addCoins
+
+local slotSymbols = {
+    {id = "coin", name = "材料", mark = "◆", color = C.gold, weight = 28},
+    {id = "weapon", name = "武器", mark = "⚙", color = C.cyan, weight = 18},
+    {id = "temp", name = "战术", mark = "✦", color = C.purple, weight = 18},
+    {id = "shield", name = "护盾", mark = "▣", color = C.green, weight = 14},
+    {id = "heal", name = "修复", mark = "❤", color = C.pink, weight = 14},
+    {id = "rare", name = "稀有", mark = "★", color = C.orange, weight = 8}
+}
+
+local function clearedWaveCount()
+    if Game.state == "shop" or Game.state == "levelup" then return math.max(0, Game.wave - 1) end
+    return math.max(0, Game.wave)
+end
+
+local function slotMilestone()
+    return math.floor(clearedWaveCount() / 5) * 5
+end
+
+local function slotUnlocked()
+    return slotMilestone() >= 5
+end
+
+local function slotHasFreeUse()
+    local milestone = slotMilestone()
+    return milestone >= 5 and not (Game.slotFreeUsed and Game.slotFreeUsed[milestone])
+end
+
+local function slotSpinCost()
+    return 18 + slotMilestone() * 2 + (Game.slotPaidSpins or 0) * 4
+end
+
+local function rollSlotSymbol()
+    local total = 0
+    for _, s in ipairs(slotSymbols) do total = total + s.weight end
+    local roll = rnd() * total
+    for _, s in ipairs(slotSymbols) do
+        roll = roll - s.weight
+        if roll <= 0 then return s end
+    end
+    return slotSymbols[1]
+end
+
+local function placeSlotPrize(item)
+    item.price = 0
+    item.name = "老虎机 " .. item.name
+    for i = 1, 4 do
+        if not Game.locked[i] then
+            Game.shop[i] = item
+            Game.locked[i] = false
+            return
+        end
+    end
+    Game.shop[1] = item
+    Game.locked[1] = false
+end
+
+local function slotPrizeItem(kind)
+    if kind == "weapon" then
+        local keys = {"needle", "swarm", "molten", "echo", "coil", "void"}
+        return makeWeaponItem(keys[rnd(1, #keys)])
+    elseif kind == "shield" then
+        return makeShieldItem()
+    elseif kind == "temp" then
+        return makeTempItem()
+    end
+    return makeStatItem()
+end
+
+local function grantSlotReward(reels)
+    local counts = {}
+    for _, s in ipairs(reels) do counts[s.id] = (counts[s.id] or 0) + 1 end
+    local bestId, bestCount = reels[1].id, 0
+    for id, count in pairs(counts) do
+        if count > bestCount then bestId, bestCount = id, count end
+    end
+    local jackpot = bestCount == 3
+    local label = jackpot and "三连大奖" or (bestCount == 2 and "双符奖励" or "安慰奖励")
+    if jackpot then
+        if bestId == "coin" then
+            addCoins(90, "slot"); return label .. "：材料 +90"
+        elseif bestId == "heal" then
+            local p = Game.player
+            p.hp = p.maxHp; p.shield = p.maxShield
+            return label .. "：生命与护盾回满"
+        else
+            placeSlotPrize(slotPrizeItem(bestId == "rare" and "stat" or bestId))
+            return label .. "：免费奖品进商店"
+        end
+    elseif bestCount == 2 then
+        if bestId == "coin" then
+            addCoins(34, "slot"); return label .. "：材料 +34"
+        elseif bestId == "heal" then
+            local p = Game.player
+            p.hp = math.min(p.maxHp, p.hp + 35); p.shield = math.min(p.maxShield, p.shield + 25)
+            return label .. "：修复生命与护盾"
+        elseif bestId == "rare" then
+            Game.freeRefresh = (Game.freeRefresh or 0) + 1
+            return label .. "：免费刷新 +1"
+        else
+            placeSlotPrize(slotPrizeItem(bestId))
+            return label .. "：免费奖品进商店"
+        end
+    end
+    addCoins(10, "slot")
+    return label .. "：材料 +10"
+end
+
+local function spinSlotMachine()
+    if not slotUnlocked() then toast("清完第 5 波后解锁老虎机"); return end
+    local free = slotHasFreeUse()
+    local cost = slotSpinCost()
+    if free then
+        Game.slotFreeUsed[slotMilestone()] = true
+    else
+        if Game.coins < cost then toast("材料不足，老虎机需要 " .. cost); return end
+        Game.coins = Game.coins - cost
+        Game.slotPaidSpins = (Game.slotPaidSpins or 0) + 1
+    end
+    local reels = {rollSlotSymbol(), rollSlotSymbol(), rollSlotSymbol()}
+    local rewardText = grantSlotReward(reels)
+    Game.slotResult = {reels = reels, text = rewardText, free = free}
+    playCue("shop")
+    toast("老虎机：" .. rewardText)
+end
+
 local function startWave()
     local plan = currentWavePlan()
     Game.state = "playing"
@@ -832,7 +983,7 @@ local function startWave()
     Game.objectiveText = "生存 " .. SURVIVAL_DURATION .. "秒"
     Game.enemies, Game.bullets, Game.pickups = {}, {}, {}
     Game.pendingRewardNextState = nil
-    Game.waveRewards = {wave = Game.wave, reason = "", kills = 0, xp = 0, coins = 0, harvest = 0, clear = 0}
+    Game.waveRewards = {wave = Game.wave, reason = "", kills = 0, coins = 0, harvest = 0, clear = 0}
     local p = Game.player
     p.waveDamageBonus = 0
     p.waveFireRateBonus = 0
@@ -859,6 +1010,7 @@ end
 
 local function enterShop()
     Game.state = "shop"
+    Game.shopTab = "shop"
     Game.shopRefresh = 0
     rollShop(true)
     toast("商店开启：认真构筑")
@@ -869,11 +1021,12 @@ local function resetRun()
     Game.time = 0
     Game.wave = 1
     Game.coins = ch.coins or 18
-    Game.xp = 0
-    Game.level = 1
-    Game.xpNeed = 24
     Game.kills = 0
     Game.freeRefresh = 1 + math.floor((ch.stats and ch.stats.luck or 0) / 3)
+    Game.slotFreeUsed = {}
+    Game.slotPaidSpins = 0
+    Game.slotResult = nil
+    Game.shopTab = "shop"
     Game.levelChoices = {}
     Game.pendingRewardNextState = nil
     Game.objectiveProgress = 0
@@ -938,7 +1091,7 @@ local function chooseLevelReward(i)
     end
 end
 
-local function addCoins(amount, bucket)
+function addCoins(amount, bucket)
     local mult = (Game.player and Game.player.stats and Game.player.stats.economy or 1) + (Game.player and Game.player.waveEconomyBonus or 0)
     local gain = math.max(0, math.floor((amount or 0) * mult + 0.5))
     if gain <= 0 then return 0 end
@@ -952,30 +1105,12 @@ local function addCoins(amount, bucket)
     return gain
 end
 
-local function gainXp(n)
-    local bonus = currentAffixBonuses()
-    local gained = math.max(1, math.floor(n * bonus.xpMult + 0.5))
-    Game.xp = Game.xp + gained
-    if Game.waveRewards then Game.waveRewards.xp = (Game.waveRewards.xp or 0) + gained end
-    local leveled = false
-    while Game.xp >= Game.xpNeed do
-        Game.xp = Game.xp - Game.xpNeed
-        Game.level = Game.level + 1
-        Game.xpNeed = math.floor(Game.xpNeed * 1.25 + 8)
-        leveled = true
-    end
-    if leveled and Game.state == "playing" then
-        playCue("level"); toast("等级 " .. Game.level .. "：关卡结束后选择奖励")
-    end
-end
-
 local function killEnemy(e)
     local bonus = currentAffixBonuses()
     Game.kills = Game.kills + 1
     if Game.waveRewards then Game.waveRewards.kills = (Game.waveRewards.kills or 0) + 1 end
     local coinGain = math.max(1, math.floor(e.coin * bonus.coinMult + 0.5))
     addCoins(coinGain)
-    gainXp(e.xp)
     if rnd() < 0.52 then addCoins(math.max(1, math.floor(e.coin / 2))) end
     if e.elite and rnd() < 0.72 then addCoins(e.coin + 8) end
     local p = Game.player
@@ -1317,7 +1452,7 @@ end
 local function completeWave(reason)
     local p = Game.player
     local finishedWave = Game.wave
-    local summary = Game.waveRewards or {wave = finishedWave, kills = 0, xp = 0, coins = 0, harvest = 0, clear = 0}
+    local summary = Game.waveRewards or {wave = finishedWave, kills = 0, coins = 0, harvest = 0, clear = 0}
     summary.wave = finishedWave
     summary.reason = reason or "波次完成"
     Game.waveRewards = summary
@@ -1461,6 +1596,7 @@ function love.update(dt)
             resetRun()
             enterShop()
         end
+        if os.getenv("LOVE_AUTOSHOP_TAB") then Game.shopTab = os.getenv("LOVE_AUTOSHOP_TAB") end
         Game.autoShopClock = (Game.autoShopClock or 0) + dt
         if Game.autoShopClock > 0.4 then
             Game.autoShopDone = true
@@ -1587,7 +1723,6 @@ local function drawHud()
     drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 46, 292, 28, p.shield / p.maxShield, C.cyan)
     drawCapsule("材料 " .. Game.coins, lx + 310, hudY + 10, 112, 28, {fg = C.gold, border = C.gold, align = "center", padX = 14})
     drawCapsule("击杀 " .. Game.kills, lx + 310, hudY + 46, 112, 28, {fg = C.white, border = C.white, align = "center", padX = 14})
-    drawCapsule("Lv " .. Game.level, lx + 432, hudY + 28, 74, 28, {fg = C.green, border = C.green, align = "center", padX = 12})
 
     -- 中：战斗焦点。倒计时是唯一主视觉，波次/目标弱化成辅助标签。
     local midX = Game.w / 2
@@ -1832,7 +1967,7 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.small)
     color(C.cyan)
-    love.graphics.printf("模式  生存模式 · 60秒", deckX + 28, deckY + 32, 360, "left")
+    love.graphics.printf("模式  生存模式 · 30秒", deckX + 28, deckY + 32, 360, "left")
 
     local dangerText = Game.danger == 0 and "难度  基础" or ("难度  危险 " .. Game.danger)
     color(C.gold)
@@ -1842,7 +1977,7 @@ local function drawMenu()
     -- 首页不再提供模式切换，只保留生存模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("唯一目标：生存 60 秒", deckX + 28, deckY + 86, 260, "left")
+    love.graphics.printf("唯一目标：生存 30 秒", deckX + 28, deckY + 86, 260, "left")
     uiButton("-", deckX + deckW - 158, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
     uiButton("+", deckX + deckW - 86, deckY + 82, 58, 32, C.cyan, C.white, Game.fonts.tiny)
 end
@@ -1858,11 +1993,10 @@ local function drawLevelUp()
     color(C.muted)
     local wr = Game.waveRewards or {}
     local settlement = string.format(
-        "第 %d 波结算：%s｜击杀 %d｜经验 +%d｜材料 +%d",
+        "第 %d 波结算：%s｜击杀 %d｜材料 +%d",
         wr.wave or Game.wave,
         wr.reason or "波次完成",
         wr.kills or 0,
-        wr.xp or 0,
         wr.coins or 0
     )
     love.graphics.printf(settlement, Game.w / 2 - 560, 258, 1120, "center")
@@ -1913,6 +2047,32 @@ local function tagPill(text, x, y, bg, fg)
     return tw
 end
 
+local function drawTooltip(tip)
+    if not tip then return end
+    local mx, my = love.mouse.getPosition()
+    local title = tip.title or "详情"
+    local lines = tip.lines or {}
+    local fontTitle, fontBody = Game.fonts.tiny, Game.fonts.tiny
+    local width = fontTitle:getWidth(title) + 34
+    for _, line in ipairs(lines) do width = math.max(width, fontBody:getWidth(line) + 34) end
+    width = math.min(math.max(width, 240), 340)
+    local height = 38 + #lines * 20
+    local x = clamp(mx + 18, 12, Game.w - width - 12)
+    local y = clamp(my + 18, 12, Game.h - height - 12)
+    color(C.bgA, 0.96)
+    love.graphics.rectangle("fill", x, y, width, height, 12, 12)
+    color(C.gold, 0.58)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, width - 1, height - 1, 12, 12)
+    love.graphics.setFont(fontTitle)
+    color(C.gold)
+    love.graphics.printf(title, x + 14, y + 12, width - 28, "left")
+    love.graphics.setFont(fontBody)
+    for i, line in ipairs(lines) do
+        color(i == 1 and C.white or C.muted)
+        love.graphics.printf(line, x + 14, y + 32 + (i - 1) * 20, width - 28, "left")
+    end
+end
+
 local function drawShopCard(item, i, x, y, w, h)
     local rarity = item.rarity or "common"
     local rc = rarityColor[rarity] or C.white
@@ -1933,6 +2093,47 @@ local function drawShopCard(item, i, x, y, w, h)
     local tagX = x + 14
     tagX = tagX + tagPill(rarityText, tagX, y + 18, rc, C.bgA) + 8
     tagPill(kindText, tagX, y + 18, item.kind == "weapon" and C.gold or C.cyan, C.bgA)
+
+    if h < 260 then
+        love.graphics.setFont(Game.fonts.small)
+        color(C.white)
+        love.graphics.printf(item.name, x + 14, y + 48, w - 28, "left")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.white)
+        love.graphics.printf(modText(item.desc), x + 14, y + 72, w - 28, "left")
+        if item.kind == "weapon" and item.id and weaponDefs[item.id] then
+            local def = item.weaponDef or weaponDefs[item.id]
+            local brand = brands[def.brand]
+            local elem = elements[def.element]
+            color(brand.color)
+            love.graphics.printf(brand.name .. " · " .. brand.tag, x + 14, y + 108, w - 28, "left")
+            color(elem.color)
+            love.graphics.printf(elem.name .. " / 伤害 " .. def.damage .. " / 冷却 " .. string.format("%.2f", def.cooldown), x + 14, y + 126, w - 28, "left")
+        else
+            color(rc, 0.88)
+            love.graphics.printf("本局永久生效", x + 14, y + 120, w - 28, "left")
+        end
+
+        local buyY = y + h - 34
+        color(affordable and C.gold or C.red, 0.16)
+        love.graphics.rectangle("fill", x + 14, buyY, w - 120, 26, 9, 9)
+        color(affordable and C.gold or C.red, 0.55)
+        love.graphics.rectangle("line", x + 14, buyY, w - 120, 26, 9, 9)
+        centeredText("购买 " .. i .. " · " .. item.price, x + 14, buyY, w - 120, 26, Game.fonts.tiny, affordable and C.gold or C.red, "center")
+
+        local lockX = x + w - 96
+        color(Game.locked[i] and C.cyan or C.white, Game.locked[i] and 0.18 or 0.07)
+        love.graphics.rectangle("fill", lockX, buyY, 82, 26, 9, 9)
+        color(Game.locked[i] and C.cyan or C.muted)
+        love.graphics.rectangle("line", lockX, buyY, 82, 26, 9, 9)
+        centeredText(Game.locked[i] and "已锁" or "锁定", lockX, buyY, 82, 26, Game.fonts.tiny, Game.locked[i] and C.cyan or C.muted, "center")
+
+        if not affordable then
+            love.graphics.setColor(0, 0, 0, 0.30)
+            love.graphics.rectangle("fill", x, y, w, h, 14, 14)
+        end
+        return
+    end
 
     love.graphics.setFont(Game.fonts.normal)
     color(C.white)
@@ -2017,39 +2218,338 @@ local function drawBuildPanel(x, y, w, h)
     love.graphics.printf(table.concat(names, " / "), x + 16, wy + 22, w - 32, "center")
 end
 
+local function drawCompactBuildPanel(x, y, w, h)
+    local p = Game.player
+    panel(x, y, w, h)
+    love.graphics.setFont(Game.fonts.small)
+    color(C.white)
+    love.graphics.printf("当前构筑", x + 14, y + 8, w - 28, "left")
+    love.graphics.setFont(Game.fonts.tiny)
+    local line1 = "生命 " .. math.ceil(p.hp) .. "/" .. p.maxHp .. "  护盾 " .. math.ceil(p.shield) .. "/" .. p.maxShield .. "  护甲 " .. p.stats.armor
+    local line2 = "移速 " .. math.floor(p.speed) .. "  暴击 " .. math.floor((p.stats.crit or 0) * 100 + 0.5) .. "%  材料倍率 ×" .. string.format("%.2f", p.stats.economy or 1)
+    color(C.muted)
+    love.graphics.printf(line1, x + 14, y + 34, w - 28, "left")
+    love.graphics.printf(line2, x + 14, y + 52, w - 28, "left")
+
+    local cardY = y + 74
+    for i = 1, math.min(2, #p.weapons) do
+        local weapon = p.weapons[i]
+        local elem = elements[weapon.element] or elements.kinetic
+        local brand = brands[weapon.brand]
+        local rowY = cardY + (i - 1) * 36
+        color(elem.color, 0.12)
+        love.graphics.rectangle("fill", x + 14, rowY, w - 28, 32, 8, 8)
+        color(elem.color, 0.46)
+        love.graphics.rectangle("line", x + 14.5, rowY + 0.5, w - 29, 31, 8, 8)
+        color(C.white)
+        love.graphics.printf(weapon.name .. " Lv" .. weapon.level, x + 24, rowY + 4, w - 48, "left")
+        color(C.muted)
+        local actualDamage = math.floor((weapon.damage or 0) * (p.stats.damage or 1) + 0.5)
+        local count = weapon.count or 1
+        local line = "伤害 " .. actualDamage .. "×" .. count .. "  冷却 " .. string.format("%.2f", weapon.cooldown or 0) .. "s  范围 " .. math.floor(weapon.range or 0)
+        love.graphics.printf(line, x + 158, rowY + 4, w - 186, "left")
+        if brand then
+            color(brand.color, 0.86)
+            love.graphics.printf(brand.name, x + 100, rowY + 4, 50, "left")
+        end
+    end
+    if #p.weapons > 2 then
+        color(C.gold)
+        love.graphics.printf("另有 " .. (#p.weapons - 2) .. " 把武器", x + 14, y + h - 22, w - 28, "left")
+    end
+end
+
+local function defenseText(def)
+    if def.defense == "armor" then return "护甲" end
+    if def.defense == "shield" then return "护盾" end
+    if def.defense == "flesh" then return "轻甲" end
+    return "普通"
+end
+
+local function drawAffixInfoPill(affix, label, x, y, w, h, mx, my)
+    local accent = affix.kind == "penalty" and C.red or C.green
+    color(accent, 0.16)
+    love.graphics.rectangle("fill", x, y, w, h, 10, 10)
+    color(accent, 0.58)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, 10, 10)
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf(label, x + 12, y + 7, w - 24, "left")
+    color(accent)
+    love.graphics.printf(affix.name .. " · " .. affix.desc, x + 12, y + 27, w - 24, "left")
+    color(C.white, 0.55)
+    love.graphics.printf("?", x + w - 26, y + 7, 16, "center")
+    if hitRect(mx, my, x, y, w, h) then
+        return {title = label .. "词条：" .. affix.name, lines = affixDetailLines(affix)}
+    end
+end
+
+local function drawNextWavePanel(x, y, w, h)
+    local mx, my = love.mouse.getPosition()
+    local tip = nil
+    local plan = wavePlanAt(Game.wave)
+    local reward, penalty = affixesAt(Game.wave)
+    panel(x, y, w, h)
+    love.graphics.setFont(Game.fonts.small)
+    color(C.white)
+    love.graphics.printf("下一波情报", x + 24, y + 18, w - 48, "left")
+    color(C.gold)
+    love.graphics.printf("第 " .. Game.wave .. " 波 · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf("生存 30 秒 · 根据词条和敌群选择临时道具", x + 24, y + 84, w - 48, "left")
+
+    local pillW = (w - 62) / 2
+    if reward then tip = drawAffixInfoPill(reward, "奖励", x + 24, y + 122, pillW, 58, mx, my) or tip end
+    if penalty then tip = drawAffixInfoPill(penalty, "惩罚", x + 38 + pillW, y + 122, pillW, 58, mx, my) or tip end
+
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.white)
+    love.graphics.printf("敌人构成", x + 24, y + 208, w - 48, "left")
+    local rowY = y + 236
+    local total = 0
+    for _, entry in ipairs(plan.enemies or {}) do total = total + (entry[2] or 0) end
+    for i, entry in ipairs(plan.enemies or {}) do
+        local key, weight = entry[1], entry[2]
+        local def = enemyDefs[key]
+        if def and i <= 3 then
+            local chance = total > 0 and math.floor(weight / total * 100 + 0.5) or weight
+            color(def.color, 0.16)
+            love.graphics.rectangle("fill", x + 24, rowY, w - 48, 24, 7, 7)
+            color(def.color)
+            love.graphics.printf(def.name, x + 36, rowY + 6, 112, "left")
+            color(C.muted)
+            love.graphics.printf(chance .. "% · " .. defenseText(def) .. " · 伤害 " .. def.damage, x + 156, rowY + 6, w - 196, "left")
+            rowY = rowY + 32
+        end
+    end
+    local events = plan.events or {}
+    if #events > 0 then
+        color(C.gold)
+        local parts = {}
+        for i, event in ipairs(events) do
+            local def = enemyDefs[event.enemy]
+            if def and i <= 3 then parts[#parts + 1] = math.floor(event.time) .. "s " .. def.name end
+        end
+        love.graphics.printf("事件敌人：" .. table.concat(parts, " / "), x + 24, y + h - 44, w - 48, "left")
+    else
+        color(C.muted)
+        love.graphics.printf("无固定事件敌人", x + 24, y + h - 44, w - 48, "left")
+    end
+    return tip
+end
+
+local function drawSlotMachinePanel(x, y, w, h)
+    panel(x, y, w, h)
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.white)
+    love.graphics.printf("老虎机", x + 12, y + 8, 64, "left")
+    local milestone = slotMilestone()
+    local unlocked = slotUnlocked()
+    local free = slotHasFreeUse()
+    color(unlocked and C.gold or C.muted)
+    local status = unlocked and ("第 " .. milestone .. " 关奖励机 · " .. (free and "本轮免费" or ("消耗 " .. slotSpinCost() .. " 材料"))) or "第 5 关后解锁"
+    love.graphics.printf(status, x + 72, y + 8, w - 140, "left")
+
+    local reels = Game.slotResult and Game.slotResult.reels or nil
+    local reelW, reelH, gap = 36, 30, 6
+    local rx = x + 12
+    local ry = y + 32
+    for i = 1, 3 do
+        local sym = reels and reels[i]
+        color(sym and sym.color or C.white, sym and 0.20 or 0.08)
+        love.graphics.rectangle("fill", rx + (i - 1) * (reelW + gap), ry, reelW, reelH, 10, 10)
+        color(sym and sym.color or C.muted, unlocked and 0.74 or 0.30)
+        love.graphics.rectangle("line", rx + (i - 1) * (reelW + gap), ry, reelW, reelH, 10, 10)
+        love.graphics.setFont(Game.fonts.tiny)
+        love.graphics.printf(sym and sym.mark or "?", rx + (i - 1) * (reelW + gap), ry + 8, reelW, "center")
+    end
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三连大奖 / 双符中奖 / 散符返材料", x + 142, y + 34, w - 246, "left")
+
+    local by = y + 28
+    local label = unlocked and (free and "免费拉杆" or ("拉杆 · " .. slotSpinCost())) or "未解锁"
+    uiButton(label, x + w - 94, by, 80, 34, unlocked and C.gold or C.white, C.white, Game.fonts.tiny)
+end
+
+local function drawSlotTabContent(x, y, w, h)
+    panel(x, y, w, h)
+    local milestone = slotMilestone()
+    local unlocked = slotUnlocked()
+    local free = slotHasFreeUse()
+    love.graphics.setFont(Game.fonts.normal)
+    color(C.white)
+    love.graphics.printf("老虎机", x + 28, y + 26, w - 56, "left")
+    love.graphics.setFont(Game.fonts.small)
+    color(unlocked and C.gold or C.muted)
+    local status = unlocked and ("第 " .. milestone .. " 关奖励机 · " .. (free and "本轮免费 1 次" or ("本次消耗 " .. slotSpinCost() .. " 材料"))) or "清完第 5 关后解锁；之后每 5 关补 1 次免费拉杆"
+    love.graphics.printf(status, x + 28, y + 66, w - 56, "left")
+
+    local reels = Game.slotResult and Game.slotResult.reels or nil
+    local reelW, reelH, gap = 116, 96, 22
+    local totalW = reelW * 3 + gap * 2
+    local rx = x + w / 2 - totalW / 2
+    local ry = y + 126
+    for i = 1, 3 do
+        local sym = reels and reels[i]
+        local sx = rx + (i - 1) * (reelW + gap)
+        color(sym and sym.color or C.white, sym and 0.22 or 0.08)
+        love.graphics.rectangle("fill", sx, ry, reelW, reelH, 18, 18)
+        color(sym and sym.color or C.muted, unlocked and 0.80 or 0.36)
+        love.graphics.rectangle("line", sx + 0.5, ry + 0.5, reelW - 1, reelH - 1, 18, 18)
+        love.graphics.setFont(Game.fonts.big)
+        love.graphics.printf(sym and sym.mark or "?", sx, ry + 18, reelW, "center")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(sym and sym.color or C.muted)
+        love.graphics.printf(sym and sym.name or "待转动", sx, ry + 70, reelW, "center")
+    end
+
+    love.graphics.setFont(Game.fonts.small)
+    color(C.white)
+    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三连大奖，双符中奖，散符返材料。奖品会直接给材料/治疗，或以 0 材料商品放入商店。", x + 28, y + 248, w - 56, "center")
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf("符号：材料、武器、战术、护盾、修复、稀有。老虎机只影响商店阶段，不会替你自动进入下一波。", x + 28, y + 292, w - 56, "center")
+
+    local buttonW, buttonH = 320, 64
+    local label = unlocked and (free and "免费拉杆" or ("拉杆 · " .. slotSpinCost() .. " 材料")) or "未解锁"
+    uiButton(label, x + w / 2 - buttonW / 2, y + h - 96, buttonW, buttonH, unlocked and C.gold or C.white, C.white, Game.fonts.normal)
+end
+
+local shopTabs = {
+    {id = "shop", label = "商店"},
+    {id = "intel", label = "下一波情报"},
+    {id = "build", label = "当前构筑"},
+    {id = "slot", label = "老虎机"}
+}
+
+local function drawShopTabs(x, y)
+    local active = Game.shopTab or "shop"
+    local tabW, tabH, gap = 138, 38, 10
+    for i, tab in ipairs(shopTabs) do
+        local tx = x + (i - 1) * (tabW + gap)
+        local isActive = active == tab.id
+        color(isActive and C.gold or C.white, isActive and 0.24 or 0.08)
+        love.graphics.rectangle("fill", tx, y, tabW, tabH, 11, 11)
+        color(isActive and C.gold or C.muted, isActive and 0.74 or 0.40)
+        love.graphics.rectangle("line", tx + 0.5, y + 0.5, tabW - 1, tabH - 1, 11, 11)
+        centeredText(tab.label, tx, y, tabW, tabH, Game.fonts.small, isActive and C.gold or C.muted, "center")
+    end
+end
+
+local function shopTabHit(x, y)
+    local startX, startY = 70, 136
+    local tabW, tabH, gap = 138, 38, 10
+    for i, tab in ipairs(shopTabs) do
+        local tx = startX + (i - 1) * (tabW + gap)
+        if hitRect(x, y, tx, startY, tabW, tabH) then return tab.id end
+    end
+end
+
+local function drawBuildTabContent(x, y, w, h)
+    local p = Game.player
+    panel(x, y, w, h)
+    love.graphics.setFont(Game.fonts.normal)
+    color(C.white)
+    love.graphics.printf("当前构筑数值", x + 18, y + 16, w - 36, "left")
+
+    love.graphics.setFont(Game.fonts.tiny)
+    local rows = {
+        {"生命", math.ceil(p.hp) .. " / " .. p.maxHp}, {"护盾", math.ceil(p.shield) .. " / " .. p.maxShield},
+        {"护盾回复", string.format("%.1f/s", p.shieldRegen)}, {"护甲", tostring(p.stats.armor)},
+        {"移速", tostring(math.floor(p.speed))}, {"闪避", pct(p.stats.dodge)},
+        {"暴击", pct(p.stats.crit)}, {"暴伤", pct(p.stats.critDamage)},
+        {"元素伤", pct(p.stats.elementDamage or 1)}, {"材料率", "×" .. string.format("%.2f", p.stats.economy or 1)}
+    }
+    local sx, sy = x + 18, y + 56
+    local cellW, cellH = 166, 26
+    for i, row in ipairs(rows) do
+        local col = (i - 1) % 5
+        local line = math.floor((i - 1) / 5)
+        local rx, ry = sx + col * (cellW + 8), sy + line * (cellH + 8)
+        color(C.white, 0.07)
+        love.graphics.rectangle("fill", rx, ry, cellW, cellH, 8, 8)
+        centeredText(row[1], rx + 10, ry, 58, cellH, Game.fonts.tiny, C.muted, "left")
+        centeredText(row[2], rx + 70, ry, cellW - 82, cellH, Game.fonts.tiny, C.white, "right")
+    end
+
+    color(C.gold)
+    love.graphics.printf("武器卡片", x + 18, y + 142, w - 36, "left")
+    local cardW, cardH, gap = (w - 54) / 2, 88, 16
+    for i, weapon in ipairs(p.weapons) do
+        if i > 4 then break end
+        local col = (i - 1) % 2
+        local row = math.floor((i - 1) / 2)
+        local wx, wy = x + 18 + col * (cardW + gap), y + 174 + row * (cardH + 14)
+        local elem = elements[weapon.element] or elements.kinetic
+        local brand = brands[weapon.brand]
+        color(elem.color, 0.12)
+        love.graphics.rectangle("fill", wx, wy, cardW, cardH, 12, 12)
+        color(elem.color, 0.48)
+        love.graphics.rectangle("line", wx + 0.5, wy + 0.5, cardW - 1, cardH - 1, 12, 12)
+        love.graphics.setFont(Game.fonts.small)
+        color(C.white)
+        love.graphics.printf(weapon.name .. " Lv" .. weapon.level, wx + 14, wy + 10, cardW - 28, "left")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(brand and brand.color or C.gold)
+        love.graphics.printf((brand and brand.name or "武器") .. " · " .. elem.name, wx + 14, wy + 36, cardW - 28, "left")
+        color(C.muted)
+        local actualDamage = math.floor((weapon.damage or 0) * (p.stats.damage or 1) + 0.5)
+        local detail = "伤害 " .. actualDamage .. "×" .. (weapon.count or 1) .. "  冷却 " .. string.format("%.2f", weapon.cooldown or 0) .. "s  范围 " .. math.floor(weapon.range or 0)
+        local extra = "穿透 " .. (weapon.pierce or p.stats.pierce or 0) .. "  弹射 " .. (weapon.bounce or 0) .. "  弹速 " .. math.floor(weapon.speed or 0)
+        love.graphics.printf(detail, wx + 14, wy + 56, cardW - 28, "left")
+        love.graphics.printf(extra, wx + 14, wy + 72, cardW - 28, "left")
+    end
+end
+
 local function drawShop()
     panel(54, 66, Game.w - 108, Game.h - 86)
-    love.graphics.setFont(Game.fonts.big)
+    love.graphics.setFont(Game.fonts.normal)
     color(C.white)
     local clearedWave = math.max(1, Game.wave - 1)
-    love.graphics.printf("商店 / 第 " .. clearedWave .. " 波战后补给", 70, 88, Game.w - 140, "center")
+    love.graphics.printf("商店 / 第 " .. clearedWave .. " 波战后补给", 70, 92, Game.w - 140, "center")
+    drawShopTabs(70, 136)
+
     love.graphics.setFont(Game.fonts.small)
     local rerollCost = 3 + Game.shopRefresh * 2
     local refreshText = Game.freeRefresh > 0 and ("免费刷新 " .. Game.freeRefresh .. " 次") or ("刷新 " .. rerollCost .. " 材料")
-    color(C.gold)
-    local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
-    love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  " .. shieldText, 70, 150, Game.w - 140, "center")
-    color(C.muted)
-    love.graphics.printf("点击购买/锁定 · 下方按钮刷新、回收、进入下一波", 70, 184, Game.w - 140, "center")
+    local active = Game.shopTab or "shop"
+    local contentY, contentH = 190, 430
+    local tip = nil
 
-    local sideW = 360
-    local cardY = 252
-    local cardH = 420
-    local cardW = (Game.w - 190 - sideW) / 4
-    for i, item in ipairs(Game.shop) do
-        local x = 72 + (i - 1) * (cardW + 10)
-        drawShopCard(item, i, x, cardY, cardW, cardH)
+    if active == "intel" then
+        tip = drawNextWavePanel(72, contentY, Game.w - 144, contentH)
+    elseif active == "build" then
+        drawBuildTabContent(72, contentY, Game.w - 144, contentH)
+    elseif active == "slot" then
+        drawSlotTabContent(72, contentY, Game.w - 144, contentH)
+    else
+        color(C.gold)
+        local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
+        love.graphics.printf("武器槽 " .. #Game.player.weapons .. "/4  ·  " .. shieldText .. "  ·  详细构筑请切到『当前构筑』", 70, 176, Game.w - 140, "center")
+        local cardY = 214
+        local gridH = 392
+        local gap = 16
+        local cardW = (Game.w - 144 - gap) / 2
+        local cardH = (gridH - gap) / 2
+        for i, item in ipairs(Game.shop) do
+            local col = (i - 1) % 2
+            local row = math.floor((i - 1) / 2)
+            local x = 72 + col * (cardW + gap)
+            local y = cardY + row * (cardH + gap)
+            drawShopCard(item, i, x, y, cardW, cardH)
+        end
     end
 
-    drawBuildPanel(Game.w - 72 - sideW, cardY, sideW, cardH)
-
-    local actionY = cardY + cardH + 30
+    local actionY = 636
     local secondaryW, primaryW, gap = 240, 360, 24
     local groupW = secondaryW * 2 + primaryW + gap * 2
     local groupX = Game.w / 2 - groupW / 2
     uiButton(refreshText, groupX, actionY, secondaryW, 56, C.cyan)
     uiButton("进入下一波", Game.w / 2 - primaryW / 2, actionY - 8, primaryW, 72, C.gold, C.white, Game.fonts.normal)
     uiButton("回收最后武器", groupX + groupW - secondaryW, actionY, secondaryW, 56, C.white)
+    drawTooltip(tip)
 end
 
 local function drawPauseOverlay()
@@ -2164,18 +2664,30 @@ local function handlePointer(x, y)
             if hitRect(x, y, cx, 350, w, h) then chooseLevelReward(i); return true end
         end
     elseif Game.state == "shop" then
-        local sideW = 360
-        local cardY = 252
-        local cardH = 420
-        local cardW = (Game.w - 190 - sideW) / 4
-        for i = 1, 4 do
-            local cardX = 72 + (i - 1) * (cardW + 10)
-            local buyY = cardY + cardH - 74
-            local lockY = cardY + cardH - 34
-            if hitRect(x, y, cardX + 16, buyY, cardW - 32, 34) then buySlot(i); return true end
-            if hitRect(x, y, cardX + 16, lockY, cardW - 32, 28) then Game.locked[i] = not Game.locked[i]; toast(Game.locked[i] and "已锁定商品" or "已取消锁定"); return true end
+        local tab = shopTabHit(x, y)
+        if tab then Game.shopTab = tab; return true end
+
+        if (Game.shopTab or "shop") == "shop" then
+            local cardY = 214
+            local gridH = 392
+            local gap = 16
+            local cardW = (Game.w - 144 - gap) / 2
+            local cardH = (gridH - gap) / 2
+            for i = 1, 4 do
+                local col = (i - 1) % 2
+                local row = math.floor((i - 1) / 2)
+                local cardX = 72 + col * (cardW + gap)
+                local cardTop = cardY + row * (cardH + gap)
+                local buyY = cardTop + cardH - 34
+                if hitRect(x, y, cardX + 14, buyY, cardW - 120, 26) then buySlot(i); return true end
+                if hitRect(x, y, cardX + cardW - 96, buyY, 82, 26) then Game.locked[i] = not Game.locked[i]; toast(Game.locked[i] and "已锁定商品" or "已取消锁定"); return true end
+            end
+        elseif Game.shopTab == "slot" then
+            local buttonW, buttonH = 320, 64
+            if hitRect(x, y, Game.w / 2 - buttonW / 2, 190 + 430 - 96, buttonW, buttonH) then spinSlotMachine(); return true end
         end
-        local actionY = cardY + cardH + 30
+
+        local actionY = 636
         local secondaryW, primaryW, gap = 240, 360, 24
         local groupW = secondaryW * 2 + primaryW + gap * 2
         local groupX = Game.w / 2 - groupW / 2
@@ -2233,6 +2745,7 @@ function love.keypressed(key)
         if key == "3" then buySlot(3) end
         if key == "4" then buySlot(4) end
         if key == "e" then recycleWeapon() end
+        if key == "s" then spinSlotMachine(); return end
         if key == "r" then
             if not (love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")) then toast("刷新需按 Shift+R，避免误触"); return end
             refreshShop()
