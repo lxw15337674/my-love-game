@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.46"
+local VERSION = "v2026.05.23.47"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -4209,13 +4209,12 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 43, 9, 9)
         love.graphics.setLineWidth(1)
         if weapon then
-            local elem = elements[weapon.element] or elements.kinetic
             local nameW = slotW - (showSell and 64 or 20)
             love.graphics.setFont(Game.fonts.tiny)
             color(C.white)
-            love.graphics.printf(compactDesc(weapon.name, showSell and 10 or 14), sx + 10, sy + 5, nameW, "left")
-            color(C.muted)
-            love.graphics.printf("◆" .. tostring(weapon.price or 0) .. " · " .. elem.name .. " · 伤害 " .. math.floor((weapon.damage or 0) + 0.5) .. "×" .. (weapon.count or 1), sx + 10, sy + 24, nameW, "left")
+            love.graphics.printf(compactDesc(weapon.name, showSell and 11 or 15), sx + 10, sy + 5, nameW, "left")
+            color(C.gold)
+            love.graphics.printf("◆" .. tostring(weapon.price or 0), sx + 10, sy + 24, nameW, "left")
         else
             textInBox("空武器槽", sx + 10, sy, slotW - 20, 44, Game.fonts.tiny, C.muted, "center")
         end

@@ -8,6 +8,11 @@
 
 ## 已完成
 
+- [x] 武器槽只显示武器名和价格，其余信息放入 tooltip。
+  - 当前构筑武器槽内只保留武器名与价格。
+  - 元素、伤害、词缀、词缀说明、对比等信息只在 hover tooltip 中显示。
+  - 验证：本机 LÖVE 截图 `/home/moltbot/clawd-wechat/tmp/my-love-game-v47/shop.png` 确认武器槽不再显示元素/伤害摘要；`/home/moltbot/clawd-wechat/tmp/my-love-game-v47/build-tooltip.png` 确认 tooltip 仍保留详细信息。
+
 - [x] 主机技能无敌效果去掉闪烁。
   - 主机技能无敌期间不再让玩家机体闪烁/消失。
   - 保留稳定的无敌光环提示，避免视觉晃动。
