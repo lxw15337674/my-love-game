@@ -62,7 +62,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.30"
+local VERSION = "v2026.05.23.31"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -278,20 +278,21 @@ local enemyDefs = {
     elite = {name = "坏蛋精英", sprite = "enemy_elite", defense = "shield", hp = 150, shield = 90, shieldRegen = 3.0, speed = 64, damage = 18, r = 28, color = C.purple, armor = 2, xp = 16, coin = 12, elite = true, behavior = "aura"},
     treasure = {name = "宝藏信标", sprite = "pickup_coin", defense = "flesh", hp = 32, speed = 112, damage = 0, r = 16, color = C.gold, xp = 1, coin = 5, treasureCoin = 18, treasure = true, behavior = "treasure"},
     bomber = {name = "燃烧投手", sprite = "enemy_splinter", defense = "flesh", hp = 38, speed = 72, damage = 10, r = 15, color = C.orange, xp = 4, coin = 4, behavior = "bomber"},
+    rammer = {name = "突击钻头", sprite = "enemy_splinter", defense = "armor", hp = 52, speed = 96, damage = 16, r = 18, color = C.red, armor = 1, xp = 6, coin = 5, behavior = "rammer"},
     boss = {name = "裂心机核", sprite = "boss_heartbreak", defense = "armor", hp = 1900, shield = 260, shieldRegen = 1.2, speed = 48, damage = 24, r = 46, color = C.pink, armor = 2, xp = 80, coin = 60, boss = true, behavior = "boss"}
 }
 
 local wavePlans = {
     {name = "裂片试探", interval = 1.10, pack = 1, sides = {"left", "right"}, enemies = {{"splinter", 70}, {"drifter", 30}}},
-    {name = "双翼骚扰", interval = 1.02, pack = 2, sides = {"left", "right", "top"}, enemies = {{"splinter", 50}, {"drifter", 37}, {"wisp", 10}, {"treasure", 3}}},
-    {name = "电弧乱流", interval = 0.92, pack = 2, sides = {"top", "right", "left"}, enemies = {{"splinter", 38}, {"drifter", 28}, {"wisp", 28}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 18, enemy = "elite", side = "right", toast = "精英信号：右侧突破"}}},
-    {name = "装甲推进", interval = 0.88, pack = 2, sides = {"left", "right", "bottom"}, enemies = {{"splinter", 30}, {"drifter", 26}, {"wisp", 18}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}},
-    {name = "交叉包围", interval = 0.80, pack = 3, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 28}, {"drifter", 28}, {"wisp", 23}, {"shell", 15}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 12, enemy = "elite", side = "left", toast = "精英压境：左侧"}}},
-    {name = "重壳浪潮", interval = 0.78, pack = 3, sides = {"right", "bottom", "top"}, enemies = {{"drifter", 23}, {"wisp", 23}, {"shell", 36}, {"splinter", 12}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 22, enemy = "elite", side = "bottom", toast = "底线精英出现"}}},
-    {name = "高速撕裂", interval = 0.70, pack = 3, sides = {"left", "right"}, enemies = {{"splinter", 39}, {"drifter", 36}, {"wisp", 12}, {"shell", 7}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 16, enemy = "elite", side = "right"}}},
-    {name = "四面噪声", interval = 0.64, pack = 4, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 26}, {"drifter", 26}, {"wisp", 24}, {"shell", 18}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 10, enemy = "elite", side = "top"}, {time = 25, enemy = "elite", side = "bottom"}}},
-    {name = "核心前夜", interval = 0.58, pack = 4, sides = {"right", "left", "top", "bottom"}, enemies = {{"splinter", 22}, {"drifter", 26}, {"wisp", 26}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 9, enemy = "elite", side = "left"}, {time = 21, enemy = "elite", side = "right"}}},
-    {name = "裂心机核", interval = 0.95, pack = 2, sides = {"left", "right", "top", "bottom"}, boss = true, enemies = {{"splinter", 26}, {"drifter", 24}, {"wisp", 24}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 0.2, enemy = "boss", side = "right", toast = "Boss：裂心机核接入"}, {time = 20, enemy = "elite", side = "left"}, {time = 40, enemy = "elite", side = "right"}}}
+    {name = "双翼骚扰", interval = 1.02, pack = 2, sides = {"left", "right", "top"}, enemies = {{"splinter", 47}, {"drifter", 35}, {"rammer", 5}, {"wisp", 10}, {"treasure", 3}}},
+    {name = "电弧乱流", interval = 0.92, pack = 2, sides = {"top", "right", "left"}, enemies = {{"splinter", 34}, {"drifter", 27}, {"rammer", 7}, {"wisp", 26}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 18, enemy = "elite", side = "right", toast = "精英信号：右侧突破"}}},
+    {name = "装甲推进", interval = 0.88, pack = 2, sides = {"left", "right", "bottom"}, enemies = {{"splinter", 27}, {"drifter", 24}, {"rammer", 8}, {"wisp", 17}, {"shell", 18}, {"bomber", 3}, {"treasure", 3}}},
+    {name = "交叉包围", interval = 0.80, pack = 3, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 25}, {"drifter", 25}, {"rammer", 10}, {"wisp", 22}, {"shell", 15}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 12, enemy = "elite", side = "left", toast = "精英压境：左侧"}}},
+    {name = "重壳浪潮", interval = 0.78, pack = 3, sides = {"right", "bottom", "top"}, enemies = {{"drifter", 22}, {"wisp", 22}, {"shell", 32}, {"rammer", 10}, {"splinter", 11}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 22, enemy = "elite", side = "bottom", toast = "底线精英出现"}}},
+    {name = "高速撕裂", interval = 0.70, pack = 3, sides = {"left", "right"}, enemies = {{"splinter", 34}, {"drifter", 32}, {"rammer", 14}, {"wisp", 11}, {"shell", 6}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 16, enemy = "elite", side = "right"}}},
+    {name = "四面噪声", interval = 0.64, pack = 4, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 23}, {"drifter", 24}, {"rammer", 10}, {"wisp", 23}, {"shell", 17}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 10, enemy = "elite", side = "top"}, {time = 25, enemy = "elite", side = "bottom"}}},
+    {name = "核心前夜", interval = 0.58, pack = 4, sides = {"right", "left", "top", "bottom"}, enemies = {{"splinter", 20}, {"drifter", 24}, {"rammer", 10}, {"wisp", 25}, {"shell", 18}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 9, enemy = "elite", side = "left"}, {time = 21, enemy = "elite", side = "right"}}},
+    {name = "裂心机核", interval = 0.95, pack = 2, sides = {"left", "right", "top", "bottom"}, boss = true, enemies = {{"splinter", 23}, {"drifter", 22}, {"rammer", 8}, {"wisp", 23}, {"shell", 18}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 0.2, enemy = "boss", side = "right", toast = "Boss：裂心机核接入"}, {time = 20, enemy = "elite", side = "left"}, {time = 40, enemy = "elite", side = "right"}}}
 }
 
 local function wavePlanAt(wave)
@@ -2248,6 +2249,41 @@ local function updateEnemies(dt)
                 e.dashTimer = 2.2
                 addText(e.x, e.y - e.r - 8, "突进", C.orange)
             end
+        elseif behavior == "rammer" then
+            e.chargeCooldown = math.max(0, (e.chargeCooldown or randf(0.4, 1.2)) - dt)
+            if e.chargeState == "windup" then
+                e.chargeTimer = (e.chargeTimer or 0) - dt
+                moveAngle = e.chargeAngle or a
+                spd = spd * 0.10
+                if e.chargeTimer <= 0 then
+                    e.chargeState = "dash"
+                    e.chargeTimer = e.chargeDashTime or 0.44
+                    addText(e.x, e.y - e.r - 10, "冲锋", C.red)
+                end
+            elseif e.chargeState == "dash" then
+                e.chargeTimer = (e.chargeTimer or 0) - dt
+                moveAngle = e.chargeAngle or a
+                spd = spd * (e.chargeSpeedMult or 4.4)
+                if e.chargeTimer <= 0 then
+                    e.chargeState = "recover"
+                    e.chargeTimer = 0.62
+                    e.chargeCooldown = randf(1.0, 1.5)
+                end
+            elseif e.chargeState == "recover" then
+                e.chargeTimer = (e.chargeTimer or 0) - dt
+                spd = spd * 0.42
+                if e.chargeTimer <= 0 then e.chargeState = nil end
+            elseif e.enteredArena and e.chargeCooldown <= 0 and distToPlayer < 560 and distToPlayer > 90 then
+                e.chargeState = "windup"
+                e.chargeTimer = 0.74
+                e.chargeAngle = a
+                e.chargeWarnLength = clamp(distToPlayer + 160, 260, 520)
+                spd = 0
+                addText(e.x, e.y - e.r - 10, "蓄力", C.red)
+            else
+                moveAngle = randomWanderAngle(e, dt, 0.60, 1.20, a, 0.42)
+                spd = spd * (e.enteredArena and 0.82 or 1.12)
+            end
         elseif behavior == "guard" then
             spd = spd * 0.78
             e.armor = math.max(e.armor or 0, 3 + math.floor(Game.wave / 3))
@@ -2265,7 +2301,8 @@ local function updateEnemies(dt)
         e.y = e.y + math.sin(moveAngle) * spd * dt
         markAndClampEnemyArena(e)
         if distance(e.x, e.y, p.x, p.y) < e.r + p.r then
-            if (e.damage or 0) > 0 then damagePlayer(e.damage) end
+            if (e.damage or 0) > 0 then damagePlayer(e.damage * ((e.behavior == "rammer" and e.chargeState == "dash") and 1.45 or 1)) end
+            if e.behavior == "rammer" and e.chargeState == "dash" then e.chargeState = "recover"; e.chargeTimer = 0.72; e.chargeCooldown = 1.4 end
             e.x = e.x - math.cos(a) * 18
             e.y = e.y - math.sin(a) * 18
             markAndClampEnemyArena(e)
@@ -2663,6 +2700,21 @@ function love.update(dt)
             love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-beam.png")
             love.event.quit()
         end
+    elseif os.getenv("LOVE_AUTOCHARGERSHOT") == "1" and not Game.autoChargerDone then
+        if Game.state == "menu" then resetRun() end
+        if Game.state == "playing" and not Game.autoChargerStarted then
+            Game.autoChargerStarted = true
+            Game.enemies = {}
+            local def = enemyDefs.rammer
+            local e = {name = def.name, x = Game.player.x + 250, y = Game.player.y - 80, r = def.r, hp = def.hp, maxHp = def.hp, shield = 0, maxShield = 0, defense = def.defense, shieldRegen = 0, speed = def.speed, damage = def.damage, armor = def.armor or 0, color = def.color, xp = def.xp, coin = def.coin, sprite = def.sprite, behavior = def.behavior, enteredArena = true, chargeState = "windup", chargeTimer = 0.55, chargeAngle = angleTo(Game.player.x + 250, Game.player.y - 80, Game.player.x, Game.player.y), chargeWarnLength = 430}
+            Game.enemies[#Game.enemies + 1] = e
+        end
+        Game.autoChargerClock = (Game.autoChargerClock or 0) + dt
+        if Game.autoChargerClock > 0.18 then
+            Game.autoChargerDone = true
+            love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-charger.png")
+            love.event.quit()
+        end
     elseif os.getenv("LOVE_AUTOFIREZONE") == "1" and not Game.autoFireZoneDone then
         if Game.state == "menu" then resetRun() end
         if Game.state == "playing" and not Game.autoFireZoneSpawned then
@@ -2947,6 +2999,27 @@ local function drawWorld()
             love.graphics.setLineWidth(1)
             love.graphics.pop()
         end
+        if e.behavior == "rammer" and e.chargeState == "windup" then
+            local a = e.chargeAngle or angleTo(e.x, e.y, p.x, p.y)
+            local len = e.chargeWarnLength or 420
+            local x2, y2 = e.x + math.cos(a) * len, e.y + math.sin(a) * len
+            local pulse = 0.48 + 0.52 * math.sin((love.timer.getTime() or 0) * 16)
+            love.graphics.setBlendMode("add")
+            love.graphics.setLineWidth(14)
+            color(C.red, 0.10 + pulse * 0.10)
+            love.graphics.line(e.x, e.y, x2, y2)
+            love.graphics.setLineWidth(4)
+            color(C.red, 0.54 + pulse * 0.28)
+            love.graphics.line(e.x, e.y, x2, y2)
+            love.graphics.setLineWidth(1)
+            love.graphics.setBlendMode("alpha")
+        elseif e.behavior == "rammer" and e.chargeState == "dash" then
+            local a = e.chargeAngle or angleTo(e.x, e.y, p.x, p.y)
+            love.graphics.setBlendMode("add")
+            color(C.red, 0.30)
+            love.graphics.polygon("fill", e.x - math.cos(a) * 88 - math.sin(a) * 18, e.y - math.sin(a) * 88 + math.cos(a) * 18, e.x - math.cos(a) * 88 + math.sin(a) * 18, e.y - math.sin(a) * 88 - math.cos(a) * 18, e.x, e.y)
+            love.graphics.setBlendMode("alpha")
+        end
         love.graphics.setColor(0, 0, 0, 0.34)
         love.graphics.ellipse("fill", e.x, e.y + e.r * 1.35, e.r * 2.2, e.r * 0.52)
         if e.treasure then
@@ -2976,8 +3049,8 @@ local function drawWorld()
         love.graphics.setLineWidth(e.boss and 5 or (e.elite and 4 or 2))
         love.graphics.circle("line", e.x, e.y, e.r * (e.boss and 2.25 or 2.05))
         love.graphics.setLineWidth(1)
-        if e.boss or e.elite or e.behavior == "shooter" or e.behavior == "bomber" then
-            local tag = e.boss and "BOSS" or (e.elite and "精英" or (e.behavior == "bomber" and "火力" or "远程"))
+        if e.boss or e.elite or e.behavior == "shooter" or e.behavior == "bomber" or e.behavior == "rammer" then
+            local tag = e.boss and "BOSS" or (e.elite and "精英" or (e.behavior == "bomber" and "火力" or (e.behavior == "rammer" and "冲锋" or "远程")))
             local tagW = e.boss and 74 or 52
             local tagX = clamp(e.x - tagW / 2, 46, Game.w - tagW - 46)
             local tagY = clamp(e.y - e.r - 34, 156, Game.h - 96)
@@ -3592,7 +3665,7 @@ end
 
 local function waveThreatProfile(wave)
     local plan = wavePlanAt(wave or Game.wave)
-    local profile = {shield = 0, armor = 0, ranged = 0, fire = 0, elite = 0, boss = plan.boss and 1 or 0}
+    local profile = {shield = 0, armor = 0, ranged = 0, fire = 0, charge = 0, elite = 0, boss = plan.boss and 1 or 0}
     for _, entry in ipairs(plan.enemies or {}) do
         local def = enemyDefs[entry[1]]
         local weight = entry[2] or 0
@@ -3601,6 +3674,7 @@ local function waveThreatProfile(wave)
             if def.defense == "armor" then profile.armor = profile.armor + weight end
             if def.behavior == "shooter" then profile.ranged = profile.ranged + weight end
             if def.behavior == "bomber" then profile.fire = profile.fire + weight end
+            if def.behavior == "rammer" then profile.charge = profile.charge + weight end
             if def.elite then profile.elite = profile.elite + weight end
             if def.boss then profile.boss = profile.boss + weight end
         end
@@ -3634,6 +3708,7 @@ waveThreatSummary = function(wave)
     if profile.boss > 0 then parts[#parts + 1] = "Boss" end
     if profile.elite > 0 then parts[#parts + 1] = "精英" end
     if profile.fire >= 3 then parts[#parts + 1] = "燃烧区" end
+    if profile.charge >= 6 then parts[#parts + 1] = "冲锋威胁" end
     if profile.ranged >= 18 then parts[#parts + 1] = "远程压制" end
     if profile.shield >= 20 then parts[#parts + 1] = "护盾敌群" end
     if profile.armor >= 18 then parts[#parts + 1] = "装甲敌群" end
