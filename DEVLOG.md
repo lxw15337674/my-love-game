@@ -2,6 +2,12 @@
 
 > 规则：只记录开发内容、当前状态和下一步；不记录截图路径、提交 hash 或冗长验证流水。`TODO.md` 管需求清单；`DEVLOG.md` 管开发过程。
 
+## 2026-05-23 14:53 CST
+
+- 新增自动跑局记录工具：`LOVE_AUTOPLAY_RECORD=1` 与 `scripts/run-autoplay-record.sh`。
+- 当前状态：自动跑局可记录波次结果、商店购买能力、构筑变化和死亡波次；本轮简单自动驾驶死亡于 wave 3，结果已写入 `AUTOPLAY_RESULTS.md`。
+- 待继续：若要覆盖更深波次，需要改进自动驾驶策略或定义专用测试构筑；当前结果不能等同于人工玩家必死。
+
 ## 2026-05-23 14:12 CST
 
 - 完成半自动 playtest 基线记录，新增 `PLAYTEST_RESULTS.md`。

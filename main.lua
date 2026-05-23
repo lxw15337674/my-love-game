@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.54"
+local VERSION = "v2026.05.23.55"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2513,6 +2513,9 @@ local function updatePlayer(dt)
     if love.keyboard.isDown("d", "right") then dx = dx + 1 end
     if love.keyboard.isDown("w", "up") then dy = dy - 1 end
     if love.keyboard.isDown("s", "down") then dy = dy + 1 end
+    if os.getenv("LOVE_AUTOPLAY_RECORD") == "1" and Game.autoplayMove then
+        dx, dy = Game.autoplayMove.x or 0, Game.autoplayMove.y or 0
+    end
     if dx ~= 0 or dy ~= 0 then
         local len = math.sqrt(dx * dx + dy * dy)
         dx, dy = dx / len, dy / len
@@ -2576,6 +2579,7 @@ local function finalizeWaveReward(reason)
     awardSideObjective()
     local base = clearRewardForWave(finishedWave)
     addCoins(base, "clear")
+    if autoplayCaptureWave then autoplayCaptureWave(summary) end
     Game.lastWaveIncome = (Game.waveRewards and Game.waveRewards.coins) or base
     generateLevelChoices()
     if Game.wave >= Game.maxWave then
@@ -2749,8 +2753,161 @@ function love.load()
     end
 end
 
+function autoplayRecordEnabled()
+    return os.getenv("LOVE_AUTOPLAY_RECORD") == "1"
+end
+
+function autoplayRecordPath()
+    return os.getenv("LOVE_AUTOPLAY_RECORD_PATH") or "autoplay-playtest.md"
+end
+
+function autoplayLine(text)
+    if not autoplayRecordEnabled() then return end
+    local path = autoplayRecordPath()
+    local mode = Game.autoplayLogStarted and "a" or "w"
+    local f = io.open(path, mode)
+    if not f then return end
+    if not Game.autoplayLogStarted then
+        f:write("# Robot War 自动跑局记录\n\n")
+        f:write("> 自动记录模式：LOVE_AUTOPLAY_RECORD=1。该结果来自简单自动驾驶策略，不等同于人工完整通关。\n\n")
+        f:write("- 版本：" .. VERSION .. "\n")
+        f:write("- 目标波次：" .. tostring(tonumber(os.getenv("LOVE_AUTOPLAY_TARGET_WAVE")) or 12) .. "\n")
+        f:write("- 难度：" .. tostring(Game.danger or 0) .. "\n\n")
+        f:write("## 波次结果\n\n")
+        f:write("| Wave | 结果 | 击杀 | 收入 | 结束生命 | 结束护盾 | 结算后材料 | 构筑 |\n")
+        f:write("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
+        Game.autoplayLogStarted = true
+    end
+    f:write(text .. "\n")
+    f:close()
+end
+
+function autoplayBuildText()
+    local p = Game.player or {}
+    local weapons = {}
+    for _, w in ipairs(p.weapons or {}) do weapons[#weapons + 1] = w.name or "武器" end
+    local synergies = p.synergies and #p.synergies or 0
+    return table.concat(weapons, "/") .. "; 模块 " .. tostring(#(p.items or {})) .. "/" .. tostring(p.itemSlots or ITEM_SLOT_BASE) .. "; 联动 " .. tostring(synergies)
+end
+
+function autoplayCaptureWave(summary)
+    if not autoplayRecordEnabled() then return end
+    local p = Game.player or {}
+    autoplayLine("| " .. tostring(summary.wave or Game.wave) .. " | " .. tostring(summary.reason or "完成") .. " | " .. tostring(summary.kills or 0) .. " | " .. tostring(summary.coins or 0) .. " | " .. tostring(math.ceil(p.hp or 0)) .. "/" .. tostring(p.maxHp or 0) .. " | " .. tostring(math.ceil(p.shield or 0)) .. "/" .. tostring(p.maxShield or 0) .. " | " .. tostring(Game.coins or 0) .. " | " .. autoplayBuildText() .. " |")
+end
+
+function autoplayNearestEnemy()
+    local p = Game.player
+    local best, bestD = nil, 999999
+    for _, e in ipairs(Game.enemies or {}) do
+        local d = distance(p.x, p.y, e.x, e.y)
+        if d < bestD then best, bestD = e, d end
+    end
+    return best, bestD
+end
+
+function autoplaySetMove()
+    local p = Game.player
+    local e, d = autoplayNearestEnemy()
+    local dx, dy = 0, 0
+    if e and d < 360 then
+        dx, dy = p.x - e.x, p.y - e.y
+    else
+        local t = love.timer.getTime() or 0
+        local radius = 250
+        local tx = Game.w / 2 + math.cos(t * 0.70) * radius
+        local ty = Game.h / 2 + math.sin(t * 0.70) * radius
+        dx, dy = tx - p.x, ty - p.y
+    end
+    if math.abs(dx) + math.abs(dy) > 0.01 then
+        local len = math.sqrt(dx * dx + dy * dy)
+        dx, dy = dx / len, dy / len
+    end
+    Game.autoplayMove = {x = dx, y = dy}
+    local skill = p.activeSkill
+    if e and d < 130 and skill and (skill.cd or 0) <= 0 then useActiveSkill() end
+end
+
+function autoplayShopSummary(cleared)
+    local affordable, names = 0, {}
+    for i, item in ipairs(Game.shop or {}) do
+        if item and Game.coins >= (item.price or 0) then
+            affordable = affordable + 1
+            names[#names + 1] = (item.name or "商品") .. "@" .. tostring(item.price or 0)
+        end
+    end
+    local slotCost = itemSlotUpgradeCost()
+    local slotText = slotCost and ((Game.coins >= slotCost and "可升级槽位@" or "缺材料槽位@") .. slotCost) or "槽位满级"
+    autoplayLine("\n### Wave " .. tostring(cleared) .. " 后商店\n\n- 材料：" .. tostring(Game.coins or 0) .. "\n- 可购买商品：" .. tostring(affordable) .. "（" .. (#names > 0 and table.concat(names, " / ") or "无") .. "）\n- 转轮成本：" .. tostring(slotSpinCost()) .. "；" .. slotText .. "\n")
+end
+
+function autoplayBuyPolicy()
+    local bought = 0
+    for pass = 1, 2 do
+        for i, item in ipairs(Game.shop or {}) do
+            if item and Game.coins >= (item.price or 0) then
+                if buySlot(i) then bought = bought + 1 end
+                if bought >= 3 then return end
+            end
+        end
+    end
+end
+
+function autoplayUpdate(dt)
+    if not autoplayRecordEnabled() then return end
+    local target = tonumber(os.getenv("LOVE_AUTOPLAY_TARGET_WAVE")) or 12
+    if Game.state == "menu" then
+        resetRun()
+        autoplayLine("<!-- start -->")
+        return
+    end
+    if Game.state == "playing" then
+        autoplaySetMove()
+        Game.autoplayWallClock = (Game.autoplayWallClock or 0) + dt
+        if Game.autoplayWallClock > 90 then
+            autoplayLine("\n## 中止\n\n自动跑局超过 90 秒模拟时间，停止记录。\n")
+            love.event.quit()
+        end
+        return
+    end
+    if Game.state == "levelup" then
+        local best = 1
+        for i, reward in ipairs(Game.levelChoices or {}) do
+            local desc = reward.desc or ""
+            if desc:find("伤害") or desc:find("射速") or desc:find("暴击") then best = i; break end
+        end
+        chooseLevelReward(best)
+        return
+    end
+    if Game.state == "shop" then
+        local cleared = clearedWaveCount()
+        if Game.autoplayShopRecorded ~= cleared then
+            Game.autoplayShopRecorded = cleared
+            autoplayShopSummary(cleared)
+            autoplayBuyPolicy()
+            if slotUnlocked() then spinSlotMachine() end
+            autoplayBuyPolicy()
+        end
+        if cleared >= target then
+            autoplayLine("\n## 结论\n\n自动跑局抵达目标 wave " .. tostring(target) .. " 后商店。请结合人工跑局验证真实手感。\n")
+            love.event.quit()
+        else
+            startWave()
+        end
+        return
+    end
+    if Game.state == "gameover" then
+        autoplayLine("\n## 结论\n\n自动跑局死亡于 wave " .. tostring(Game.wave or "?") .. "。\n")
+        love.event.quit()
+    elseif Game.state == "victory" then
+        autoplayLine("\n## 结论\n\n自动跑局通关。\n")
+        love.event.quit()
+    end
+end
+
 function love.update(dt)
     Game.w, Game.h = VIRTUAL_W, VIRTUAL_H
+    if autoplayRecordEnabled() then dt = math.min(dt * (tonumber(os.getenv("LOVE_AUTOPLAY_SPEED")) or 8), 0.08) end
     for _, s in ipairs(Game.stars) do
         s.x = s.x - s.speed * dt
         s.phase = s.phase + dt * 2
@@ -2796,6 +2953,7 @@ function love.update(dt)
     else
         Game.hoveredShopItem = nil
     end
+    if autoplayRecordEnabled() then autoplayUpdate(dt) end
     if Game.state == "playing" then updatePlaying(dt) elseif Game.state == "clearing" then updateWaveClear(dt) end
     if os.getenv("LOVE_AUTOACTIVE") == "1" and Game.state == "playing" and not Game.autoActiveDone and Game.time > 0.35 then
         Game.autoActiveDone = true
@@ -3572,7 +3730,6 @@ local function drawLevelUp()
         love.graphics.setFont(Game.fonts.tiny)
         color(hover and C.white or C.cyan)
         local rewardDesc = tostring(r.desc or "")
-        if #rewardDesc > 38 then rewardDesc = rewardDesc:sub(1, 36) .. "…" end
         love.graphics.printf(rewardDesc, x + 28, yy + 112, w - 56, "center")
         local chooseText = hover and "点击后立即选择" or "点击选择"
         drawCapsule(chooseText, x + 58, yy + h - 38, w - 116, 26, {font = Game.fonts.tiny, fg = hover and C.gold or C.muted, border = hover and C.gold or C.white, bgAlpha = hover and 0.26 or 0.14, borderAlpha = hover and 0.28 or 0.10})

@@ -12,6 +12,12 @@
 
 ## 已完成
 
+- [x] 自动跑局记录工具。
+  - 新增 `LOVE_AUTOPLAY_RECORD=1` 运行模式，自动开局、走位、选奖励、购物、转轮并记录波次结果。
+  - 新增 `scripts/run-autoplay-record.sh` 作为可复现入口。
+  - 新增 `AUTOPLAY_RESULTS.md` 记录本轮自动跑局结果：简单自动驾驶死亡于 wave 3。
+  - 验证：脚本与直接 LÖVE 自动记录均可输出 Markdown；该结果不等同于人工完整通关。
+
 - [x] 半自动 playtest 基线记录。
   - 按 `PLAYTEST_PROTOCOL.md` 采集 wave 1/3/6/9/12 的战斗与商店状态。
   - 新增 `PLAYTEST_RESULTS.md`，记录压力/经济快照和视觉验收结论。

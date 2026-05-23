@@ -43,6 +43,22 @@
 - 若 wave 9/12 材料不足以买核心商品：经济或商店价格曲线需复查。
 - 若死亡主要来自看不清危险：先修 UX/特效可见性，不先调数值。
 
+## 自动记录入口
+
+可用脚本生成自动跑局记录：
+
+```bash
+scripts/run-autoplay-record.sh 12 tmp/autoplay-record-wave-12.md
+```
+
+环境变量：
+
+- `LOVE_AUTOPLAY_SPEED`：模拟速度倍率，默认 `12`。
+- `LOVE_AUTOPLAY_TIMEOUT`：外层超时时间，默认 `180` 秒。
+- `LOVE_WINDOW_W` / `LOVE_WINDOW_H`：截图/窗口尺寸。
+
+注意：自动跑局使用简单自动驾驶策略，只用于复现记录格式、商店购买能力和早期压力信号；结果不等同于人工完整通关。
+
 ## 下一步
 
-完成低风险 UX 小修后，按此表做一次人工/半自动 playtest 记录，再决定是否调整 `average_run_target_wave`、敌人压力、经济奖励或补给转轮成本。
+完成低风险 UX 小修后，按此表做一次人工/半自动/自动 playtest 记录，再决定是否调整 `average_run_target_wave`、敌人压力、经济奖励或补给转轮成本。
