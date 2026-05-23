@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.52"
+local VERSION = "v2026.05.23.53"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -111,7 +111,7 @@ local CHAPTER_SIZE = Balance.chapter_size or 3
 local CHAPTER_NAMES = Balance.chapterNames or {"铁幕", "赤炉", "断链", "黑箱", "天灾", "归零", "深井", "白噪", "终焉", "重启"}
 local SMALL_WAVE_DURATION = Balance.small_wave_duration or 30
 local CAMPAIGN_WAVES = CHAPTER_SIZE * #CHAPTER_NAMES
-local AVERAGE_RUN_TARGET_WAVE = Balance.average_run_target_wave or 20
+local AVERAGE_RUN_TARGET_WAVE = Balance.average_run_target_wave or 30
 ITEM_SLOT_BASE = Balance.item_slot_base or 6
 ITEM_SLOT_MAX = Balance.item_slot_max or 12
 
@@ -930,7 +930,7 @@ end
 
 function difficultyProgress()
     -- 第一大关是养成段；第二大关开始按小关线性加压。
-    -- 第 20 小关约等于平均 10 分钟压力目标，30 小关继续进入高手挑战段。
+    -- 压力目标服务完整 30 小关通关，而不是在第 20 小关提前封顶。
     local pressureWave = math.max(0, ((Game.wave or 1) - CHAPTER_SIZE - 1) + survivalProgress())
     local pressureSpan = math.max(1, AVERAGE_RUN_TARGET_WAVE - CHAPTER_SIZE)
     return clamp(pressureWave / pressureSpan, 0, 1.45)
@@ -1640,7 +1640,7 @@ local function slotHasFreeUse()
 end
 
 local function slotSpinCost()
-    return (Balance.slot_spin_base or 14) + slotMilestone() * (Balance.slot_spin_wave_step or 2) + (Game.slotPaidSpins or 0) * (Balance.slot_spin_paid_step or 4)
+    return (Balance.slot_spin_base or 8) + slotMilestone() * (Balance.slot_spin_wave_step or 1) + (Game.slotPaidSpins or 0) * (Balance.slot_spin_paid_step or 2)
 end
 
 local function rollSlotSymbol()
