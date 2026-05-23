@@ -2,6 +2,12 @@
 
 > 规则：只记录开发内容、当前状态和下一步；不记录截图路径、提交 hash 或冗长验证流水。`TODO.md` 管需求清单；`DEVLOG.md` 管开发过程。
 
+## 2026-05-23 19:33 CST
+
+- 新增专用测试构筑：`LOVE_AUTOPLAY_TEST_BUILD=balanced`，并支持 `LOVE_AUTOPLAY_START_WAVE` 从中后期起跑。
+- 当前状态：专用测试构筑从 wave 9 成功跑到 wave 12 后商店，结果已追加到 `AUTOPLAY_RESULTS.md`。
+- 待继续：后续可用该构筑做中后期曲线回归；若要验证普通玩家体验，仍需人工跑局。
+
 ## 2026-05-23 14:53 CST
 
 - 新增自动跑局记录工具：`LOVE_AUTOPLAY_RECORD=1` 与 `scripts/run-autoplay-record.sh`。

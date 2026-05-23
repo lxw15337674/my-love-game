@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.55"
+local VERSION = "v2026.05.23.56"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -1932,6 +1932,10 @@ local function resetRun()
     Game.bossDefeated = false
     Game.blackBoxUsed = false
     Game.runStats = {damage = 0, damageByWeapon = {}, coinsEarned = 0, highestWave = 1, rerolls = 0}
+    if os.getenv("LOVE_AUTOPLAY_START_WAVE") then
+        Game.wave = clamp(tonumber(os.getenv("LOVE_AUTOPLAY_START_WAVE")) or Game.wave, 1, Game.maxWave)
+        Game.runStats.highestWave = Game.wave
+    end
     Game.player.x, Game.player.y = Game.w / 2, Game.h / 2
     Game.player.hp, Game.player.maxHp = ch.hp, ch.hp
     Game.player.shield, Game.player.maxShield = ch.shield, ch.shield
@@ -1960,6 +1964,7 @@ local function resetRun()
     Game.tempBuffs = {}
     Game.shop, Game.locked = {}, {}
     addWeapon(weaponDefs[ch.weapon or "needle"])
+    if autoplayApplyTestBuild then autoplayApplyTestBuild() end
     rollShop(false)
     startWave()
 end
@@ -2790,6 +2795,49 @@ function autoplayBuildText()
     return table.concat(weapons, "/") .. "; 模块 " .. tostring(#(p.items or {})) .. "/" .. tostring(p.itemSlots or ITEM_SLOT_BASE) .. "; 联动 " .. tostring(synergies)
 end
 
+function autoplayTestModule(name, key, desc, apply)
+    return {kind = "mod", rarity = "test", level = Game.wave or 1, mergeKey = key, name = name, price = 0, desc = desc, apply = apply}
+end
+
+function autoplayApplyTestBuild()
+    local build = os.getenv("LOVE_AUTOPLAY_TEST_BUILD") or ""
+    if build == "" or Game.autoplayTestBuildApplied then return end
+    local p = Game.player
+    Game.autoplayTestBuildApplied = true
+    if build ~= "balanced" then
+        toast("未知测试构筑：" .. build)
+        return
+    end
+    p.weapons = {}
+    addWeapon(weaponDefs.needle)
+    addWeapon(weaponDefs.swarm)
+    addWeapon(weaponDefs.echo)
+    addWeapon(weaponDefs.coil)
+    p.itemSlotLevel = 4
+    p.itemSlots = math.min(ITEM_SLOT_MAX, ITEM_SLOT_BASE + p.itemSlotLevel - 1)
+    p.speed = p.speed + 90
+    p.invuln = math.max(p.invuln or 0, tonumber(os.getenv("LOVE_AUTOPLAY_TEST_INVULN")) or 999)
+    for _, weapon in ipairs(p.weapons or {}) do
+        weapon.damage = math.floor((weapon.damage or 1) * 1.85 + 0.5)
+        weapon.cooldown = math.max(0.12, (weapon.cooldown or 1) * 0.72)
+        weapon.range = (weapon.range or 500) * 1.10
+    end
+    p.shieldItem = {kind = "shield", rarity = "test", level = Game.wave or 1, name = "测试护盾阵列", price = 0, desc = "自动跑局测试：护盾 +240 / 回复 +15.0 / 满盾增伤", shieldCap = 240, shieldRegen = 15.0, hp = 120, flag = "fullShieldDamage"}
+    p.items = {
+        autoplayTestModule("测试火控模块", "fire_control", "伤害 +180% / 暴击 +25%", function(player) player.stats.damage = player.stats.damage + 1.80; player.stats.crit = player.stats.crit + 0.25 end),
+        autoplayTestModule("测试脉冲模块", "pulse_drive", "射速 +130% / 弹速 +36%", function(player) player.stats.fireRate = player.stats.fireRate + 1.30; player.stats.projectileSpeed = player.stats.projectileSpeed + 0.36 end),
+        autoplayTestModule("测试元素模块", "element_core", "元素 +75% / 附着 +14%", function(player) player.stats.elementDamage = player.stats.elementDamage + 0.75; player.stats.elementChance = player.stats.elementChance + 0.14 end),
+        autoplayTestModule("测试回收模块", "recycle_core", "结算材料 +30% / 拾取 +32", function(player) player.stats.economy = player.stats.economy + 0.30; player.pickup = player.pickup + 32 end),
+        autoplayTestModule("测试维生模块", "survival_core", "生命 +180 / 吸血 +8%", function(player) player.maxHp = player.maxHp + 180; player.hp = player.hp + 180; player.stats.lifesteal = player.stats.lifesteal + 0.08 end)
+    }
+    rebuildPlayerBuildStats()
+    p.hp = p.maxHp
+    p.shield = p.maxShield
+    Game.coins = math.max(Game.coins or 0, tonumber(os.getenv("LOVE_AUTOPLAY_TEST_COINS")) or 160)
+    autoplayLine("\n## 测试构筑\n\n- 构筑：balanced\n- 起始波次：" .. tostring(Game.wave or 1) .. "\n- 初始材料：" .. tostring(Game.coins or 0) .. "\n- 内容：星针 / 蜂群发射器 / 回声刃 / 电弧线圈，测试护盾阵列，5 个测试模块。\n")
+    toast("自动跑局测试构筑：balanced")
+end
+
 function autoplayCaptureWave(summary)
     if not autoplayRecordEnabled() then return end
     local p = Game.player or {}
@@ -2841,11 +2889,20 @@ function autoplayShopSummary(cleared)
     autoplayLine("\n### Wave " .. tostring(cleared) .. " 后商店\n\n- 材料：" .. tostring(Game.coins or 0) .. "\n- 可购买商品：" .. tostring(affordable) .. "（" .. (#names > 0 and table.concat(names, " / ") or "无") .. "）\n- 转轮成本：" .. tostring(slotSpinCost()) .. "；" .. slotText .. "\n")
 end
 
+function autoplayShouldBuy(item)
+    if not item then return false end
+    if (os.getenv("LOVE_AUTOPLAY_TEST_BUILD") or "") ~= "" then
+        -- 专用测试构筑固定武器/护盾；购物只补模块/战术，避免替换掉测试基线。
+        return isPermanentModule(item) or item.kind == "temp"
+    end
+    return true
+end
+
 function autoplayBuyPolicy()
     local bought = 0
     for pass = 1, 2 do
         for i, item in ipairs(Game.shop or {}) do
-            if item and Game.coins >= (item.price or 0) then
+            if item and Game.coins >= (item.price or 0) and autoplayShouldBuy(item) then
                 if buySlot(i) then bought = bought + 1 end
                 if bought >= 3 then return end
             end
@@ -2864,8 +2921,9 @@ function autoplayUpdate(dt)
     if Game.state == "playing" then
         autoplaySetMove()
         Game.autoplayWallClock = (Game.autoplayWallClock or 0) + dt
-        if Game.autoplayWallClock > 90 then
-            autoplayLine("\n## 中止\n\n自动跑局超过 90 秒模拟时间，停止记录。\n")
+        local maxSimSeconds = tonumber(os.getenv("LOVE_AUTOPLAY_MAX_SIM_SECONDS")) or 180
+        if Game.autoplayWallClock > maxSimSeconds then
+            autoplayLine("\n## 中止\n\n自动跑局超过 " .. tostring(maxSimSeconds) .. " 秒模拟时间，停止记录。\n")
             love.event.quit()
         end
         return

@@ -44,3 +44,19 @@
 - 命令：`LOVE_AUTOPLAY_TIMEOUT=120 LOVE_AUTOPLAY_SPEED=12 scripts/run-autoplay-record.sh 3 tmp/autoplay-record-wave-3.md`
 - 结果：脚本成功生成记录文件；本次复验同样死亡于 wave 3。
 - 说明：这验证了自动记录入口可复现，但也再次说明当前简单自动驾驶策略偏弱。
+
+## 专用测试构筑复验 · balanced · wave 9 → 12
+
+- 命令：`LOVE_AUTOPLAY_TIMEOUT=240 LOVE_AUTOPLAY_SPEED=12 LOVE_AUTOPLAY_MAX_SIM_SECONDS=240 scripts/run-autoplay-record.sh 12 tmp/autoplay-record-balanced-wave12.md balanced 9`
+- 目的：固定中期构筑，验证中后期曲线和自动记录链路，不再让简单自动驾驶的早期暴毙污染判断。
+
+结果摘录：
+
+| Wave | 结果 | 击杀 | 收入 | 结束生命 | 结束护盾 | 结算后材料 | 构筑 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 9 | Boss击破 | 1 | 161 | 392/392 | 276/276 | 321 | 星针/蜂群发射器/回声刃/电弧线圈；模块 5/9；联动 5 |
+| 10 | 波次完成 | 160 | 1174 | 392/392 | 276/276 | 1391 | 模块 7/9；联动 7 |
+| 11 | 波次完成 | 182 | 1501 | 392/392 | 276/276 | 2837 | 模块 7/9；联动 7 |
+| 12 | Boss击破 | 1 | 126 | 392/392 | 276/276 | 2855 | 模块 9/9；联动 7 |
+
+结论：专用测试构筑可稳定覆盖 wave 9 → 12，并抵达 wave 12 后商店。这个结果验证了中期曲线记录入口可用；它不代表普通玩家强度，只代表固定测试构筑可用于后续曲线回归。

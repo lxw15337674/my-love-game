@@ -51,10 +51,19 @@
 scripts/run-autoplay-record.sh 12 tmp/autoplay-record-wave-12.md
 ```
 
+也可以使用专用测试构筑从中后期起跑：
+
+```bash
+scripts/run-autoplay-record.sh 12 tmp/autoplay-record-balanced-wave12.md balanced 9
+```
+
 环境变量：
 
 - `LOVE_AUTOPLAY_SPEED`：模拟速度倍率，默认 `12`。
 - `LOVE_AUTOPLAY_TIMEOUT`：外层超时时间，默认 `180` 秒。
+- `LOVE_AUTOPLAY_MAX_SIM_SECONDS`：自动跑局最大模拟秒数，默认 `180`。
+- `LOVE_AUTOPLAY_TEST_BUILD`：专用测试构筑，目前支持 `balanced`。
+- `LOVE_AUTOPLAY_START_WAVE`：起始波次，用于中后期曲线回归。
 - `LOVE_WINDOW_W` / `LOVE_WINDOW_H`：截图/窗口尺寸。
 
 注意：自动跑局使用简单自动驾驶策略，只用于复现记录格式、商店购买能力和早期压力信号；结果不等同于人工完整通关。

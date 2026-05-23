@@ -12,6 +12,12 @@
 
 ## 已完成
 
+- [x] 专用测试构筑用于自动跑局验证。
+  - 仅在 `LOVE_AUTOPLAY_TEST_BUILD=balanced` 下启用，不影响正常玩家流程。
+  - 支持 `LOVE_AUTOPLAY_START_WAVE` 从中后期直接开跑。
+  - 固定中期构筑用于验证中后期曲线，避免被简单自动驾驶 wave 3 暴毙污染判断。
+  - 验证：`scripts/run-autoplay-record.sh 12 tmp/autoplay-record-balanced-wave12.md balanced 9` 成功覆盖 wave 9 → 12，并生成 Markdown 记录。
+
 - [x] 自动跑局记录工具。
   - 新增 `LOVE_AUTOPLAY_RECORD=1` 运行模式，自动开局、走位、选奖励、购物、转轮并记录波次结果。
   - 新增 `scripts/run-autoplay-record.sh` 作为可复现入口。
