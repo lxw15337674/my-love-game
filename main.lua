@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.23.16"
+local VERSION = "v2026.05.23.17"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -247,6 +247,19 @@ local function wavePlanAt(wave)
     if chapterWave == CHAPTER_SIZE then base = wavePlans[#wavePlans] end
     local plan = {}
     for k, v in pairs(base) do plan[k] = v end
+    plan.enemies = {}
+    local hasBomber = false
+    for i, entry in ipairs(base.enemies or {}) do
+        local id, weight = entry[1], entry[2]
+        if id == "bomber" and chapterIndex >= 2 then
+            hasBomber = true
+            weight = weight + 7 + chapterIndex * 2 + (chapterWave == CHAPTER_SIZE and 8 or 0)
+        elseif id == "bomber" then
+            hasBomber = true
+        end
+        plan.enemies[i] = {id, weight}
+    end
+    if chapterIndex >= 2 and not hasBomber then plan.enemies[#plan.enemies + 1] = {"bomber", 8 + chapterIndex * 2} end
     plan.duration = SMALL_WAVE_DURATION
     plan.interval = math.max(0.38, (base.interval or 1.0) - (chapterIndex - 1) * 0.030 - (chapterWave == CHAPTER_SIZE and 0.10 or 0))
     plan.pack = (base.pack or 1) + math.floor((chapterIndex - 1) / 2) + (chapterWave == CHAPTER_SIZE and 1 or 0)
@@ -254,10 +267,12 @@ local function wavePlanAt(wave)
     if chapterWave == CHAPTER_SIZE then
         plan.boss = true
         plan.events = {
-            {time = 0.2, enemy = (chapterIndex % 2 == 0 or chapterIndex == #CHAPTER_NAMES) and "boss" or "elite", side = "right", toast = "关底压力：核心单位接入"},
-            {time = 12, enemy = "elite", side = "left", toast = "关底增援：左侧精英"},
-            {time = 23, enemy = "elite", side = "bottom", toast = "关底增援：底线突破"}
+            {time = 0.2, enemy = (chapterIndex % 2 == 0 or chapterIndex == #CHAPTER_NAMES) and "boss" or "elite", side = "right", toast = "关底压力：核心单位接入"}
         }
+        if chapterIndex >= 2 then plan.events[#plan.events + 1] = {time = 7, enemy = "bomber", side = "top", toast = "关底火力：燃烧投手入场"} end
+        plan.events[#plan.events + 1] = {time = 12, enemy = "elite", side = "left", toast = "关底增援：左侧精英"}
+        if chapterIndex >= 2 then plan.events[#plan.events + 1] = {time = 19, enemy = "bomber", side = "bottom", toast = "关底火力：燃烧区压迫"} end
+        plan.events[#plan.events + 1] = {time = 23, enemy = "elite", side = "bottom", toast = "关底增援：底线突破"}
     end
     return plan
 end
@@ -816,79 +831,19 @@ local function applyItem(item)
     return true
 end
 
-local function appendUnique(list, value)
-    if not value then return end
-    for _, current in ipairs(list) do if current == value then return end end
-    list[#list + 1] = value
-end
-
-local function mergeRolledWeapon(found, def)
-    found.level = (found.level or 1) + 1
-    found.damage = math.max(found.damage or 1, def.damage or 1) + math.max(1, math.floor((def.damage or 1) * 0.18))
-    found.cooldown = math.min(found.cooldown or 9, def.cooldown or 9) * 0.96
-    found.range = math.max(found.range or 0, def.range or 0)
-    found.speed = math.max(found.speed or 0, def.speed or 0)
-    found.count = math.max(found.count or 1, def.count or 1)
-    found.spread = math.max(found.spread or 0, def.spread or 0)
-    found.pierce = math.max(found.pierce or 0, def.pierce or 0)
-    found.bounce = math.max(found.bounce or 0, def.bounce or 0)
-    found.splash = math.max(found.splash or 0, def.splash or 0)
-    found.aura = math.max(found.aura or 0, def.aura or 0)
-    found.critBonus = math.max(found.critBonus or 0, def.critBonus or 0)
-    found.critDamageBonus = math.max(found.critDamageBonus or 0, def.critDamageBonus or 0)
-    found.elementPower = math.max(found.elementPower or 1, def.elementPower or 1)
-    found.shieldDamageBonus = math.max(found.shieldDamageBonus or 0, def.shieldDamageBonus or 0)
-    found.armorDamageBonus = math.max(found.armorDamageBonus or 0, def.armorDamageBonus or 0)
-    for _, flag in ipairs({"sixthPierce", "orbitShot", "sparkSplit", "echoRamp", "voidSlow", "overloadTax", "killHaste", "heavy", "fireSplash", "executeLowHp", "hiveSplit", "arcMark", "voidCollapse", "legendRefundShot"}) do
-        found[flag] = found[flag] or def[flag]
-    end
-    found.parts = found.parts or {}
-    for _, part in ipairs(def.parts or {}) do found.parts[#found.parts + 1] = part end
-    found.affixTags = found.affixTags or {}
-    for _, tag in ipairs(def.affixTags or {}) do appendUnique(found.affixTags, tag) end
-    if (rarityRank[def.rarity or "common"] or 1) >= (rarityRank[found.rarity or "common"] or 1) then
-        found.rarity = def.rarity
-        found.name = def.name or found.name
-        found.legendaryDesc = def.legendaryDesc or found.legendaryDesc
-        found.legendaryTitle = def.legendaryTitle or found.legendaryTitle
-    end
-    found.tier = 1 + math.floor((found.level - 1) / 2)
-end
-
 local function addWeapon(def)
     local p = Game.player
-    local found = nil
-    for _, w in ipairs(p.weapons) do
-        if w.id == def.id then found = w break end
-    end
-    if found then
-        if def.rolled then
-            mergeRolledWeapon(found, def)
-            if applyBuildSynergies then applyBuildSynergies() end
-            playCue("shop"); toast(def.name .. " 融合至等级 " .. found.level)
-            return true
-        end
-        found.level = found.level + 1
-        found.damage = found.damage + math.max(1, math.floor(def.damage * 0.28))
-        found.cooldown = found.cooldown * 0.94
-        found.tier = 1 + math.floor((found.level - 1) / 2)
-        if applyBuildSynergies then applyBuildSynergies() end
-        playCue("shop"); toast(def.name .. " 合成至等级 " .. found.level)
-        return true
-    end
     if #p.weapons >= 4 then
-        toast("武器槽已满：先回收一把")
+        toast("武器槽已满：先卖掉一把旧武器")
         return false
     end
     local w = {}
     for k, v in pairs(def) do w[k] = v end
     w.timer = 0
-    w.level = 1
-    w.tier = 1
     p.weapons[#p.weapons + 1] = w
     if w.apply then w.apply(p) end
     if applyBuildSynergies then applyBuildSynergies() end
-    playCue("shop"); toast("已装备：" .. w.name)
+    playCue("shop"); toast("已装备新武器：" .. w.name)
     return true
 end
 
@@ -3333,7 +3288,7 @@ local function itemTooltip(item)
     if not item then return nil end
     local kindText = kindLabel[item.kind] or item.kind or "道具"
     local kindDesc = ({
-        weapon = "购买后装备到武器槽；同名武器会升级。",
+        weapon = "购买后装备为新武器；槽满时需先卖掉旧武器。",
         shield = "安装到护盾槽，替换当前护盾组件。",
         temp = "只影响下一波战斗。",
         item = "进入道具槽，本局永久生效。",
@@ -3529,7 +3484,7 @@ local function drawBuildPanel(x, y, w, h)
     color(C.muted)
     local names = {}
     for i, weapon in ipairs(p.weapons) do
-        names[#names + 1] = weapon.name .. " 等级" .. weapon.level
+        names[#names + 1] = weapon.name
         if i >= 4 then break end
     end
     love.graphics.printf(table.concat(names, " / "), x + 16, wy + 22, w - 32, "center")
@@ -3668,7 +3623,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         love.graphics.setLineWidth(selected and 2 or 1)
         love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 33, 9, 9)
         love.graphics.setLineWidth(1)
-        local weaponText = weapon and compactDesc(weapon.name .. " Lv" .. weapon.level, showSell and 10 or 14) or "空武器"
+        local weaponText = weapon and compactDesc(weapon.name, showSell and 12 or 16) or "空武器"
         textInBox(weaponText, sx + 10, sy, slotW - (showSell and 56 or 20), 34, Game.fonts.tiny, weapon and C.white or C.muted, weapon and "left" or "center")
         if weapon and showSell then
             color(C.red, 0.14)
@@ -4017,7 +3972,7 @@ local function drawBuildTabContent(x, y, w, h)
         love.graphics.rectangle("line", wx + 0.5, wy + 0.5, cardW - 1, cardH - 1, 12, 12)
         love.graphics.setFont(Game.fonts.small)
         color(C.white)
-        love.graphics.printf(weapon.name .. " Lv" .. weapon.level, wx + 14, wy + 10, cardW - 28, "left")
+        love.graphics.printf(weapon.name, wx + 14, wy + 10, cardW - 28, "left")
         love.graphics.setFont(Game.fonts.tiny)
         color(brand and brand.color or C.gold)
         love.graphics.printf((brand and brand.name or "武器") .. " · " .. elem.name, wx + 14, wy + 36, cardW - 28, "left")
@@ -4214,7 +4169,7 @@ sellWeapon = function(index)
     local w = p.weapons[index]
     if not w then toast("该武器槽为空") return false end
     table.remove(p.weapons, index)
-    local value = math.max(8, sellValue(w, 20) + (w.level or 1) * 4)
+    local value = math.max(8, sellValue(w, 20))
     Game.coins = Game.coins + value
     Game.selectedWeaponIndex = #p.weapons > 0 and clamp(math.min(index, #p.weapons), 1, #p.weapons) or 1
     rebuildPlayerBuildStats()
