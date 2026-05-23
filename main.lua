@@ -62,7 +62,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.32"
+local VERSION = "v2026.05.23.34"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -1454,7 +1454,8 @@ local slotSymbols = {
     {id = "temp", name = "战术", mark = "战", color = C.purple, weight = 18},
     {id = "shield", name = "护盾", mark = "盾", color = C.green, weight = 14},
     {id = "heal", name = "修复", mark = "❤", color = C.pink, weight = 14},
-    {id = "rare", name = "稀有", mark = "稀", color = C.orange, weight = 8}
+    {id = "blackbox", name = "黑箱", mark = "箱", color = C.purple, weight = 8},
+    {id = "rare", name = "稀有", mark = "稀", color = C.orange, weight = 6}
 }
 
 local function clearedWaveCount()
@@ -1476,20 +1477,20 @@ local function shopBudgetHint()
 end
 
 local function slotMilestone()
-    return math.floor(clearedWaveCount() / 5) * 5
+    return math.max(0, clearedWaveCount())
 end
 
 local function slotUnlocked()
-    return slotMilestone() >= 5
+    return slotMilestone() >= 1
 end
 
 local function slotHasFreeUse()
     local milestone = slotMilestone()
-    return milestone >= 5 and not (Game.slotFreeUsed and Game.slotFreeUsed[milestone])
+    return milestone >= 1 and not (Game.slotFreeUsed and Game.slotFreeUsed[milestone])
 end
 
 local function slotSpinCost()
-    return 18 + slotMilestone() * 2 + (Game.slotPaidSpins or 0) * 4
+    return 14 + slotMilestone() * 2 + (Game.slotPaidSpins or 0) * 4
 end
 
 local function rollSlotSymbol()
@@ -1537,6 +1538,29 @@ local function slotPrizeItem(kind)
     return makeStatItem()
 end
 
+local function grantBlackBoxSlotReward(label, jackpot)
+    local roll = rnd(1, 3)
+    if roll == 1 then
+        local coins = jackpot and 90 or 34
+        addCoins(coins, "blackbox-slot")
+        Game.danger = math.min(8, Game.danger + (jackpot and 2 or 1))
+        return label .. "：黑箱材料 +" .. coins .. "，危险 +" .. (jackpot and 2 or 1)
+    elseif roll == 2 then
+        local refresh = jackpot and 5 or 3
+        local hpCost = jackpot and 25 or 20
+        Game.freeRefresh = (Game.freeRefresh or 0) + refresh
+        Game.player.hp = math.max(1, Game.player.hp - hpCost)
+        return label .. "：黑箱刷新 +" .. refresh .. "，生命 -" .. hpCost
+    else
+        local item = makeStatItem()
+        item.price = 0
+        item.name = "黑箱转轮 " .. item.name
+        placeSlotPrize(item)
+        Game.player.stats.economy = (Game.player.stats.economy or 1) - (jackpot and 0.10 or 0.08)
+        return label .. "：黑箱 0 费模块进商店，结算材料 -" .. (jackpot and "10%" or "8%")
+    end
+end
+
 local function grantSlotReward(reels)
     local counts = {}
     for _, s in ipairs(reels) do counts[s.id] = (counts[s.id] or 0) + 1 end
@@ -1553,6 +1577,8 @@ local function grantSlotReward(reels)
             local p = Game.player
             p.hp = p.maxHp; p.shield = p.maxShield
             return label .. "：生命与护盾回满"
+        elseif bestId == "blackbox" then
+            return grantBlackBoxSlotReward(label, true)
         else
             placeSlotPrize(slotPrizeItem(bestId == "rare" and "stat" or bestId))
             return label .. "：免费奖品进商店"
@@ -1567,17 +1593,22 @@ local function grantSlotReward(reels)
         elseif bestId == "rare" then
             Game.freeRefresh = (Game.freeRefresh or 0) + 1
             return label .. "：免费刷新 +1"
+        elseif bestId == "blackbox" then
+            return grantBlackBoxSlotReward(label, false)
         else
             placeSlotPrize(slotPrizeItem(bestId))
             return label .. "：免费奖品进商店"
         end
+    end
+    if counts.blackbox and counts.blackbox > 0 then
+        return grantBlackBoxSlotReward(label, false)
     end
     addCoins(10, "slot")
     return label .. "：材料 +10"
 end
 
 local function spinSlotMachine()
-    if not slotUnlocked() then toast("清完" .. chapterWaveLabel(5) .. "后解锁补给转轮"); return end
+    if not slotUnlocked() then toast("通关 1 小关后解锁补给转轮"); return end
     local free = slotHasFreeUse()
     local cost = slotSpinCost()
     if free then
@@ -2086,12 +2117,13 @@ local function updateBullets(dt)
 end
 
 local function damagePlayer(amount)
+    local p = Game.player
+    local skill = p.activeSkill
+    if p.invuln > 0 or (skill and (skill.duration or 0) > 0) then return end
     if Game.sideObjective and Game.sideObjective.id == "nohit" and not Game.sideObjective.done then
         Game.sideObjective.timer = 0
         Game.sideObjective.progress = 0
     end
-    local p = Game.player
-    if p.invuln > 0 then return end
     p.invuln = 0.55
     p.shieldDelay = 2.4
     playCue("hit"); Game.shake = 0.25
@@ -2376,6 +2408,7 @@ local function useActiveSkill()
     end
     skill.dirX, skill.dirY = dx, dy
     skill.duration = skill.maxDuration or ACTIVE_SKILL_DURATION
+    Game.player.invuln = math.max(Game.player.invuln or 0, skill.duration)
     skill.cd = skill.cooldown or ACTIVE_SKILL_CD
     playCue("level")
     toast(skill.name .. "：冲刺")
@@ -4255,7 +4288,7 @@ local function drawSlotMachinePanel(x, y, w, h)
     local unlocked = slotUnlocked()
     local free = slotHasFreeUse()
     color(unlocked and C.gold or C.muted)
-    local status = unlocked and ("第 " .. milestone .. " 关奖励机 · " .. (free and "本轮免费" or ("消耗 " .. slotSpinCost() .. " 材料"))) or "第 5 关后解锁"
+    local status = unlocked and ("第 " .. milestone .. " 关战后补给 · " .. (free and "本轮免费" or ("消耗 " .. slotSpinCost() .. " 材料"))) or "每关战后解锁"
     love.graphics.printf(status, x + 72, y + 8, w - 140, "left")
 
     local reels = Game.slotResult and Game.slotResult.reels or nil
@@ -4273,7 +4306,7 @@ local function drawSlotMachinePanel(x, y, w, h)
     end
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三符奖励 / 双符奖励 / 基础补给返材料", x + 142, y + 34, w - 246, "left")
+    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三符奖励 / 双符奖励 / 黑箱事件 / 基础补给", x + 142, y + 34, w - 246, "left")
 
     local by = y + 28
     local label = unlocked and (free and "免费启动" or ("启动 · " .. slotSpinCost())) or "未解锁"
@@ -4290,7 +4323,7 @@ local function drawSlotTabContent(x, y, w, h)
     love.graphics.printf("补给转轮", x + 28, y + 26, w - 56, "left")
     love.graphics.setFont(Game.fonts.small)
     color(unlocked and C.gold or C.muted)
-    local status = unlocked and ("第 " .. milestone .. " 关奖励机 · " .. (free and "本轮免费 1 次" or ("本次消耗 " .. slotSpinCost() .. " 材料"))) or "清完第 5 关后解锁；之后每 5 关补 1 次免费启动"
+    local status = unlocked and ("第 " .. milestone .. " 关战后补给 · " .. (free and "本轮免费 1 次" or ("本次消耗 " .. slotSpinCost() .. " 材料"))) or "每过 1 关补 1 次免费启动；用完后可花材料继续转"
     love.graphics.printf(status, x + 28, y + 66, w - 56, "left")
 
     local reels = Game.slotResult and Game.slotResult.reels or nil
@@ -4314,10 +4347,10 @@ local function drawSlotTabContent(x, y, w, h)
 
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三符奖励，双符奖励，基础补给返材料。奖励会直接给材料/治疗，或以 0 材料商品放入商店。", x + 28, y + 248, w - 56, "center")
+    love.graphics.printf(Game.slotResult and Game.slotResult.text or "三符奖励，双符奖励，黑箱事件，基础补给返材料。奖励会直接给材料/治疗，或以 0 材料商品放入商店。", x + 28, y + 248, w - 56, "center")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("符号：材料、武器、战术、护盾、修复、稀有。补给转轮只影响商店阶段，不会替你自动进入下一波。", x + 28, y + 292, w - 56, "center")
+    love.graphics.printf("符号：材料、武器、战术、护盾、修复、黑箱、稀有。补给转轮只影响商店阶段，不会替你自动进入下一波。", x + 28, y + 292, w - 56, "center")
 
     local buttonW, buttonH = 320, 64
     local label = unlocked and (free and "免费启动" or ("启动 · " .. slotSpinCost() .. " 材料")) or "未解锁"
@@ -4335,36 +4368,6 @@ local shopTabs = {
     {id = "intel", label = "下一波情报"},
     {id = "slot", label = "补给转轮"}
 }
-
-function blackBoxCostText()
-    if Game.blackBoxUsed then return "黑箱已签" end
-    return "黑箱交易"
-end
-
-function takeBlackBoxDeal()
-    if Game.state ~= "shop" then return false end
-    if Game.blackBoxUsed then toast("黑箱交易本局只开一次，别太贪呢~"); return false end
-    Game.blackBoxUsed = true
-    local roll = rnd(1, 3)
-    if roll == 1 then
-        addCoins(34, "blackbox")
-        Game.danger = math.min(8, Game.danger + 1)
-        toast("黑箱交易：材料 +34，但危险 +1")
-    elseif roll == 2 then
-        Game.freeRefresh = (Game.freeRefresh or 0) + 3
-        Game.player.hp = math.max(1, Game.player.hp - 20)
-        toast("黑箱交易：免费刷新 +3，但生命 -20")
-    else
-        local item = makeStatItem()
-        item.price = 0
-        item.name = "黑箱赠礼 " .. item.name
-        placeSlotPrize(item)
-        Game.player.stats.economy = (Game.player.stats.economy or 1) - 0.08
-        toast("黑箱交易：0费商品进商店，但结算材料 -8%")
-    end
-    playCue("shop")
-    return true
-end
 
 local function drawShopTabs(x, y)
     local active = Game.shopTab or "shop"
@@ -4452,8 +4455,8 @@ local function drawShop()
     local tabY = 38
     local contentY, contentH = 154, Game.h - 200
     local actionY, actionH = 42, 42
-    local refreshW, nextW, sellW, blackW, actionGap = 168, 230, 154, 164, 10
-    local actionX = Game.w - marginX - refreshW - nextW - sellW - blackW - actionGap * 3
+    local refreshW, nextW, sellW, actionGap = 168, 230, 178, 10
+    local actionX = Game.w - marginX - refreshW - nextW - sellW - actionGap * 2
     drawShopTabs(marginX, tabY)
 
     love.graphics.setFont(Game.fonts.normal)
@@ -4473,7 +4476,6 @@ local function drawShop()
     uiButton(refreshText, actionX, actionY + 4, refreshW, actionH - 8, C.cyan)
     uiButton("进入下一波", actionX + refreshW + actionGap, actionY, nextW, actionH, C.gold, C.white, Game.fonts.small)
     uiButton(upgradeText, actionX + refreshW + actionGap + nextW + actionGap, actionY + 4, sellW, actionH - 8, slotCost and C.green or C.muted)
-    uiButton(blackBoxCostText(), actionX + refreshW + actionGap + nextW + actionGap + sellW + actionGap, actionY + 4, blackW, actionH - 8, Game.blackBoxUsed and C.muted or C.purple, C.white)
 
     color(C.white, 0.08)
     love.graphics.rectangle("fill", marginX, 108, Game.w - marginX * 2, 1)
@@ -4723,12 +4725,11 @@ function handlePointer(x, y)
     elseif Game.state == "shop" then
         local marginX = 40
         local actionY, actionH = 42, 42
-        local refreshW, nextW, sellW, blackW, actionGap = 168, 230, 154, 164, 10
-        local actionX = Game.w - marginX - refreshW - nextW - sellW - blackW - actionGap * 3
+        local refreshW, nextW, sellW, actionGap = 168, 230, 178, 10
+        local actionX = Game.w - marginX - refreshW - nextW - sellW - actionGap * 2
         if hitRect(x, y, actionX, actionY + 4, refreshW, actionH - 8) then refreshShop(); return true end
         if hitRect(x, y, actionX + refreshW + actionGap, actionY, nextW, actionH) then startWave(); return true end
         if hitRect(x, y, actionX + refreshW + actionGap + nextW + actionGap, actionY + 4, sellW, actionH - 8) then upgradeItemSlots(); return true end
-        if hitRect(x, y, actionX + refreshW + actionGap + nextW + actionGap + sellW + actionGap, actionY + 4, blackW, actionH - 8) then takeBlackBoxDeal(); return true end
 
         local tab = shopTabHit(x, y)
         if tab then Game.shopTab = tab; return true end
@@ -4819,7 +4820,6 @@ function love.keypressed(key)
         if key == "6" then buySlot(6) end
         if key == "e" then recycleWeapon() end
         if key == "u" then upgradeItemSlots() end
-        if key == "b" then takeBlackBoxDeal(); return end
         if key == "s" then spinSlotMachine(); return end
         if key == "r" then
             if not (love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift")) then toast("刷新需按 Shift+R，避免误触"); return end
