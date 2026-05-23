@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.47"
+local VERSION = "v2026.05.23.48"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -3771,6 +3771,16 @@ local function diffText(delta, suffix)
     return "（" .. sign .. delta .. (suffix or "") .. "）"
 end
 
+local function weaponHasProjectile(weapon)
+    return (weapon.speed or 0) > 0 and not ((weapon.chain or 0) > 0 and (weapon.speed or 0) == 0)
+end
+
+local function weaponDeliveryText(weapon)
+    if weaponHasProjectile(weapon) then return "飞行弹体" end
+    if (weapon.chain or 0) > 0 then return "连锁光束 · 无弹体" end
+    return "即时命中 · 无弹体"
+end
+
 local function weaponTooltip(weapon, titlePrefix, compareWeapon)
     local p = Game.player
     local brand = brands[weapon.brand]
@@ -3785,14 +3795,15 @@ local function weaponTooltip(weapon, titlePrefix, compareWeapon)
     local lines = {
         {text = "品牌：" .. (brand and brand.name or "武器") .. " · " .. (brand and brand.tag or "影响武器基础风格。"), color = brand and brand.color or C.white},
         {text = "元素：" .. elem.name .. " · " .. elem.desc, color = elem.color},
+        {text = "命中方式：" .. weaponDeliveryText(weapon), color = C.white},
         attr("单发伤害", v.damage, "damage", true, nil, 6),
         attr("弹体数量", v.count, "count", true),
         attr("总伤害", v.totalDamage, "totalDamage", true),
         attr("射程", v.range, "range", true),
-        attr("弹速", v.speed, "speed", true),
         attr("穿透", v.pierce, "pierce", true),
         attr("弹射", v.bounce, "bounce", true)
     }
+    if weaponHasProjectile(weapon) then lines[#lines + 1] = attr("弹速", v.speed, "speed", true) end
     local affixNames = {}
     for _, part in ipairs(weapon.parts or {}) do affixNames[#affixNames + 1] = part.tag or part.name end
     for _, tag in ipairs(weapon.affixTags or {}) do affixNames[#affixNames + 1] = tag end
@@ -4068,7 +4079,7 @@ local function drawShopCard(item, i, x, y, w, h)
             {"弹体", tostring(def.count or 1)},
             {"总伤", tostring((def.damage or 0) * (def.count or 1))},
             {"射程", tostring(math.floor(def.range or 0))},
-            {"弹速", tostring(math.floor(def.speed or 0))},
+            {weaponHasProjectile(def) and "弹速" or "命中", weaponHasProjectile(def) and tostring(math.floor(def.speed or 0)) or weaponDeliveryText(def)},
             {"弹射", tostring(def.bounce or 0)}
         }
         for ri, row in ipairs(rows) do
