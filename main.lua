@@ -2,13 +2,15 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.23.02"
+local VERSION = "v2026.05.23.03"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
 local ACTIVE_SKILL_SPEED_MULT = 2.1
 local CHAPTER_SIZE = 5
 local CHAPTER_NAMES = {"铁幕", "赤炉", "断链", "黑箱", "天灾", "归零"}
+local SMALL_WAVE_DURATION = 30
+local RUN_TARGET_WAVES = 20
 
 local Game = {
     w = VIRTUAL_W,
@@ -16,8 +18,8 @@ local Game = {
     state = "menu", -- menu, playing, paused, levelup, shop, gameover, victory
     time = 0,
     wave = 1,
-    waveTime = 60,
-    maxWave = 1,
+    waveTime = SMALL_WAVE_DURATION,
+    maxWave = RUN_TARGET_WAVES,
     coins = 0,
     kills = 0,
     shopRefresh = 0,
@@ -224,16 +226,16 @@ local enemyDefs = {
 }
 
 local wavePlans = {
-    {name = "裂片试探", duration = 30, interval = 1.10, pack = 1, sides = {"left", "right"}, enemies = {{"splinter", 70}, {"drifter", 30}}},
-    {name = "双翼骚扰", duration = 30, interval = 1.02, pack = 2, sides = {"left", "right", "top"}, enemies = {{"splinter", 50}, {"drifter", 37}, {"wisp", 10}, {"treasure", 3}}},
-    {name = "电弧乱流", duration = 32, interval = 0.92, pack = 2, sides = {"top", "right", "left"}, enemies = {{"splinter", 38}, {"drifter", 28}, {"wisp", 28}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 18, enemy = "elite", side = "right", toast = "精英信号：右侧突破"}}},
-    {name = "装甲推进", duration = 32, interval = 0.88, pack = 2, sides = {"left", "right", "bottom"}, enemies = {{"splinter", 30}, {"drifter", 26}, {"wisp", 18}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}},
-    {name = "交叉包围", duration = 34, interval = 0.80, pack = 3, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 28}, {"drifter", 28}, {"wisp", 23}, {"shell", 15}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 12, enemy = "elite", side = "left", toast = "精英压境：左侧"}}},
-    {name = "重壳浪潮", duration = 34, interval = 0.78, pack = 3, sides = {"right", "bottom", "top"}, enemies = {{"drifter", 23}, {"wisp", 23}, {"shell", 36}, {"splinter", 12}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 22, enemy = "elite", side = "bottom", toast = "底线精英出现"}}},
-    {name = "高速撕裂", duration = 36, interval = 0.70, pack = 3, sides = {"left", "right"}, enemies = {{"splinter", 39}, {"drifter", 36}, {"wisp", 12}, {"shell", 7}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 16, enemy = "elite", side = "right"}}},
-    {name = "四面噪声", duration = 36, interval = 0.64, pack = 4, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 26}, {"drifter", 26}, {"wisp", 24}, {"shell", 18}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 10, enemy = "elite", side = "top"}, {time = 25, enemy = "elite", side = "bottom"}}},
-    {name = "核心前夜", duration = 38, interval = 0.58, pack = 4, sides = {"right", "left", "top", "bottom"}, enemies = {{"splinter", 22}, {"drifter", 26}, {"wisp", 26}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 9, enemy = "elite", side = "left"}, {time = 21, enemy = "elite", side = "right"}}},
-    {name = "裂心机核", duration = 60, interval = 0.95, pack = 2, sides = {"left", "right", "top", "bottom"}, boss = true, enemies = {{"splinter", 26}, {"drifter", 24}, {"wisp", 24}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 0.2, enemy = "boss", side = "right", toast = "Boss：裂心机核接入"}, {time = 20, enemy = "elite", side = "left"}, {time = 40, enemy = "elite", side = "right"}}}
+    {name = "裂片试探", interval = 1.10, pack = 1, sides = {"left", "right"}, enemies = {{"splinter", 70}, {"drifter", 30}}},
+    {name = "双翼骚扰", interval = 1.02, pack = 2, sides = {"left", "right", "top"}, enemies = {{"splinter", 50}, {"drifter", 37}, {"wisp", 10}, {"treasure", 3}}},
+    {name = "电弧乱流", interval = 0.92, pack = 2, sides = {"top", "right", "left"}, enemies = {{"splinter", 38}, {"drifter", 28}, {"wisp", 28}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 18, enemy = "elite", side = "right", toast = "精英信号：右侧突破"}}},
+    {name = "装甲推进", interval = 0.88, pack = 2, sides = {"left", "right", "bottom"}, enemies = {{"splinter", 30}, {"drifter", 26}, {"wisp", 18}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}},
+    {name = "交叉包围", interval = 0.80, pack = 3, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 28}, {"drifter", 28}, {"wisp", 23}, {"shell", 15}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 12, enemy = "elite", side = "left", toast = "精英压境：左侧"}}},
+    {name = "重壳浪潮", interval = 0.78, pack = 3, sides = {"right", "bottom", "top"}, enemies = {{"drifter", 23}, {"wisp", 23}, {"shell", 36}, {"splinter", 12}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 22, enemy = "elite", side = "bottom", toast = "底线精英出现"}}},
+    {name = "高速撕裂", interval = 0.70, pack = 3, sides = {"left", "right"}, enemies = {{"splinter", 39}, {"drifter", 36}, {"wisp", 12}, {"shell", 7}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 16, enemy = "elite", side = "right"}}},
+    {name = "四面噪声", interval = 0.64, pack = 4, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 26}, {"drifter", 26}, {"wisp", 24}, {"shell", 18}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 10, enemy = "elite", side = "top"}, {time = 25, enemy = "elite", side = "bottom"}}},
+    {name = "核心前夜", interval = 0.58, pack = 4, sides = {"right", "left", "top", "bottom"}, enemies = {{"splinter", 22}, {"drifter", 26}, {"wisp", 26}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 9, enemy = "elite", side = "left"}, {time = 21, enemy = "elite", side = "right"}}},
+    {name = "裂心机核", interval = 0.95, pack = 2, sides = {"left", "right", "top", "bottom"}, boss = true, enemies = {{"splinter", 26}, {"drifter", 24}, {"wisp", 24}, {"shell", 20}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 0.2, enemy = "boss", side = "right", toast = "Boss：裂心机核接入"}, {time = 20, enemy = "elite", side = "left"}, {time = 40, enemy = "elite", side = "right"}}}
 }
 
 local function wavePlanAt(wave)
@@ -242,7 +244,7 @@ local function wavePlanAt(wave)
     local chapterIndex = math.floor((safeWave - 1) / CHAPTER_SIZE) + 1
     local plan = {}
     for k, v in pairs(base) do plan[k] = v end
-    plan.duration = 30
+    plan.duration = SMALL_WAVE_DURATION
     plan.interval = math.max(0.38, (base.interval or 1.0) - (chapterIndex - 1) * 0.035)
     plan.pack = (base.pack or 1) + math.floor((chapterIndex - 1) / 2)
     plan.name = base.name or "生存波次"
@@ -378,7 +380,7 @@ local basePlayerDef = {
 
 local characterDefs = {basePlayerDef}
 
-local SURVIVAL_DURATION = 30
+local SURVIVAL_DURATION = SMALL_WAVE_DURATION
 
 local objectiveDefs = {
     {name = "生存模式", desc = "每小关生存 30 秒，撑到计时结束", mode = "survive"}
@@ -421,6 +423,7 @@ local rarityColor = {
 }
 
 local rarityLabel = {common = "普通", rare = "稀有", epic = "史诗", legend = "传说"}
+local rarityRank = {common = 1, rare = 2, epic = 3, legend = 4}
 local kindLabel = {weapon = "武器", item = "强化", shield = "护盾", mod = "模组", relic = "遗物", legend = "传说", temp = "战术"}
 local rarityPower = {common = 1.00, rare = 1.18, epic = 1.42, legend = 1.78}
 local rarityAffixes = {common = 1, rare = 2, epic = 3, legend = 4}
@@ -674,21 +677,26 @@ function survivalProgress()
     return clamp((Game.waveElapsed or 0) / math.max(1, SURVIVAL_DURATION), 0, 1)
 end
 
+function runProgress()
+    return clamp(((Game.wave or 1) - 1 + survivalProgress()) / math.max(1, Game.maxWave or RUN_TARGET_WAVES), 0, 1)
+end
+
 function survivalEnemyCurve()
-    local t = survivalProgress()
+    local waveT = survivalProgress()
+    local runT = runProgress()
     return {
-        hp = 1.00 + 1.45 * (t ^ 1.35),
-        damage = 1.00 + 0.75 * (t ^ 1.20),
-        speed = 1.00 + 0.18 * t,
-        armor = math.floor(t * 2.1),
-        pack = math.floor(t * 2.4),
-        interval = 1.00 - 0.22 * t,
-        cap = 45 + math.floor(t * 85) + Game.danger * 8
+        hp = 1.00 + 0.36 * (waveT ^ 1.25) + 1.12 * (runT ^ 1.35),
+        damage = 1.00 + 0.18 * waveT + 0.62 * (runT ^ 1.25),
+        speed = 1.00 + 0.08 * waveT + 0.12 * runT,
+        armor = math.floor(runT * 2.3),
+        pack = math.floor(waveT * 1.2 + runT * 1.6),
+        interval = 1.00 - 0.10 * waveT - 0.16 * runT,
+        cap = 40 + math.floor(waveT * 24) + math.floor(runT * 70) + Game.danger * 8
     }
 end
 
 function survivalPhaseName()
-    local t = survivalProgress()
+    local t = runProgress()
     if t < 0.20 then return "启动期" end
     if t < 0.45 then return "扩张期" end
     if t < 0.70 then return "压迫期" end
@@ -704,13 +712,13 @@ local function spawnEnemy(def, opts)
     local bonus = currentAffixBonuses()
     local curve = survivalEnemyCurve()
     local dangerScale = 1 + Game.danger * 0.08
-    local scale = (opts.scale or 1) * (1 + (Game.wave - 1) * 0.14) * bonus.enemyHp * dangerScale * curve.hp
+    local scale = (opts.scale or 1) * (1 + (Game.wave - 1) * 0.055) * bonus.enemyHp * dangerScale * curve.hp
     local hp = def.hp * scale
     local shield = (def.shield or 0) * scale
     Game.enemies[#Game.enemies + 1] = {
         name = def.name, x = x, y = y, r = def.r,
         hp = hp, maxHp = hp, shield = shield, maxShield = shield, defense = def.defense or (shield > 0 and "shield" or ((def.armor or 0) > 0 and "armor" or "flesh")), shieldRegen = def.shieldRegen or 0,
-        speed = (def.speed + Game.wave * 2) * bonus.enemySpeed * curve.speed * (1 + Game.danger * 0.025),
+        speed = (def.speed + Game.wave * 1.0) * bonus.enemySpeed * curve.speed * (1 + Game.danger * 0.025),
         damage = def.damage * bonus.enemyDamage * curve.damage * (1 + Game.danger * 0.06), armor = (def.armor or 0) + bonus.enemyArmor + curve.armor,
         color = def.color, xp = def.xp, coin = def.coin, treasureCoin = def.treasureCoin, sprite = def.sprite, behavior = def.behavior or "chase",
         elite = def.elite, boss = def.boss, treasure = def.treasure,
@@ -755,6 +763,45 @@ local function applyItem(item)
     return true
 end
 
+local function appendUnique(list, value)
+    if not value then return end
+    for _, current in ipairs(list) do if current == value then return end end
+    list[#list + 1] = value
+end
+
+local function mergeRolledWeapon(found, def)
+    found.level = (found.level or 1) + 1
+    found.damage = math.max(found.damage or 1, def.damage or 1) + math.max(1, math.floor((def.damage or 1) * 0.18))
+    found.cooldown = math.min(found.cooldown or 9, def.cooldown or 9) * 0.96
+    found.range = math.max(found.range or 0, def.range or 0)
+    found.speed = math.max(found.speed or 0, def.speed or 0)
+    found.count = math.max(found.count or 1, def.count or 1)
+    found.spread = math.max(found.spread or 0, def.spread or 0)
+    found.pierce = math.max(found.pierce or 0, def.pierce or 0)
+    found.bounce = math.max(found.bounce or 0, def.bounce or 0)
+    found.splash = math.max(found.splash or 0, def.splash or 0)
+    found.aura = math.max(found.aura or 0, def.aura or 0)
+    found.critBonus = math.max(found.critBonus or 0, def.critBonus or 0)
+    found.critDamageBonus = math.max(found.critDamageBonus or 0, def.critDamageBonus or 0)
+    found.elementPower = math.max(found.elementPower or 1, def.elementPower or 1)
+    found.shieldDamageBonus = math.max(found.shieldDamageBonus or 0, def.shieldDamageBonus or 0)
+    found.armorDamageBonus = math.max(found.armorDamageBonus or 0, def.armorDamageBonus or 0)
+    for _, flag in ipairs({"sixthPierce", "orbitShot", "sparkSplit", "echoRamp", "voidSlow", "overloadTax", "killHaste", "heavy", "fireSplash", "executeLowHp", "hiveSplit", "arcMark", "voidCollapse", "legendRefundShot"}) do
+        found[flag] = found[flag] or def[flag]
+    end
+    found.parts = found.parts or {}
+    for _, part in ipairs(def.parts or {}) do found.parts[#found.parts + 1] = part end
+    found.affixTags = found.affixTags or {}
+    for _, tag in ipairs(def.affixTags or {}) do appendUnique(found.affixTags, tag) end
+    if (rarityRank[def.rarity or "common"] or 1) >= (rarityRank[found.rarity or "common"] or 1) then
+        found.rarity = def.rarity
+        found.name = def.name or found.name
+        found.legendaryDesc = def.legendaryDesc or found.legendaryDesc
+        found.legendaryTitle = def.legendaryTitle or found.legendaryTitle
+    end
+    found.tier = 1 + math.floor((found.level - 1) / 2)
+end
+
 local function addWeapon(def)
     local p = Game.player
     local found = nil
@@ -762,6 +809,12 @@ local function addWeapon(def)
         if w.id == def.id then found = w break end
     end
     if found then
+        if def.rolled then
+            mergeRolledWeapon(found, def)
+            if applyBuildSynergies then applyBuildSynergies() end
+            playCue("shop"); toast(def.name .. " 融合至等级 " .. found.level)
+            return true
+        end
         found.level = found.level + 1
         found.damage = found.damage + math.max(1, math.floor(def.damage * 0.28))
         found.cooldown = found.cooldown * 0.94
@@ -927,7 +980,7 @@ weaponAffixRolls = {
 }
 
 legendaryWeaponBlueprints = {
-    needle = {title = "处刑星轨", desc = "穿透击杀返还一次瞬发射击", apply = function(w) w.sixthPierce = true; w.executeLowHp = true; w.legendRefundShot = true; w.pierce = (w.pierce or 0) + 1 end},
+    needle = {title = "处刑星轨", desc = "穿透击杀刷新一次开火节奏", apply = function(w) w.sixthPierce = true; w.executeLowHp = true; w.legendRefundShot = true; w.pierce = (w.pierce or 0) + 1 end},
     swarm = {title = "虫巢协议", desc = "击杀后分裂小导弹", apply = function(w) w.hiveSplit = true; w.count = (w.count or 1) + 2; w.damage = math.max(1, math.floor(w.damage * 0.88 + 0.5)) end},
     molten = {title = "赤炉审判", desc = "爆炸留下燃烧区", apply = function(w) w.fireSplash = true; w.splash = (w.splash or 0) + 34; w.elementPower = (w.elementPower or 1) + 0.18 end},
     echo = {title = "递归切割", desc = "弹射越打越痛", apply = function(w) w.echoRamp = true; w.bounce = (w.bounce or 0) + 2; w.damage = math.max(1, math.floor(w.damage * 0.90 + 0.5)) end},
@@ -1618,7 +1671,7 @@ local function fireProjectile(w, target, angle)
         splash = w.splash, aura = w.aura, color = elements[elem].color, sprite = w.projectileSprite, crit = crit, target = target, source = w.name, brand = w.brand,
         sparkSplit = w.sparkSplit, echoRamp = w.echoRamp, hiveSplit = w.hiveSplit, fireSplash = w.fireSplash,
         executeLowHp = w.executeLowHp, shieldDamageBonus = w.shieldDamageBonus, armorDamageBonus = w.armorDamageBonus,
-        arcMark = w.arcMark, voidCollapse = w.voidCollapse, legendRefundShot = w.legendRefundShot
+        arcMark = w.arcMark, voidCollapse = w.voidCollapse, legendRefundShot = w.legendRefundShot, killHaste = w.killHaste, weaponRef = w
     }
 end
 
@@ -1635,8 +1688,18 @@ local function useChainWeapon(w, target)
         local fullShield = (p.gear.fullShieldDamage and p.shield >= p.maxShield) and 1.08 or 1
         local elem = (p.waveElement and rnd() < (p.waveElementChance or 0)) and p.waveElement or w.element
         local critMult = crit and ((p.stats.critDamage or 1) + (w.critDamageBonus or 0)) or 1
-        local dmg = w.damage * (p.stats.damage + (p.waveDamageBonus or 0)) * bonus.playerDamage * lowHp * fullShield * critMult * (elem ~= "kinetic" and (w.elementPower or 1) or 1)
-        if damageEnemy(hit, dmg, elem, crit, w.name) then used[hit] = true end
+        local hitDamage = w.damage * (p.stats.damage + (p.waveDamageBonus or 0)) * bonus.playerDamage * lowHp * fullShield * critMult * (elem ~= "kinetic" and (w.elementPower or 1) or 1)
+        if w.executeLowHp and hit.hp / math.max(1, hit.maxHp or hit.hp) < 0.35 then hitDamage = hitDamage * 1.35 end
+        if w.shieldDamageBonus and hit.shield and hit.shield > 0 then hitDamage = hitDamage * (1 + w.shieldDamageBonus) end
+        if w.armorDamageBonus and hit.defense == "armor" then hitDamage = hitDamage * (1 + w.armorDamageBonus) end
+        local dead = damageEnemy(hit, hitDamage, elem, crit, w.name)
+        if w.arcMark then
+            hit.arcMarks = (hit.arcMarks or 0) + 1
+            if hit.arcMarks >= 3 then hit.arcMarks = 0; damageEnemy(hit, hitDamage * 0.42, "arc", false, w.name .. "电痕") end
+        end
+        if w.killHaste and dead then p.gear.coinHasteTimer = math.max(p.gear.coinHasteTimer or 0, 1.4) end
+        if w.legendRefundShot and dead then p.gear.nextCrit = true; w.timer = 0 end
+        if dead then used[hit] = true end
         burst(hit.x, hit.y, elements[elem].color, 5, 90)
         used[hit] = true
         local nextHit, bestD = nil, 170
@@ -1713,7 +1776,8 @@ local function updateBullets(dt)
                         if other ~= e and distance(e.x, e.y, other.x, other.y) < (b.hiveSplit and 150 or 120) then damageEnemy(other, hitDamage * (b.hiveSplit and 0.36 or 0.30), b.element, false, b.source .. (b.hiveSplit and "虫群" or "火花")) end
                     end
                 end
-                if b.legendRefundShot and dead then Game.player.gear.nextCrit = true end
+                if b.killHaste and dead then Game.player.gear.coinHasteTimer = math.max(Game.player.gear.coinHasteTimer or 0, 1.4) end
+                if b.legendRefundShot and dead then Game.player.gear.nextCrit = true; if b.weaponRef then b.weaponRef.timer = 0 end end
                 if b.splash then
                     for _, other in ipairs(Game.enemies) do
                         if other ~= e and distance(e.x, e.y, other.x, other.y) < b.splash then
@@ -2721,7 +2785,7 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.subtitle or Game.fonts.small)
     color(C.cyan, 0.78)
-    love.graphics.printf("30秒小关 · 自动射击 · 随机事件压迫", 0, 126, w, "center")
+    love.graphics.printf("20小关约10分钟 · 每小关30秒 · 自动射击", 0, 126, w, "center")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted, 0.70)
     love.graphics.printf("撑住倒计时，收集材料，把一台白板机体养成怪物。", 0, 156, w, "center")
@@ -2749,7 +2813,7 @@ local function drawMenu()
     drawHeart(cx, cy + 5, 1.22)
     love.graphics.setFont(Game.fonts.normal)
     color(C.white)
-    love.graphics.printf("活过 30 秒，然后嘲笑废铁", cx - 300, cy + 160, 600, "center")
+    love.graphics.printf("每小关活过 30 秒，撑完整场战役", cx - 300, cy + 160, 600, "center")
 
     local deckX, deckY, deckW, deckH = 90, h - 168, w - 180, 126
     love.graphics.setColor(0.012, 0.016, 0.040, 0.78)
@@ -2778,7 +2842,7 @@ local function drawMenu()
     -- 首页不再提供模式切换，只保留生存模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("目标：每小关 30 秒；敌群会按时间逐步升压。", deckX + 28, deckY + 96, 500, "left")
+    love.graphics.printf("目标：20 个 30 秒小关；难度按整局逐步升压。", deckX + 28, deckY + 96, 500, "left")
     uiButton("Q  降低", deckX + deckW - 220, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
     uiButton("E  提高", deckX + deckW - 112, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
 end
@@ -3087,7 +3151,8 @@ local function weaponTooltip(weapon, titlePrefix, compareWeapon)
     if weapon.sixthPierce then lines[#lines + 1] = {text = "性格：每第 6 发 +1 穿透", color = C.gold, gap = 6} end
     if weapon.sparkSplit then lines[#lines + 1] = {text = "性格：击杀分裂火花", color = C.gold, gap = 6} end
     if weapon.echoRamp then lines[#lines + 1] = {text = "性格：弹射后伤害递增", color = C.gold, gap = 6} end
-    if weapon.voidSlow then lines[#lines + 1] = {text = "性格：高收益代价，开火短暂拖慢机体", color = C.gold, gap = 6} end
+    if weapon.voidSlow or weapon.heavy or weapon.overloadTax then lines[#lines + 1] = {text = "性格：高收益代价，开火短暂拖慢机体", color = C.gold, gap = 6} end
+    if weapon.killHaste then lines[#lines + 1] = {text = "性格：击杀后短暂提高射击节奏", color = C.gold, gap = 6} end
     if weapon.executeLowHp then lines[#lines + 1] = {text = "性格：低血处刑增伤", color = C.gold, gap = 6} end
     if weapon.hiveSplit then lines[#lines + 1] = {text = "性格：击杀后虫群分裂", color = C.gold, gap = 6} end
     if weapon.arcMark then lines[#lines + 1] = {text = "性格：连锁叠电痕爆电", color = C.gold, gap = 6} end
@@ -3643,7 +3708,7 @@ local function drawNextWavePanel(x, y, w, h)
     love.graphics.printf(chapterWaveLabel(Game.wave) .. " · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("每小关 30 秒 · 敌群按时间升压 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
+    love.graphics.printf("20 小关约 10 分钟 · 当前小关 30 秒 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
 
     local pillW = (w - 62) / 2
     if protocol then tip = drawAffixInfoPill(protocol, "协议", x + 24, y + 122, pillW, 58, mx, my) or tip end
