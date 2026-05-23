@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.22.34"
+local VERSION = "v2026.05.23.01"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -424,6 +424,9 @@ local rarityLabel = {common = "普通", rare = "稀有", epic = "史诗", legend
 local kindLabel = {weapon = "武器", item = "强化", shield = "护盾", mod = "模组", relic = "遗物", legend = "传说", temp = "战术"}
 local rarityPower = {common = 1.00, rare = 1.18, epic = 1.42, legend = 1.78}
 local rarityAffixes = {common = 1, rare = 2, epic = 3, legend = 4}
+local rarityBudget = {common = 1.00, rare = 1.80, epic = 2.80, legend = 4.20}
+local rarityPartCount = {common = 2, rare = 3, epic = 4, legend = 4}
+local rarityPrice = {common = 1.00, rare = 1.36, epic = 1.92, legend = 2.85}
 
 local function color(c, a)
     love.graphics.setColor(c[1], c[2], c[3], a or c[4] or 1)
@@ -876,20 +879,111 @@ rebuildPlayerBuildStats = function()
     p.shield = math.min(math.max(0, shield), p.maxShield)
 end
 
-local weaponAffixRolls = {
-    {text = "高伤", apply = function(w, power) w.damage = math.floor(w.damage * (1.10 + power * 0.08) + 0.5) end},
-    {text = "速射", apply = function(w, power) w.cooldown = w.cooldown / (1.08 + power * 0.05) end},
-    {text = "远射", apply = function(w, power) w.range = w.range * (1.10 + power * 0.05) end},
-    {text = "高速弹", apply = function(w, power) if w.speed > 0 then w.speed = w.speed * (1.12 + power * 0.06) end end},
-    {text = "第六发穿透", apply = function(w, power) w.sixthPierce = true; w.shotCount = 0 end},
-    {text = "回旋蜂群", apply = function(w, power) if w.count and w.count > 1 then w.orbitShot = true; w.range = w.range * 0.96 end end},
-    {text = "火花分裂", apply = function(w, power) w.sparkSplit = true; w.splash = (w.splash or 0) + 18 end},
-    {text = "递增弹射", apply = function(w, power) w.echoRamp = true; w.bounce = (w.bounce or 0) + 1 end},
-    {text = "虚空代价", apply = function(w, power) if w.element == "void" then w.aura = (w.aura or 48) + 18; w.voidSlow = true else w.aura = (w.aura or 0) + 24 end end},
-    {text = "弹射", apply = function(w, power) w.bounce = (w.bounce or 0) + 1 end},
-    {text = "爆裂", apply = function(w, power) w.splash = (w.splash or 0) + 22 + math.floor(power * 10) end},
-    {text = "连锁", apply = function(w, power) w.chain = (w.chain or 0) > 0 and (w.chain + 1) or w.chain end}
+weaponPartPools = {
+    barrel = {
+        {name = "长距枪管", tag = "远射", cost = 0.45, brands = {starforge = 3, echo = 2}, apply = function(w, p) w.range = w.range * (1.14 + p * 0.03); if w.speed > 0 then w.speed = w.speed * (1.08 + p * 0.02) end; w.cooldown = w.cooldown * 1.04 end},
+        {name = "分裂枪管", tag = "多弹", cost = 0.55, brands = {swarm = 4}, apply = function(w, p) if (w.count or 1) < 8 then w.count = (w.count or 1) + 1; w.damage = math.max(1, math.floor(w.damage * 0.90 + 0.5)); w.spread = (w.spread or 0) + 0.08 end end},
+        {name = "重炮管", tag = "重击", cost = 0.60, brands = {molten = 4, blackbox = 2}, apply = function(w, p) w.damage = math.floor(w.damage * (1.16 + p * 0.04) + 0.5); if w.speed > 0 then w.speed = w.speed * 0.86 end; w.cooldown = w.cooldown * 1.08 end},
+        {name = "棱镜枪管", tag = "折射", cost = 0.65, brands = {echo = 4, starforge = 2}, apply = function(w, p) w.bounce = (w.bounce or 0) + 1; w.damage = math.max(1, math.floor(w.damage * 0.94 + 0.5)) end}
+    },
+    core = {
+        {name = "暴击核心", tag = "暴击", cost = 0.55, brands = {starforge = 4}, apply = function(w, p) w.critBonus = (w.critBonus or 0) + 0.06 + p * 0.015; w.critDamageBonus = (w.critDamageBonus or 0) + 0.14 + p * 0.025 end},
+        {name = "过载核心", tag = "过载", cost = 0.58, brands = {blackbox = 3, molten = 2}, apply = function(w, p) w.damage = math.floor(w.damage * (1.12 + p * 0.035) + 0.5); w.overloadTax = true end},
+        {name = "元素核心", tag = "元素", cost = 0.52, brands = {molten = 3, echo = 2, blackbox = 2}, apply = function(w, p) w.elementPower = (w.elementPower or 1) + 0.14 + p * 0.035; w.damage = math.max(1, math.floor(w.damage * 0.96 + 0.5)) end},
+        {name = "稳定核心", tag = "稳定", cost = 0.42, brands = {starforge = 2, swarm = 2}, apply = function(w, p) w.spread = math.max(0, (w.spread or 0) * 0.82); w.cooldown = w.cooldown / (1.04 + p * 0.015) end}
+    },
+    power = {
+        {name = "速射供能", tag = "速射", cost = 0.50, brands = {swarm = 3, starforge = 2}, apply = function(w, p) w.cooldown = w.cooldown / (1.09 + p * 0.025); w.damage = math.max(1, math.floor(w.damage * 0.95 + 0.5)) end},
+        {name = "高压供能", tag = "高压", cost = 0.54, brands = {molten = 3, blackbox = 2}, apply = function(w, p) w.damage = math.floor(w.damage * (1.14 + p * 0.035) + 0.5); w.cooldown = w.cooldown * 1.06 end},
+        {name = "回收供能", tag = "回收", cost = 0.48, brands = {swarm = 2, echo = 2}, apply = function(w, p) w.killHaste = true; w.cooldown = w.cooldown / 1.03 end},
+        {name = "黑箱供能", tag = "代价", cost = 0.75, brands = {blackbox = 5}, apply = function(w, p) w.damage = math.floor(w.damage * (1.20 + p * 0.04) + 0.5); w.voidSlow = true end}
+    },
+    calibrator = {
+        {name = "穿透校准", tag = "穿透", cost = 0.45, brands = {starforge = 3}, apply = function(w, p) w.pierce = (w.pierce or 0) + 1 end},
+        {name = "回声校准", tag = "回声", cost = 0.58, brands = {echo = 5}, apply = function(w, p) w.echoRamp = true; w.bounce = (w.bounce or 0) + 1 end},
+        {name = "燃烧校准", tag = "灼烧", cost = 0.52, brands = {molten = 4}, apply = function(w, p) w.fireSplash = true; w.splash = (w.splash or 0) + 16 end},
+        {name = "磁吸校准", tag = "牵引", cost = 0.50, brands = {blackbox = 3, echo = 2}, apply = function(w, p) w.aura = (w.aura or 0) + 22 + math.floor(p * 8) end}
+    }
 }
+
+weaponAffixRolls = {
+    highDamage = {text = "高伤", cost = 0.50, brands = {molten = 3, blackbox = 2}, apply = function(w, p) w.damage = math.floor(w.damage * (1.10 + p * 0.06) + 0.5) end},
+    rapid = {text = "速射", cost = 0.48, brands = {swarm = 3, starforge = 2}, apply = function(w, p) w.cooldown = w.cooldown / (1.08 + p * 0.04) end},
+    range = {text = "远射", cost = 0.38, brands = {starforge = 3}, apply = function(w, p) w.range = w.range * (1.10 + p * 0.05) end},
+    fast = {text = "高速弹", cost = 0.32, brands = {starforge = 2, swarm = 2}, apply = function(w, p) if w.speed > 0 then w.speed = w.speed * (1.12 + p * 0.05) end end},
+    sixth = {text = "第六发穿透", cost = 0.70, brands = {starforge = 4}, apply = function(w, p) w.sixthPierce = true; w.shotCount = 0 end},
+    orbit = {text = "回旋蜂群", cost = 0.68, brands = {swarm = 5}, apply = function(w, p) if w.count and w.count > 1 then w.orbitShot = true; w.range = w.range * 0.96 end end},
+    spark = {text = "火花分裂", cost = 0.72, brands = {molten = 4, swarm = 2}, apply = function(w, p) w.sparkSplit = true; w.splash = (w.splash or 0) + 18 end},
+    ramp = {text = "递增弹射", cost = 0.75, brands = {echo = 5}, apply = function(w, p) w.echoRamp = true; w.bounce = (w.bounce or 0) + 1 end},
+    voidCost = {text = "虚空代价", cost = 0.78, brands = {blackbox = 5}, apply = function(w, p) if w.element == "void" then w.aura = (w.aura or 48) + 18; w.voidSlow = true else w.aura = (w.aura or 0) + 24 end end},
+    execute = {text = "处刑协议", cost = 0.62, brands = {starforge = 3, blackbox = 2}, apply = function(w, p) w.executeLowHp = true end},
+    shieldHunter = {text = "护盾猎手", cost = 0.45, brands = {echo = 2, starforge = 2}, apply = function(w, p) w.shieldDamageBonus = (w.shieldDamageBonus or 0) + 0.35 end},
+    armorDrill = {text = "装甲钻头", cost = 0.45, brands = {molten = 2, blackbox = 2}, apply = function(w, p) w.armorDamageBonus = (w.armorDamageBonus or 0) + 0.32 end},
+    bounce = {text = "弹射", cost = 0.45, brands = {echo = 4}, apply = function(w, p) w.bounce = (w.bounce or 0) + 1 end},
+    burst = {text = "爆裂", cost = 0.55, brands = {molten = 4}, apply = function(w, p) w.splash = (w.splash or 0) + 22 + math.floor(p * 10) end},
+    chain = {text = "连锁", cost = 0.55, brands = {echo = 4}, apply = function(w, p) w.chain = (w.chain or 0) > 0 and (w.chain + 1) or w.chain end},
+    heavy = {text = "笨重", cost = -0.36, brands = {molten = 2, blackbox = 2}, apply = function(w, p) w.damage = math.floor(w.damage * 1.16 + 0.5); w.heavy = true end},
+    unstable = {text = "不稳定", cost = -0.28, brands = {blackbox = 3}, apply = function(w, p) w.critBonus = (w.critBonus or 0) + 0.12; w.spread = (w.spread or 0) + 0.14 end}
+}
+
+legendaryWeaponBlueprints = {
+    needle = {title = "处刑星轨", desc = "穿透击杀返还一次瞬发射击", apply = function(w) w.sixthPierce = true; w.executeLowHp = true; w.legendRefundShot = true; w.pierce = (w.pierce or 0) + 1 end},
+    swarm = {title = "虫巢协议", desc = "击杀后分裂小导弹", apply = function(w) w.hiveSplit = true; w.count = (w.count or 1) + 2; w.damage = math.max(1, math.floor(w.damage * 0.88 + 0.5)) end},
+    molten = {title = "赤炉审判", desc = "爆炸留下燃烧区", apply = function(w) w.fireSplash = true; w.splash = (w.splash or 0) + 34; w.elementPower = (w.elementPower or 1) + 0.18 end},
+    echo = {title = "递归切割", desc = "弹射越打越痛", apply = function(w) w.echoRamp = true; w.bounce = (w.bounce or 0) + 2; w.damage = math.max(1, math.floor(w.damage * 0.90 + 0.5)) end},
+    coil = {title = "连锁审讯", desc = "连锁叠电痕并爆电", apply = function(w) w.arcMark = true; w.chain = (w.chain or 1) + 2; w.elementPower = (w.elementPower or 1) + 0.12 end},
+    void = {title = "黑箱坍缩", desc = "牵引光环周期爆裂", apply = function(w) w.voidCollapse = true; w.aura = (w.aura or 48) + 38; w.voidSlow = true; w.damage = math.floor(w.damage * 1.20 + 0.5) end}
+}
+
+function weightedRollByBrand(pool, brand)
+    local total = 0
+    for _, item in pairs(pool) do total = total + 1 + ((item.brands and item.brands[brand]) or 0) end
+    local roll = rnd() * total
+    for _, item in pairs(pool) do
+        roll = roll - (1 + ((item.brands and item.brands[brand]) or 0))
+        if roll <= 0 then return item end
+    end
+    for _, item in pairs(pool) do return item end
+end
+
+function applyWeaponPart(def, slot, power)
+    local part = weightedRollByBrand(weaponPartPools[slot], def.brand)
+    if part and part.apply then
+        part.apply(def, power)
+        def.parts = def.parts or {}
+        def.parts[#def.parts + 1] = {slot = slot, name = part.name, tag = part.tag, cost = part.cost or 0}
+        def.budgetUsed = (def.budgetUsed or 0) + (part.cost or 0)
+    end
+end
+
+function applyWeaponAffixes(def, rarity, power)
+    local budget = rarityBudget[rarity] or 1
+    local used = {}
+    local guard = 0
+    def.affixTags = def.affixTags or {}
+    while budget > 0.20 and #def.affixTags < (rarityAffixes[rarity] or 1) + 1 and guard < 18 do
+        guard = guard + 1
+        local affix = weightedRollByBrand(weaponAffixRolls, def.brand)
+        if affix and not used[affix.text] and (affix.cost or 0) <= budget + 0.20 then
+            used[affix.text] = true
+            affix.apply(def, power)
+            budget = budget - (affix.cost or 0)
+            def.affixTags[#def.affixTags + 1] = affix.text
+        end
+    end
+    def.budgetLeft = budget
+end
+
+function applyLegendaryWeapon(def, base)
+    local legend = legendaryWeaponBlueprints[base.id]
+    if not legend then return end
+    legend.apply(def)
+    def.legendaryTitle = legend.title
+    def.legendaryDesc = legend.desc
+    def.name = legend.title
+    def.affixTags = def.affixTags or {}
+    table.insert(def.affixTags, 1, "传说协议")
+end
 
 local function makeWeaponItem(id)
     local base = weaponDefs[id]
@@ -898,21 +992,30 @@ local function makeWeaponItem(id)
     local def = {}
     for k, v in pairs(base) do def[k] = v end
     def.rolled = true
-    def.damage = math.max(1, math.floor(def.damage * randf(0.84, 1.22) * power + 0.5))
-    def.cooldown = math.max(0.16, def.cooldown / randf(0.88, 1.12))
-    def.range = def.range * randf(0.90, 1.14)
-    if def.speed > 0 then def.speed = def.speed * randf(0.88, 1.18) end
-    local tags = {}
-    for _ = 1, rarityAffixes[rarity] or 1 do
-        local affix = weaponAffixRolls[rnd(1, #weaponAffixRolls)]
-        affix.apply(def, power)
-        tags[#tags + 1] = affix.text
-    end
+    def.parts = {}
+    def.affixTags = {}
+    def.damage = math.max(1, math.floor(def.damage * randf(0.92, 1.10) * (1 + (power - 1) * 0.38) + 0.5))
+    def.cooldown = math.max(0.16, def.cooldown / randf(0.94, 1.08))
+    def.range = def.range * randf(0.96, 1.08)
+    if def.speed > 0 then def.speed = def.speed * randf(0.94, 1.10) end
+    local slots = {"barrel", "core", "power", "calibrator"}
+    for i = 1, math.min(#slots, rarityPartCount[rarity] or 2) do applyWeaponPart(def, slots[i], power) end
+    applyWeaponAffixes(def, rarity, power)
+    if rarity == "legend" then applyLegendaryWeapon(def, base) end
     local brand = brands[def.brand]
     local elem = elements[def.element]
-    def.name = (rarityLabel[rarity] or rarity) .. " " .. base.name
-    def.price = priced(base.price or 24, rarity)
-    local item = {kind = "weapon", id = id, name = def.name, price = def.price, rarity = rarity, desc = brand.name .. " / " .. elem.name .. " / " .. table.concat(tags, "、"), weaponDef = def}
+    local partTags = {}
+    for _, part in ipairs(def.parts or {}) do partTags[#partTags + 1] = part.tag or part.name end
+    local affixText = table.concat(def.affixTags or {}, "、")
+    local partText = table.concat(partTags, "、")
+    def.name = (rarityLabel[rarity] or rarity) .. " " .. (def.name or base.name)
+    local budgetSpend = (def.budgetUsed or 0) + ((rarityBudget[rarity] or 1) - (def.budgetLeft or 0))
+    def.price = math.max(18, math.floor((base.price or 24) * (rarityPrice[rarity] or 1) * (1 + budgetSpend * 0.08) + 0.5))
+    local descParts = {brand.name, elem.name}
+    if partText ~= "" then descParts[#descParts + 1] = partText end
+    if affixText ~= "" then descParts[#descParts + 1] = affixText end
+    if def.legendaryDesc then descParts[#descParts + 1] = def.legendaryDesc end
+    local item = {kind = "weapon", id = id, name = def.name, price = def.price, rarity = rarity, desc = table.concat(descParts, " / "), weaponDef = def}
     item.buy = function() return addWeapon(def) end
     return item
 end
@@ -1490,12 +1593,14 @@ end
 local function fireProjectile(w, target, angle)
     local p = Game.player
     local bonus = currentAffixBonuses()
-    local crit = rnd() < math.min(0.85, p.stats.crit + bonus.critBonus) or p.gear.nextCrit
+    local crit = rnd() < math.min(0.85, p.stats.crit + bonus.critBonus + (w.critBonus or 0)) or p.gear.nextCrit
     p.gear.nextCrit = false
     local lowHp = 1 + ((1 - clamp(p.hp / math.max(1, p.maxHp), 0, 1)) * (p.stats.lowHpDamage or 0))
     local fullShield = (p.gear.fullShieldDamage and p.shield >= p.maxShield) and 1.08 or 1
-    local dmg = w.damage * (p.stats.damage + (p.waveDamageBonus or 0)) * bonus.playerDamage * lowHp * fullShield * (crit and p.stats.critDamage or 1)
+    local critMult = crit and ((p.stats.critDamage or 1) + (w.critDamageBonus or 0)) or 1
+    local dmg = w.damage * (p.stats.damage + (p.waveDamageBonus or 0)) * bonus.playerDamage * lowHp * fullShield * critMult
     local elem = w.element
+    if elem ~= "kinetic" then dmg = dmg * (w.elementPower or 1) end
     if p.waveElement and rnd() < (p.waveElementChance or 0) then elem = p.waveElement end
     w.shotCount = (w.shotCount or 0) + 1
     local pierce = (w.pierce or 0) + ((w.sixthPierce and w.shotCount % 6 == 0) and 1 or 0)
@@ -1505,13 +1610,15 @@ local function fireProjectile(w, target, angle)
         vx = vx + math.cos(angle + math.pi / 2) * 95
         vy = vy + math.sin(angle + math.pi / 2) * 95
     end
-    if w.voidSlow then p.waveVoidSlowTimer = 0.9 end
+    if w.voidSlow or w.heavy or w.overloadTax then p.waveVoidSlowTimer = math.max(p.waveVoidSlowTimer or 0, w.voidSlow and 0.9 or 0.35) end
     Game.bullets[#Game.bullets + 1] = {
         x = p.x, y = p.y, vx = vx, vy = vy,
         r = w.splash and 7 or 4, damage = dmg, element = elem, range = w.range * p.stats.range,
         traveled = 0, pierce = pierce, bounce = (w.bounce or 0) + p.stats.bounce,
         splash = w.splash, aura = w.aura, color = elements[elem].color, sprite = w.projectileSprite, crit = crit, target = target, source = w.name, brand = w.brand,
-        sparkSplit = w.sparkSplit, echoRamp = w.echoRamp
+        sparkSplit = w.sparkSplit, echoRamp = w.echoRamp, hiveSplit = w.hiveSplit, fireSplash = w.fireSplash,
+        executeLowHp = w.executeLowHp, shieldDamageBonus = w.shieldDamageBonus, armorDamageBonus = w.armorDamageBonus,
+        arcMark = w.arcMark, voidCollapse = w.voidCollapse, legendRefundShot = w.legendRefundShot
     }
 end
 
@@ -1523,11 +1630,12 @@ local function useChainWeapon(w, target)
     for _ = 1, chains do
         if not hit then break end
         local bonus = currentAffixBonuses()
-        local crit = rnd() < math.min(0.85, p.stats.crit + bonus.critBonus)
+        local crit = rnd() < math.min(0.85, p.stats.crit + bonus.critBonus + (w.critBonus or 0))
         local lowHp = 1 + ((1 - clamp(p.hp / math.max(1, p.maxHp), 0, 1)) * (p.stats.lowHpDamage or 0))
         local fullShield = (p.gear.fullShieldDamage and p.shield >= p.maxShield) and 1.08 or 1
         local elem = (p.waveElement and rnd() < (p.waveElementChance or 0)) and p.waveElement or w.element
-        local dmg = w.damage * (p.stats.damage + (p.waveDamageBonus or 0)) * bonus.playerDamage * lowHp * fullShield * (crit and p.stats.critDamage or 1)
+        local critMult = crit and ((p.stats.critDamage or 1) + (w.critDamageBonus or 0)) or 1
+        local dmg = w.damage * (p.stats.damage + (p.waveDamageBonus or 0)) * bonus.playerDamage * lowHp * fullShield * critMult * (elem ~= "kinetic" and (w.elementPower or 1) or 1)
         if damageEnemy(hit, dmg, elem, crit, w.name) then used[hit] = true end
         burst(hit.x, hit.y, elements[elem].color, 5, 90)
         used[hit] = true
@@ -1579,7 +1687,8 @@ local function updateBullets(dt)
                     e.y = e.y + (b.y - e.y) * dt * 0.9
                     if not e._voidTick or e._voidTick <= 0 then
                         e._voidTick = 0.28
-                        damageEnemy(e, b.damage * 0.38, b.element, false, b.source)
+                        damageEnemy(e, b.damage * (b.voidCollapse and 0.55 or 0.38), b.element, false, b.source)
+                        if b.voidCollapse then burst(e.x, e.y, b.color, 5, 80) end
                     end
                 end
             end
@@ -1589,20 +1698,30 @@ local function updateBullets(dt)
         local remove = b.traveled > b.range
         for _, e in ipairs(Game.enemies) do
             if not remove and distance(b.x, b.y, e.x, e.y) < b.r + e.r then
-                local dead = damageEnemy(e, b.damage, b.element, b.crit, b.source)
+                local hitDamage = b.damage
+                if b.executeLowHp and e.hp / math.max(1, e.maxHp or e.hp) < 0.35 then hitDamage = hitDamage * 1.35 end
+                if b.shieldDamageBonus and e.shield and e.shield > 0 then hitDamage = hitDamage * (1 + b.shieldDamageBonus) end
+                if b.armorDamageBonus and e.defense == "armor" then hitDamage = hitDamage * (1 + b.armorDamageBonus) end
+                local dead = damageEnemy(e, hitDamage, b.element, b.crit, b.source)
+                if b.arcMark then
+                    e.arcMarks = (e.arcMarks or 0) + 1
+                    if e.arcMarks >= 3 then e.arcMarks = 0; damageEnemy(e, hitDamage * 0.42, "arc", false, b.source .. "电痕") end
+                end
                 burst(b.x, b.y, b.color, 4, 90)
-                if b.sparkSplit and dead then
+                if (b.sparkSplit or b.hiveSplit) and dead then
                     for _, other in ipairs(Game.enemies) do
-                        if other ~= e and distance(e.x, e.y, other.x, other.y) < 120 then damageEnemy(other, b.damage * 0.30, b.element, false, b.source .. "火花") end
+                        if other ~= e and distance(e.x, e.y, other.x, other.y) < (b.hiveSplit and 150 or 120) then damageEnemy(other, hitDamage * (b.hiveSplit and 0.36 or 0.30), b.element, false, b.source .. (b.hiveSplit and "虫群" or "火花")) end
                     end
                 end
+                if b.legendRefundShot and dead then Game.player.gear.nextCrit = true end
                 if b.splash then
                     for _, other in ipairs(Game.enemies) do
                         if other ~= e and distance(e.x, e.y, other.x, other.y) < b.splash then
-                            damageEnemy(other, b.damage * (Game.player.gear.fireSplash and b.element == "burn" and 0.62 or 0.45), b.element, false, b.source)
+                            damageEnemy(other, hitDamage * ((Game.player.gear.fireSplash or b.fireSplash) and b.element == "burn" and 0.62 or 0.45), b.element, false, b.source)
                         end
                     end
                     burst(e.x, e.y, b.color, 14, 150)
+                    if b.fireSplash and b.element == "burn" then igniteFireZone(e.x, e.y, math.min(110, (b.splash or 58) + 18), 2.8, math.max(4, hitDamage * 0.10)) end
                 end
                 if dead and Game.player.gear.blink and b.crit then Game.player.gear.nextCrit = true end
                 if b.bounce and b.bounce > 0 then
@@ -1672,7 +1791,7 @@ local function fireEnemyShot(e, a)
     Game.enemyShots[#Game.enemyShots + 1] = {x = e.x, y = e.y, vx = math.cos(a) * 250, vy = math.sin(a) * 250, r = 6, damage = e.damage * 0.75, color = e.color, life = 3.0}
 end
 
-local function igniteFireZone(x, y, radius, duration, damage)
+function igniteFireZone(x, y, radius, duration, damage)
     Game.fireZones = Game.fireZones or {}
     Game.fireZones[#Game.fireZones + 1] = {x = x, y = y, r = radius or 82, life = duration or 4.6, maxLife = duration or 4.6, damage = damage or 8, tick = 0, color = C.orange}
     burst(x, y, C.orange, 22, 220)
@@ -2954,6 +3073,13 @@ local function weaponTooltip(weapon, titlePrefix, compareWeapon)
         attr("穿透", v.pierce, "pierce", true),
         attr("弹射", v.bounce, "bounce", true)
     }
+    if weapon.legendaryDesc then lines[#lines + 1] = {text = "传说机制：" .. weapon.legendaryDesc, color = C.gold, gap = 6} end
+    if weapon.parts and #weapon.parts > 0 then
+        local partNames = {}
+        for _, part in ipairs(weapon.parts) do partNames[#partNames + 1] = part.name end
+        lines[#lines + 1] = {text = "随机部件：" .. table.concat(partNames, " / "), color = C.cyan, gap = 6}
+    end
+    if weapon.affixTags and #weapon.affixTags > 0 then lines[#lines + 1] = {text = "随机词缀：" .. table.concat(weapon.affixTags, " / "), color = C.gold, gap = 6} end
     if compareWeapon then lines[#lines + 1] = {text = "对比对象：当前装备的「" .. (compareWeapon.name or "武器") .. "」", color = C.gold, gap = 6} end
     if weapon.splash then lines[#lines + 1] = {text = "特殊：爆炸半径 " .. weapon.splash, color = C.gold, gap = 6} end
     if weapon.chain then lines[#lines + 1] = {text = "特殊：连锁 " .. (weapon.chain + math.floor((p.stats.bounce or 0) / 2)) .. " 次", color = C.gold, gap = 6} end
@@ -2961,7 +3087,11 @@ local function weaponTooltip(weapon, titlePrefix, compareWeapon)
     if weapon.sixthPierce then lines[#lines + 1] = {text = "性格：每第 6 发 +1 穿透", color = C.gold, gap = 6} end
     if weapon.sparkSplit then lines[#lines + 1] = {text = "性格：击杀分裂火花", color = C.gold, gap = 6} end
     if weapon.echoRamp then lines[#lines + 1] = {text = "性格：弹射后伤害递增", color = C.gold, gap = 6} end
-    if weapon.voidSlow then lines[#lines + 1] = {text = "性格：虚空牵引更强，但开火短暂拖慢机体", color = C.gold, gap = 6} end
+    if weapon.voidSlow then lines[#lines + 1] = {text = "性格：高收益代价，开火短暂拖慢机体", color = C.gold, gap = 6} end
+    if weapon.executeLowHp then lines[#lines + 1] = {text = "性格：低血处刑增伤", color = C.gold, gap = 6} end
+    if weapon.hiveSplit then lines[#lines + 1] = {text = "性格：击杀后虫群分裂", color = C.gold, gap = 6} end
+    if weapon.arcMark then lines[#lines + 1] = {text = "性格：连锁叠电痕爆电", color = C.gold, gap = 6} end
+    if weapon.voidCollapse then lines[#lines + 1] = {text = "性格：虚空光环周期坍缩", color = C.gold, gap = 6} end
     if weapon.desc then lines[#lines + 1] = {text = "说明：" .. weapon.desc, color = C.muted, gap = 6} end
     return {title = (titlePrefix or "武器") .. "：" .. (weapon.name or "未知武器"), lines = lines, width = compareWeapon and 430 or 400}
 end
