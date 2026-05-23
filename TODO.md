@@ -8,6 +8,12 @@
 
 ## 已完成
 
+- [x] 模块槽默认容量改为 6，刷新按钮放到商店 tab 下。
+  - `balance.cfg` 默认模块槽基础容量从 4 改为 6。
+  - 代码兜底常量同步为 6；升级逻辑仍按等级付费增加容量。
+  - 刷新商店按钮从顶部全局操作区移动到“商店”tab 内容区；情报/转轮 tab 不显示刷新。
+  - 验证：本机 LÖVE 截图 `/home/moltbot/clawd-wechat/tmp/my-love-game-v42/shop.png` 显示 `模块槽 Lv.1 0/6` 且刷新按钮在商店 tab 下；`/home/moltbot/clawd-wechat/tmp/my-love-game-v42/intel.png` 确认情报 tab 不显示刷新。
+
 - [x] 模块槽合入当前构筑并移除单独 tab。
   - 当前构筑不再使用“基础属性 / 模块槽”单独 tab。
   - 武器槽、护盾槽保持紧凑槽位风格，不统一成巨型卡片。

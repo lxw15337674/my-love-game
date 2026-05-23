@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.40"
+local VERSION = "v2026.05.23.42"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -112,7 +112,7 @@ local CHAPTER_NAMES = Balance.chapterNames or {"铁幕", "赤炉", "断链", "�
 local SMALL_WAVE_DURATION = Balance.small_wave_duration or 30
 local CAMPAIGN_WAVES = CHAPTER_SIZE * #CHAPTER_NAMES
 local AVERAGE_RUN_TARGET_WAVE = Balance.average_run_target_wave or 20
-ITEM_SLOT_BASE = Balance.item_slot_base or 4
+ITEM_SLOT_BASE = Balance.item_slot_base or 6
 ITEM_SLOT_MAX = Balance.item_slot_max or 12
 
 local Game = {
@@ -4579,8 +4579,8 @@ local function drawShop()
     local tabY = 38
     local contentY, contentH = 154, Game.h - 200
     local actionY, actionH = 42, 42
-    local refreshW, nextW, actionGap = 210, 230, 12
-    local actionX = Game.w - marginX - refreshW - nextW - actionGap
+    local nextW = 230
+    local actionX = Game.w - marginX - nextW
     drawShopTabs(marginX, tabY)
 
     love.graphics.setFont(Game.fonts.normal)
@@ -4594,9 +4594,7 @@ local function drawShop()
     love.graphics.printf(incomeText .. shopBudgetHint() .. " · 武器槽 " .. #Game.player.weapons .. "/4 · " .. shieldText .. " · 模块槽 Lv." .. (Game.player.itemSlotLevel or 1) .. " " .. #(Game.player.items or {}) .. "/" .. (Game.player.itemSlots or ITEM_SLOT_BASE), infoX, 74, infoW, "center")
 
     local rerollCost = 3 + Game.shopRefresh * 2
-    local refreshText = Game.freeRefresh > 0 and ("刷新商店 · 免费 x" .. Game.freeRefresh) or ("刷新商店 · ◆" .. rerollCost)
-    uiButton(refreshText, actionX, actionY + 4, refreshW, actionH - 8, C.cyan)
-    uiButton("进入下一波", actionX + refreshW + actionGap, actionY, nextW, actionH, C.gold, C.white, Game.fonts.small)
+    uiButton("进入下一波", actionX, actionY, nextW, actionH, C.gold, C.white, Game.fonts.small)
 
     color(C.white, 0.08)
     love.graphics.rectangle("fill", marginX, 108, Game.w - marginX * 2, 1)
@@ -4622,9 +4620,13 @@ local function drawShop()
         local cardH = math.floor((contentH - shelfTitleH * 2 - rowGap - bottomPad) / 2)
         local weaponY = contentY + shelfTitleH
         local supportY = contentY + contentH - bottomPad - cardH
+        local tabRefreshW, tabRefreshH = 210, 34
+        local tabRefreshX, tabRefreshY = marginX + shelfW - tabRefreshW, weaponY - 40
+        local refreshText = Game.freeRefresh > 0 and ("刷新商店 · 免费 x" .. Game.freeRefresh) or ("刷新商店 · ◆" .. rerollCost)
         love.graphics.setFont(Game.fonts.small)
         color(C.white)
-        love.graphics.printf("武器架 · 3 选 1", marginX, weaponY - 34, shelfW, "left")
+        love.graphics.printf("武器架 · 3 选 1", marginX, weaponY - 34, shelfW - tabRefreshW - 16, "left")
+        uiButton(refreshText, tabRefreshX, tabRefreshY, tabRefreshW, tabRefreshH, C.cyan, C.white, Game.fonts.tiny)
         color(C.white, 0.08)
         love.graphics.rectangle("fill", marginX, weaponY - 8, shelfW, 10, 5, 5)
         color(C.white, 0.16)
@@ -4846,10 +4848,9 @@ function handlePointer(x, y)
     elseif Game.state == "shop" then
         local marginX = 40
         local actionY, actionH = 42, 42
-        local refreshW, nextW, actionGap = 210, 230, 12
-        local actionX = Game.w - marginX - refreshW - nextW - actionGap
-        if hitRect(x, y, actionX, actionY + 4, refreshW, actionH - 8) then refreshShop(); return true end
-        if hitRect(x, y, actionX + refreshW + actionGap, actionY, nextW, actionH) then startWave(); return true end
+        local nextW = 230
+        local actionX = Game.w - marginX - nextW
+        if hitRect(x, y, actionX, actionY, nextW, actionH) then startWave(); return true end
 
         local tab = shopTabHit(x, y)
         if tab then Game.shopTab = tab; return true end
@@ -4866,6 +4867,9 @@ function handlePointer(x, y)
             local cardH = math.floor((contentH - shelfTitleH * 2 - rowGap - bottomPad) / 2)
             local weaponY = contentY + shelfTitleH
             local supportY = contentY + contentH - bottomPad - cardH
+            local tabRefreshW, tabRefreshH = 210, 34
+            local tabRefreshX, tabRefreshY = marginX + shelfW - tabRefreshW, weaponY - 40
+            if hitRect(x, y, tabRefreshX, tabRefreshY, tabRefreshW, tabRefreshH) then refreshShop(); return true end
             if handleBuildPanelClick(x, y, sideX, contentY, sideW, contentH) then return true end
             for i = 1, 6 do
                 local col = (i - 1) % 3
