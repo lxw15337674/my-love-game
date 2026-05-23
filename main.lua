@@ -24,7 +24,7 @@ function cfgReadText(path)
 end
 
 function loadBalanceConfig()
-    local cfg = {moduleStats = {}, moduleBlueprints = {}, moduleCombos = {}, affixDefs = {}, waveAffixes = {}}
+    local cfg = {moduleStats = {}, moduleBlueprints = {}, moduleCombos = {}, affixDefs = {}, waveAffixes = {}, weaponDefs = {}, enemyDefs = {}, slotSymbols = {}, wavePlans = {}}
     local text = cfgReadText("balance.cfg") or ""
     for raw in text:gmatch("[^\r\n]+") do
         local line = raw:gsub("#.*$", ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -33,6 +33,38 @@ function loadBalanceConfig()
             if key and value then
                 if key == "chapter_names" then
                     cfg.chapterNames = cfgSplit(value, ",")
+                elseif key == "weapon" then
+                    local parts = cfgSplit(value, "|")
+                    local extra = {}
+                    for _, pair in ipairs(cfgSplit(parts[12] or "", ",")) do
+                        local k, v = pair:match("^([%w_]+)%s*=%s*([%d%.%-]+)$")
+                        if k then extra[k] = tonumber(v) or 0 end
+                    end
+                    cfg.weaponDefs[parts[1]] = {id = parts[1], name = parts[2], brand = parts[3], element = parts[4], price = tonumber(parts[5]), damage = tonumber(parts[6]), cooldown = tonumber(parts[7]), speed = tonumber(parts[8]), count = tonumber(parts[9]), spread = tonumber(parts[10]), range = tonumber(parts[11]), extra = extra}
+                elseif key == "enemy" then
+                    local parts = cfgSplit(value, "|")
+                    local flags = {}
+                    for _, flag in ipairs(cfgSplit(parts[16] or "", ",")) do
+                        local fk, fv = flag:match("^([%w_]+)%s*=%s*([%d%.%-]+)$")
+                        if fk then flags[fk] = tonumber(fv) or fv elseif flag ~= "" then flags[flag] = true end
+                    end
+                    cfg.enemyDefs[parts[1]] = {id = parts[1], name = parts[2], sprite = parts[3], defense = parts[4], hp = tonumber(parts[5]), shield = tonumber(parts[6]), shieldRegen = tonumber(parts[7]), speed = tonumber(parts[8]), damage = tonumber(parts[9]), r = tonumber(parts[10]), color = parts[11], armor = tonumber(parts[12]), xp = tonumber(parts[13]), coin = tonumber(parts[14]), behavior = parts[15], flags = flags}
+                elseif key == "slot_symbol" then
+                    local parts = cfgSplit(value, "|")
+                    cfg.slotSymbols[#cfg.slotSymbols + 1] = {id = parts[1], name = parts[2], mark = parts[3], color = parts[4], weight = tonumber(parts[5]) or 1}
+                elseif key == "wave_plan" then
+                    local parts = cfgSplit(value, "|")
+                    local sides, enemies, events = {}, {}, {}
+                    for _, side in ipairs(cfgSplit(parts[5] or "", ",")) do if side ~= "" then sides[#sides + 1] = side end end
+                    for _, pair in ipairs(cfgSplit(parts[6] or "", ",")) do
+                        local id, wt = pair:match("^([%w_]+)%s*:%s*([%d%.%-]+)$")
+                        if id then enemies[#enemies + 1] = {id, tonumber(wt) or 1} end
+                    end
+                    for _, ev in ipairs(cfgSplit(parts[7] or "", ";")) do
+                        local t, enemy, side, toast = ev:match("^([%d%.]+)%s*,%s*([%w_]+)%s*,%s*([%w_]+)%s*,?(.*)$")
+                        if t and enemy then events[#events + 1] = {time = tonumber(t) or 0, enemy = enemy, side = side ~= "" and side or nil, toast = toast ~= "" and toast or nil} end
+                    end
+                    cfg.wavePlans[#cfg.wavePlans + 1] = {name = parts[2], interval = tonumber(parts[3]) or 1, pack = tonumber(parts[4]) or 1, sides = sides, enemies = enemies, events = events, boss = parts[8] == "boss"}
                 elseif key == "module_stat" then
                     local parts = cfgSplit(value, "|")
                     cfg.moduleStats[parts[1]] = {id = parts[1], label = parts[2], min = tonumber(parts[3]) or 0, max = tonumber(parts[4]) or 0, format = parts[5] or "percent"}
@@ -70,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.35"
+local VERSION = "v2026.05.23.37"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -180,17 +212,77 @@ local C = {
     bgB = {0.090, 0.045, 0.125},
     panel = {0.035, 0.040, 0.085, 0.84},
     line = {0.70, 0.76, 1.00, 0.16},
-    white = {0.94, 0.96, 1.00},
-    muted = {0.58, 0.64, 0.78},
-    pink = {1.00, 0.25, 0.50},
-    cyan = {0.25, 0.82, 1.00},
-    gold = {1.00, 0.73, 0.25},
-    red = {1.00, 0.18, 0.25},
-    green = {0.30, 0.92, 0.55},
-    purple = {0.62, 0.35, 1.00},
-    orange = {1.00, 0.45, 0.18},
-    ice = {0.60, 0.90, 1.00}
+    white = {0.90, 0.92, 0.96},
+    muted = {0.68, 0.72, 0.80},
+    pink = {0.88, 0.48, 0.60},
+    cyan = {0.48, 0.72, 0.80},
+    gold = {0.88, 0.70, 0.42},
+    red = {0.90, 0.34, 0.36},
+    green = {0.48, 0.72, 0.54},
+    purple = {0.62, 0.54, 0.76},
+    orange = {0.86, 0.54, 0.36},
+    ice = {0.66, 0.78, 0.86}
 }
+
+local weaponDefs
+local enemyDefs
+
+function cfgColor(name, fallback)
+    return (C and C[name]) or fallback or C.white
+end
+
+function applyConfiguredWeapons()
+    if not (Balance.weaponDefs and next(Balance.weaponDefs)) then return end
+    for id, cfg in pairs(Balance.weaponDefs) do
+        local def = weaponDefs[id]
+        if def then
+            for _, key in ipairs({"name", "brand", "element", "price", "damage", "cooldown", "speed", "count", "spread", "range"}) do
+                if cfg[key] ~= nil then def[key] = cfg[key] end
+            end
+            if cfg.extra then for k, v in pairs(cfg.extra) do def[k] = v end end
+        end
+    end
+end
+
+function applyConfiguredEnemies()
+    if not (Balance.enemyDefs and next(Balance.enemyDefs)) then return end
+    for id, cfg in pairs(Balance.enemyDefs) do
+        local def = enemyDefs[id]
+        if def then
+            for _, key in ipairs({"name", "sprite", "defense", "hp", "shield", "shieldRegen", "speed", "damage", "r", "armor", "xp", "coin", "behavior"}) do
+                if cfg[key] ~= nil then def[key] = cfg[key] end
+            end
+            def.color = cfgColor(cfg.color, def.color)
+            if cfg.flags then for k, v in pairs(cfg.flags) do def[k] = v end end
+        end
+    end
+end
+
+function configuredSlotSymbols(defaults)
+    if not (Balance.slotSymbols and #Balance.slotSymbols > 0) then return defaults end
+    local out = {}
+    for _, s in ipairs(Balance.slotSymbols) do
+        out[#out + 1] = {id = s.id, name = s.name, mark = s.mark, color = cfgColor(s.color, C.white), weight = s.weight or 1}
+    end
+    return out
+end
+
+function configuredWavePlans(defaults)
+    if not (Balance.wavePlans and #Balance.wavePlans > 0) then return defaults end
+    local out = {}
+    for _, plan in ipairs(Balance.wavePlans) do
+        out[#out + 1] = {
+            name = plan.name,
+            interval = plan.interval,
+            pack = plan.pack,
+            sides = (#plan.sides > 0) and plan.sides or {"left", "right", "top", "bottom"},
+            enemies = (#plan.enemies > 0) and plan.enemies or {{"drifter", 1}},
+            events = plan.events or {},
+            boss = plan.boss
+        }
+    end
+    return out
+end
 
 local elements = {
     kinetic = {name = "动能", color = C.white, desc = "直接伤害"},
@@ -209,7 +301,7 @@ local brands = {
     blackbox = {name = "黑箱", color = C.purple, tag = "异常代价"}
 }
 
-local weaponDefs = {
+weaponDefs = {
     needle = {
         id = "needle", projectileSprite = "projectile_star_needle",
         name = "星针", brand = "starforge", element = "kinetic", price = 22,
@@ -249,6 +341,8 @@ local weaponDefs = {
     }
 }
 
+applyConfiguredWeapons()
+
 local itemPool = {
     {name = "校准透镜", kind = "item", rarity = "rare", price = 18, desc = "伤害 +10%，暴击 +4%", apply = function(p) p.stats.damage = p.stats.damage + 0.10; p.stats.crit = p.stats.crit + 0.04 end},
     {name = "脉冲节拍器", kind = "item", rarity = "rare", price = 20, desc = "射速 +14%，伤害 -4%", apply = function(p) p.stats.fireRate = p.stats.fireRate + 0.14; p.stats.damage = p.stats.damage - 0.04 end},
@@ -279,7 +373,7 @@ local tempItemPool = {
     {name = "过载保险", kind = "temp", rarity = "epic", price = 30, desc = "下一波射速 +22%，护盾回复 -20%", buff = {fireRate = 0.22, shieldRegenMult = -0.20}}
 }
 
-local enemyDefs = {
+enemyDefs = {
     drifter = {name = "漂移噪声", sprite = "enemy_drifter", defense = "flesh", hp = 18, speed = 78, damage = 9, r = 14, color = C.red, xp = 3, coin = 2, behavior = "chase"},
     splinter = {name = "裂片", sprite = "enemy_splinter", defense = "flesh", hp = 12, speed = 130, damage = 7, r = 10, color = C.orange, xp = 2, coin = 1, behavior = "charger"},
     shell = {name = "壳层记忆", sprite = "enemy_shell", defense = "armor", hp = 44, speed = 50, damage = 13, r = 20, color = C.green, armor = 3, xp = 5, coin = 4, behavior = "guard"},
@@ -291,7 +385,9 @@ local enemyDefs = {
     boss = {name = "裂心机核", sprite = "boss_heartbreak", defense = "armor", hp = 1900, shield = 260, shieldRegen = 1.2, speed = 48, damage = 24, r = 46, color = C.pink, armor = 2, xp = 80, coin = 60, boss = true, behavior = "boss"}
 }
 
-local wavePlans = {
+applyConfiguredEnemies()
+
+local wavePlans = configuredWavePlans({
     {name = "裂片试探", interval = 1.10, pack = 1, sides = {"left", "right"}, enemies = {{"splinter", 70}, {"drifter", 30}}},
     {name = "双翼骚扰", interval = 1.02, pack = 2, sides = {"left", "right", "top"}, enemies = {{"splinter", 47}, {"drifter", 35}, {"rammer", 5}, {"wisp", 10}, {"treasure", 3}}},
     {name = "电弧乱流", interval = 0.92, pack = 2, sides = {"top", "right", "left"}, enemies = {{"splinter", 34}, {"drifter", 27}, {"rammer", 7}, {"wisp", 26}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 18, enemy = "elite", side = "right", toast = "精英信号：右侧突破"}}},
@@ -302,7 +398,7 @@ local wavePlans = {
     {name = "四面噪声", interval = 0.64, pack = 4, sides = {"left", "right", "top", "bottom"}, enemies = {{"splinter", 23}, {"drifter", 24}, {"rammer", 10}, {"wisp", 23}, {"shell", 17}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 10, enemy = "elite", side = "top"}, {time = 25, enemy = "elite", side = "bottom"}}},
     {name = "核心前夜", interval = 0.58, pack = 4, sides = {"right", "left", "top", "bottom"}, enemies = {{"splinter", 20}, {"drifter", 24}, {"rammer", 10}, {"wisp", 25}, {"shell", 18}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 9, enemy = "elite", side = "left"}, {time = 21, enemy = "elite", side = "right"}}},
     {name = "裂心机核", interval = 0.95, pack = 2, sides = {"left", "right", "top", "bottom"}, boss = true, enemies = {{"splinter", 23}, {"drifter", 22}, {"rammer", 8}, {"wisp", 23}, {"shell", 18}, {"bomber", 3}, {"treasure", 3}}, events = {{time = 0.2, enemy = "boss", side = "right", toast = "Boss：裂心机核接入"}, {time = 20, enemy = "elite", side = "left"}, {time = 40, enemy = "elite", side = "right"}}}
-}
+})
 
 local function wavePlanAt(wave)
     local safeWave = math.max(1, wave or 1)
@@ -510,10 +606,10 @@ local function selectedCharacter() return basePlayerDef end
 local function selectedObjective() return objectiveDefs[Game.selectedObjective] or objectiveDefs[1] end
 
 local rarityColor = {
-    common = {0.82, 0.86, 0.94},
-    rare = {0.25, 0.66, 1.00},
-    epic = {0.74, 0.40, 1.00},
-    legend = {1.00, 0.62, 0.16}
+    common = {0.70, 0.74, 0.82},
+    rare = {0.48, 0.72, 0.80},
+    epic = {0.62, 0.54, 0.76},
+    legend = {0.88, 0.70, 0.42}
 }
 
 local rarityLabel = {common = "普通", rare = "稀有", epic = "史诗", legend = "传说"}
@@ -1461,8 +1557,8 @@ end
 
 local function randomSupportShopItem()
     local roll = rnd()
-    if roll < 0.34 then return makeShieldItem() end
-    if roll < 0.58 then return makeTempItem() end
+    if roll < (Balance.shop_support_shield_chance or 0.34) then return makeShieldItem() end
+    if roll < (Balance.shop_support_temp_chance or 0.58) then return makeTempItem() end
     return makeStatItem()
 end
 
@@ -1471,7 +1567,7 @@ local function randomShopItem()
 end
 
 local function randomShopItemForSlot(i)
-    return i <= 3 and randomWeaponShopItem() or randomSupportShopItem()
+    return i <= (Balance.shop_weapon_slots or 3) and randomWeaponShopItem() or randomSupportShopItem()
 end
 
 local function preferredSlotRangeForItem(item)
@@ -1502,7 +1598,7 @@ end
 
 local addCoins
 
-local slotSymbols = {
+local slotSymbols = configuredSlotSymbols({
     {id = "coin", name = "材料", mark = "◆", color = C.gold, weight = 28},
     {id = "weapon", name = "武器", mark = "⚙", color = C.cyan, weight = 18},
     {id = "temp", name = "战术", mark = "战", color = C.purple, weight = 18},
@@ -1510,7 +1606,7 @@ local slotSymbols = {
     {id = "heal", name = "修复", mark = "❤", color = C.pink, weight = 14},
     {id = "blackbox", name = "黑箱", mark = "箱", color = C.purple, weight = 8},
     {id = "rare", name = "稀有", mark = "稀", color = C.orange, weight = 6}
-}
+})
 
 local function clearedWaveCount()
     if Game.state == "shop" or Game.state == "levelup" then return math.max(0, Game.wave - 1) end
@@ -1519,7 +1615,7 @@ end
 
 local function clearRewardForWave(wave)
     local safeWave = math.max(1, wave or 1)
-    return 12 + math.floor(safeWave * 1.5) + Game.danger * 2
+    return (Balance.clear_reward_base or 12) + math.floor(safeWave * (Balance.clear_reward_wave_step or 1.5)) + Game.danger * (Balance.clear_reward_danger_step or 2)
 end
 
 local function shopBudgetHint()
@@ -1544,7 +1640,7 @@ local function slotHasFreeUse()
 end
 
 local function slotSpinCost()
-    return 14 + slotMilestone() * 2 + (Game.slotPaidSpins or 0) * 4
+    return (Balance.slot_spin_base or 14) + slotMilestone() * (Balance.slot_spin_wave_step or 2) + (Game.slotPaidSpins or 0) * (Balance.slot_spin_paid_step or 4)
 end
 
 local function rollSlotSymbol()
@@ -2639,7 +2735,7 @@ function love.load()
     love.graphics.setDefaultFilter("nearest", "nearest")
     love.math.setRandomSeed(os.time())
     Game.w, Game.h = VIRTUAL_W, VIRTUAL_H
-    Game.fonts = {tiny = uiFont(18), subtitle = uiFont(22), small = uiFont(24), normal = uiFont(31), big = uiFont(50), title = uiFont(84)}
+    Game.fonts = {tiny = uiFont(19), subtitle = uiFont(22), small = uiFont(24), normal = uiFont(31), big = uiFont(50), title = uiFont(84)}
     loadImages()
     Game.sounds = {
         pickup = loadSound("assets/sfx/ui_select.ogg", 880, 0.06, 0.18),
@@ -2972,15 +3068,16 @@ local function drawHud()
     love.graphics.setLineWidth(1)
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf(bossMode and "关底目标" or "剩余生存", timerX, timerY + 8, timerW, "center")
+    love.graphics.printf(bossMode and "关底" or "剩余生存", timerX, timerY + 8, timerW, "center")
     love.graphics.setFont(Game.fonts.big)
     color(C.white)
     love.graphics.printf(bossMode and "BOSS" or string.format("%02d", math.max(0, math.ceil(Game.waveTime))), timerX, timerY + 24, timerW, "center")
 
-    drawCapsule(chapterWaveLabel(Game.wave), midX - 252, hudY + 22, 130, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.18})
-    drawCapsule(plan.name or "生存波次", midX - 252, hudY + 58, 130, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.26, borderAlpha = 0.12})
-    drawCapsule(Game.objectiveText or selectedObjective().name, midX + 122, hudY + 22, 162, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.20})
-    drawCapsule(survivalPhaseName() .. " · 危险 " .. Game.danger, midX + 122, hudY + 58, 162, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.26, borderAlpha = 0.12})
+    drawCapsule(chapterWaveLabel(Game.wave), midX - 252, hudY + 22, 130, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.16})
+    drawCapsule(plan.name or "生存波次", midX - 252, hudY + 58, 130, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.18, borderAlpha = 0.10})
+    local objectiveText = bossMode and (Game.bossDefeated and "Boss 已击破" or "击破 Boss") or (Game.objectiveText or selectedObjective().name)
+    drawCapsule(objectiveText, midX + 122, hudY + 22, 162, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.16})
+    drawCapsule("危险 " .. Game.danger .. " · " .. survivalPhaseName(), midX + 122, hudY + 58, 162, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.18, borderAlpha = 0.10})
 
     -- 右：即时操作/威胁。长说明留给商店情报，战斗中别念小作文。
     local rx, rw = Game.w - 430, 392
@@ -3470,23 +3567,29 @@ local function centeredText(text, x, y, w, h, font, c, align)
     textInBox(text, x, y, w, h, font, c, align or "center")
 end
 
-local function tagPill(text, x, y, bg, fg, maxW)
+local function tagPill(text, x, y, bg, fg, maxW, primary)
     local font = Game.fonts.tiny
-    local tw = math.max(50, font:getWidth(text) + 24)
+    local tw = math.max(primary and 54 or 46, font:getWidth(text) + (primary and 24 or 18))
     if maxW then tw = math.min(tw, maxW) end
     local th = 24
-    color(bg, 0.92)
+    color(bg, primary and 0.88 or 0.12)
     love.graphics.rectangle("fill", x, y, tw, th, 8, 8)
-    centeredText(text, x, y, tw, th, font, fg or C.bgA, "center")
+    color(bg, primary and 0.74 or 0.34)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, tw - 1, th - 1, 8, 8)
+    centeredText(text, x, y, tw, th, font, fg or (primary and C.bgA or C.muted), "center")
     return tw
 end
 
 local function drawTagRow(tags, x, y, maxW)
     local cursor = x
-    for _, tag in ipairs(tags) do
+    for i, tag in ipairs(tags) do
+        if i > 3 then break end
         local remain = maxW - (cursor - x)
-        if remain < 48 then break end
-        cursor = cursor + tagPill(tag.text, cursor, y, tag.color or C.white, tag.fg or C.bgA, remain) + 6
+        if remain < 42 then break end
+        local primary = tag.primary == true or i == 1
+        local bg = primary and (tag.color or C.gold) or C.white
+        local fg = primary and (tag.fg or C.bgA) or (tag.fg or C.muted)
+        cursor = cursor + tagPill(tag.text, cursor, y, bg, fg, remain, primary) + 6
     end
     return cursor - x
 end
@@ -3879,18 +3982,19 @@ local function drawShopCard(item, i, x, y, w, h)
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
-        local elem = elements[def.element]
         cardTags = {
-            {text = rarityText, color = rc},
-            {text = kindText, color = accent},
-            {text = brand and brand.name or "武器", color = brand and brand.color or C.white},
-            {text = elem and elem.name or "动能", color = elem and elem.color or C.white}
+            {text = rarityText, color = rc, primary = true},
+            {text = kindText, color = C.white},
+            {text = brand and brand.name or "武器", color = C.white}
         }
     else
-        cardTags = {{text = kindText, color = accent}}
+        local focus = item.mergeKey and ((item.mergeKey:gsub("_core", "")):gsub("_", " ")) or itemLevelText(item)
+        cardTags = {
+            {text = rarityText, color = rc, primary = true},
+            {text = kindText, color = C.white},
+            {text = itemRecommendationReason(item) and "推荐" or itemLevelText(item), color = C.white}
+        }
     end
-    if item.kind ~= "weapon" then cardTags[#cardTags + 1] = {text = itemLevelText(item), color = C.gold} end
-    if itemRecommendationReason(item) then cardTags[#cardTags + 1] = {text = "推荐", color = C.gold} end
     love.graphics.setFont(Game.fonts.tiny)
     drawTagRow(cardTags, x + 18, y + 13, w - 82)
     local topLockX, topLockY, topLockW, topLockH = x + w - 58, y + 10, 40, 30
@@ -4324,11 +4428,11 @@ local function drawNextWavePanel(x, y, w, h)
         local def = enemyDefs[key]
         if def and i <= 6 then
             local chance = total > 0 and math.floor(weight / total * 100 + 0.5) or weight
-            color(def.color, 0.16)
+            color(def.color, 0.07)
             love.graphics.rectangle("fill", x + 24, rowY, w - 48, 22, 7, 7)
-            color(def.color)
+            color(def.color, 0.78)
             love.graphics.printf(def.name, x + 36, rowY + 5, 112, "left")
-            color(C.muted)
+            color(C.white, 0.82)
             love.graphics.printf(chance .. "% · " .. defenseText(def) .. " · " .. (def.behavior or "追击") .. " · 伤害 " .. def.damage, x + 156, rowY + 5, w - 196, "left")
             rowY = rowY + 26
         end
