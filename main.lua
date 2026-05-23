@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.23.01"
+local VERSION = "v2026.05.23.02"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -378,10 +378,10 @@ local basePlayerDef = {
 
 local characterDefs = {basePlayerDef}
 
-local SURVIVAL_DURATION = 600
+local SURVIVAL_DURATION = 30
 
 local objectiveDefs = {
-    {name = "生存模式", desc = "生存 60 秒，撑到计时结束", mode = "survive"}
+    {name = "生存模式", desc = "每小关生存 30 秒，撑到计时结束", mode = "survive"}
 }
 
 local levelRewardPool = {
@@ -1284,10 +1284,10 @@ local function spinSlotMachine()
 end
 
 sideObjectiveDefs = {
-    {id = "kill", name = "猎杀指标", desc = "击杀 120 个敌人", target = 120, reward = function() Game.freeRefresh = (Game.freeRefresh or 0) + 1; return "免费刷新 +1" end},
+    {id = "kill", name = "猎杀指标", desc = "击杀 22 个敌人", target = 22, reward = function() Game.freeRefresh = (Game.freeRefresh or 0) + 1; return "免费刷新 +1" end},
     {id = "treasure", name = "回收信标", desc = "击毁 1 个宝藏信标", target = 1, reward = function() addCoins(24, "objective"); return "材料 +24" end},
     {id = "elite", name = "斩首行动", desc = "击杀 1 个精英", target = 1, reward = function() addCoins(32, "objective"); return "材料 +32" end},
-    {id = "nohit", name = "无伤窗口", desc = "连续 45 秒不受击", target = 45, reward = function() Game.player.maxShield = Game.player.maxShield + 16; Game.player.shield = math.min(Game.player.maxShield, Game.player.shield + 16); return "护盾上限 +16" end}
+    {id = "nohit", name = "无伤窗口", desc = "连续 10 秒不受击", target = 10, reward = function() Game.player.maxShield = Game.player.maxShield + 16; Game.player.shield = math.min(Game.player.maxShield, Game.player.shield + 16); return "护盾上限 +16" end}
 }
 
 function rollSideObjective()
@@ -1326,17 +1326,17 @@ function addObjectiveProgress(kind, amount)
 end
 
 dynamicEventPool = {
-    {id = "ambush", name = "侧翼伏击", time = 110, run = function()
+    {id = "ambush", name = "侧翼伏击", time = 8, run = function()
         local side = ({"left", "right", "top", "bottom"})[rnd(1, 4)]
         for _ = 1, 6 + Game.danger do spawnEnemy(enemyDefs.splinter, {side = side, scale = 1.05}) end
         toast("随机事件：" .. side .. " 侧伏击")
     end},
-    {id = "treasure", name = "宝藏空投", time = 255, run = function()
+    {id = "treasure", name = "宝藏空投", time = 16, run = function()
         spawnEnemy(enemyDefs.treasure, {side = "top", scale = 1.10})
         for _ = 1, 3 do spawnEnemy(enemyDefs.drifter, {side = "top", scale = 1.05}) end
         toast("随机事件：宝藏信标带护卫出现")
     end},
-    {id = "elite", name = "精英改造", time = 430, run = function()
+    {id = "elite", name = "精英改造", time = 24, run = function()
         local side = ({"left", "right", "bottom"})[rnd(1, 3)]
         spawnEnemy(enemyDefs.elite, {side = side, scale = 0.92 + Game.danger * 0.03})
         toast("随机事件：改造精英接入")
@@ -1369,7 +1369,7 @@ local function startWave()
     Game.sideObjective = rollSideObjective()
     Game.waveStartKills = Game.kills
     Game.objectiveProgress = 0
-    Game.objectiveText = "生存 10分钟"
+    Game.objectiveText = "生存 " .. SURVIVAL_DURATION .. "秒"
     Game.enemies, Game.bullets, Game.pickups = {}, {}, {}
     Game.enemyShots, Game.fireZones = {}, {}
     Game.pendingRewardNextState = nil
@@ -2721,7 +2721,7 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.subtitle or Game.fonts.small)
     color(C.cyan, 0.78)
-    love.graphics.printf("10分钟生存 · 自动射击 · 随机事件压迫", 0, 126, w, "center")
+    love.graphics.printf("30秒小关 · 自动射击 · 随机事件压迫", 0, 126, w, "center")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted, 0.70)
     love.graphics.printf("撑住倒计时，收集材料，把一台白板机体养成怪物。", 0, 156, w, "center")
@@ -2749,7 +2749,7 @@ local function drawMenu()
     drawHeart(cx, cy + 5, 1.22)
     love.graphics.setFont(Game.fonts.normal)
     color(C.white)
-    love.graphics.printf("活过 10 分钟，然后嘲笑废铁", cx - 300, cy + 160, 600, "center")
+    love.graphics.printf("活过 30 秒，然后嘲笑废铁", cx - 300, cy + 160, 600, "center")
 
     local deckX, deckY, deckW, deckH = 90, h - 168, w - 180, 126
     love.graphics.setColor(0.012, 0.016, 0.040, 0.78)
@@ -2778,7 +2778,7 @@ local function drawMenu()
     -- 首页不再提供模式切换，只保留生存模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("目标：单局约 10 分钟；敌群会按时间逐步升压。", deckX + 28, deckY + 96, 500, "left")
+    love.graphics.printf("目标：每小关 30 秒；敌群会按时间逐步升压。", deckX + 28, deckY + 96, 500, "left")
     uiButton("Q  降低", deckX + deckW - 220, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
     uiButton("E  提高", deckX + deckW - 112, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
 end
@@ -3643,7 +3643,7 @@ local function drawNextWavePanel(x, y, w, h)
     love.graphics.printf(chapterWaveLabel(Game.wave) .. " · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("单局 10 分钟 · 敌群按时间升压 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
+    love.graphics.printf("每小关 30 秒 · 敌群按时间升压 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
 
     local pillW = (w - 62) / 2
     if protocol then tip = drawAffixInfoPill(protocol, "协议", x + 24, y + 122, pillW, 58, mx, my) or tip end
