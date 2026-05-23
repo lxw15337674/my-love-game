@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.23.08"
+local VERSION = "v2026.05.23.16"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -668,23 +668,32 @@ local function weightedEnemy(plan)
     return enemyDefs.splinter
 end
 
-local function spawnPoint(side)
-    local marginTop, marginBottom = 160, 92
-    if side == "left" then return -58, rnd(marginTop, Game.h - marginBottom) end
-    if side == "right" then return Game.w + 58, rnd(marginTop, Game.h - marginBottom) end
-    if side == "top" then return rnd(120, Game.w - 120), -58 end
-    if side == "bottom" then return rnd(120, Game.w - 120), Game.h + 58 end
+local function spawnPoint(side, radius)
+    -- 生成必须在界面外，随后自然入场；入场后才被边界锁住。
+    local marginTop, marginBottom = 170, 82
+    local r = (radius or 18) + 34
+    if side == "left" then return -r, rnd(marginTop, Game.h - marginBottom) end
+    if side == "right" then return Game.w + r, rnd(marginTop, Game.h - marginBottom) end
+    if side == "top" then return rnd(120, Game.w - 120), -r end
+    if side == "bottom" then return rnd(120, Game.w - 120), Game.h + r end
     local n = rnd(1, 4)
-    if n == 1 then return spawnPoint("left") elseif n == 2 then return spawnPoint("right") elseif n == 3 then return spawnPoint("top") end
-    return spawnPoint("bottom")
+    if n == 1 then return spawnPoint("left", radius) elseif n == 2 then return spawnPoint("right", radius) elseif n == 3 then return spawnPoint("top", radius) end
+    return spawnPoint("bottom", radius)
 end
 
 local function pickSpawnSide(plan)
     local sides = plan and plan.sides or {"left", "right", "top", "bottom"}
     return sides[rnd(1, #sides)]
 end
-local function enemyArenaBounds(e)
-    local r = (e and e.r or 14) + 6
+function enemyVisualRadius(e)
+    local r = e and e.r or 14
+    if e and e.boss then return r * 2.35 + 10 end
+    if e and e.elite then return r * 2.10 + 8 end
+    return r + 14
+end
+
+function enemyArenaBounds(e)
+    local r = enemyVisualRadius(e)
     return r, 150 + r, Game.w - r, Game.h - 62 - r
 end
 
@@ -707,10 +716,11 @@ function runProgress()
 end
 
 function difficultyProgress()
-    -- 平均 10 分钟目标不是硬时长；小关压力按波次线性变难。
+    -- 第一大关是养成段；第二大关开始按小关线性加压。
     -- 第 20 小关约等于平均 10 分钟压力目标，30 小关继续进入高手挑战段。
-    local waveLinear = ((Game.wave or 1) - 1 + survivalProgress()) / math.max(1, AVERAGE_RUN_TARGET_WAVE)
-    return clamp(waveLinear, 0, 1.45)
+    local pressureWave = math.max(0, ((Game.wave or 1) - CHAPTER_SIZE - 1) + survivalProgress())
+    local pressureSpan = math.max(1, AVERAGE_RUN_TARGET_WAVE - CHAPTER_SIZE)
+    return clamp(pressureWave / pressureSpan, 0, 1.45)
 end
 
 function chapterGatePressure()
@@ -750,7 +760,7 @@ local function spawnEnemy(def, opts)
     opts = opts or {}
     local plan = currentWavePlan()
     def = def or weightedEnemy(plan)
-    local x, y = spawnPoint(opts.side or pickSpawnSide(plan))
+    local x, y = spawnPoint(opts.side or pickSpawnSide(plan), def.r)
     local bonus = currentAffixBonuses()
     local curve = survivalEnemyCurve()
     local dangerScale = 1 + Game.danger * 0.08
@@ -768,10 +778,6 @@ local function spawnEnemy(def, opts)
         burn = 0, slow = 0, corrosion = 0, lastHit = 0
     }
     local spawned = Game.enemies[#Game.enemies]
-    if def.boss or def.elite then
-        spawned.enteredArena = true
-        markAndClampEnemyArena(spawned)
-    end
     if def.boss then
         toast("Boss 接入：" .. def.name)
         addText(Game.w / 2 - 46, 154, "Boss", C.red)
@@ -1711,10 +1717,13 @@ local function fireProjectile(w, target, angle)
         vy = vy + math.sin(angle + math.pi / 2) * 95
     end
     if w.voidSlow or w.heavy or w.overloadTax then p.waveVoidSlowTimer = math.max(p.waveVoidSlowTimer or 0, w.voidSlow and 0.9 or 0.35) end
+    local bulletRange = w.range * p.stats.range
+    local baseSpeed = math.sqrt(vx * vx + vy * vy)
+    local bulletLife = w.aura and 4.2 or clamp(bulletRange / math.max(180, baseSpeed) + 0.9, 1.2, 4.8)
     Game.bullets[#Game.bullets + 1] = {
         x = p.x, y = p.y, vx = vx, vy = vy,
-        r = w.splash and 7 or 4, damage = dmg, element = elem, range = w.range * p.stats.range,
-        traveled = 0, pierce = pierce, bounce = (w.bounce or 0) + p.stats.bounce,
+        r = w.splash and 7 or 4, damage = dmg, element = elem, range = bulletRange,
+        traveled = 0, life = bulletLife, pierce = pierce, bounce = (w.bounce or 0) + p.stats.bounce,
         splash = w.splash, aura = w.aura, color = elements[elem].color, sprite = w.projectileSprite, crit = crit, target = target, source = w.name, brand = w.brand,
         sparkSplit = w.sparkSplit, echoRamp = w.echoRamp, hiveSplit = w.hiveSplit, fireSplash = w.fireSplash,
         executeLowHp = w.executeLowHp, shieldDamageBonus = w.shieldDamageBonus, armorDamageBonus = w.armorDamageBonus,
@@ -1803,9 +1812,10 @@ local function updateBullets(dt)
                 end
             end
         end
+        b.life = (b.life or 3.0) - dt
         b.x, b.y = b.x + b.vx * dt, b.y + b.vy * dt
         b.traveled = b.traveled + math.sqrt(b.vx * b.vx + b.vy * b.vy) * dt
-        local remove = b.traveled > b.range
+        local remove = b.traveled > b.range or b.life <= 0 or b.x < -120 or b.x > Game.w + 120 or b.y < -120 or b.y > Game.h + 120
         for _, e in ipairs(Game.enemies) do
             if not remove and distance(b.x, b.y, e.x, e.y) < b.r + e.r then
                 local hitDamage = b.damage
@@ -1970,6 +1980,17 @@ local function updateAutoArc(dt)
     end
 end
 
+local function randomWanderAngle(e, dt, minTime, maxTime, fallbackAngle)
+    e.wanderTimer = (e.wanderTimer or 0) - dt
+    if e.wanderTimer <= 0 then
+        e.wanderTimer = randf(minTime or 0.65, maxTime or 1.45)
+        e.wanderAngle = rnd() * TAU
+    end
+    -- 屏幕外生成时先自然入场；进入战斗区域后才完全随机游走。
+    if not e.enteredArena then return fallbackAngle end
+    return e.wanderAngle or fallbackAngle
+end
+
 local function updateEnemies(dt)
     local p = Game.player
     for i = #Game.enemies, 1, -1 do
@@ -1986,31 +2007,16 @@ local function updateEnemies(dt)
         local moveAngle = a
         local behavior = e.behavior or "chase"
         if behavior == "treasure" then
-            e.wanderTimer = (e.wanderTimer or 0) - dt
-            if e.wanderTimer <= 0 then
-                e.wanderTimer = randf(0.55, 1.35)
-                e.wanderAngle = rnd() * TAU
-            end
-            moveAngle = distToPlayer < 360 and (a + math.pi) or (e.wanderAngle or a)
-            spd = spd * (distToPlayer < 360 and 1.35 or 0.82)
+            moveAngle = randomWanderAngle(e, dt, 0.55, 1.35, a)
+            spd = spd * (e.enteredArena and 0.82 or 1.0)
         elseif behavior == "shooter" then
             e.shootTimer = (e.shootTimer or 0) - dt
             if distToPlayer < 560 and e.shootTimer <= 0 then
                 fireEnemyShot(e, a)
                 e.shootTimer = 1.65
             end
-            e.wanderTimer = (e.wanderTimer or 0) - dt
-            if e.wanderTimer <= 0 then
-                e.wanderTimer = randf(0.65, 1.45)
-                e.wanderAngle = a + (rnd() < 0.5 and 1 or -1) * randf(1.25, 1.85)
-            end
-            if distToPlayer < 330 then
-                moveAngle = a + math.pi
-                spd = spd * 0.95
-            else
-                moveAngle = e.wanderAngle or a
-                spd = spd * 0.36
-            end
+            moveAngle = randomWanderAngle(e, dt, 0.65, 1.45, a)
+            spd = spd * (e.enteredArena and 0.46 or 0.90)
         elseif behavior == "bomber" then
             e.shootTimer = (e.shootTimer or 0) - dt
             if distToPlayer < 620 and e.shootTimer <= 0 then
@@ -2019,15 +2025,8 @@ local function updateEnemies(dt)
                 throwFireBomb(e, clamp(leadX, 70, Game.w - 70), clamp(leadY, 150, Game.h - 70))
                 e.shootTimer = randf(2.2, 3.2)
             end
-            if distToPlayer < 360 then
-                moveAngle = a + math.pi
-                spd = spd * 0.78
-            else
-                e.wanderTimer = (e.wanderTimer or 0) - dt
-                if e.wanderTimer <= 0 then e.wanderTimer = randf(0.8, 1.6); e.wanderAngle = a + (rnd() < 0.5 and 1 or -1) * randf(1.1, 1.7) end
-                moveAngle = e.wanderAngle or a
-                spd = spd * 0.30
-            end
+            moveAngle = randomWanderAngle(e, dt, 0.80, 1.60, a)
+            spd = spd * (e.enteredArena and 0.40 or 0.82)
         elseif behavior == "charger" then
             e.dashTimer = (e.dashTimer or 0) - dt
             if e.dashTimer <= 0 and distToPlayer < 360 then
@@ -2047,6 +2046,7 @@ local function updateEnemies(dt)
                 e.shootTimer = 1.25
             end
         end
+        if not e.enteredArena then spd = spd * (e.boss and 3.4 or (e.elite and 2.5 or 1.7)) end
         e.x = e.x + math.cos(moveAngle) * spd * dt
         e.y = e.y + math.sin(moveAngle) * spd * dt
         markAndClampEnemyArena(e)
@@ -2668,11 +2668,13 @@ local function drawWorld()
         if e.boss or e.elite or e.behavior == "shooter" or e.behavior == "bomber" then
             local tag = e.boss and "BOSS" or (e.elite and "精英" or (e.behavior == "bomber" and "火力" or "远程"))
             local tagW = e.boss and 74 or 52
+            local tagX = clamp(e.x - tagW / 2, 46, Game.w - tagW - 46)
+            local tagY = clamp(e.y - e.r - 34, 156, Game.h - 96)
             color(e.color, 0.82)
-            love.graphics.rectangle("fill", e.x - tagW / 2, e.y - e.r - 34, tagW, 20, 6, 6)
+            love.graphics.rectangle("fill", tagX, tagY, tagW, 20, 6, 6)
             color(C.bgA, 0.92)
             love.graphics.setFont(Game.fonts.tiny)
-            love.graphics.printf(tag, e.x - tagW / 2, e.y - e.r - 30, tagW, "center")
+            love.graphics.printf(tag, tagX, tagY + 4, tagW, "center")
         end
         local size = e.boss and e.r * 3.55 or math.max(62, e.r * 5.20)
         if not drawSprite(e.sprite, e.x, e.y, size, 0, 0.96) then
@@ -2688,7 +2690,9 @@ local function drawWorld()
         if e.hp < e.maxHp then
             local bw = e.boss and e.r * 3.0 or e.r * 2.55
             local bh = e.boss and 8 or 6
-            bar(e.x - bw / 2, e.y - e.r - 16, bw, bh, e.hp / e.maxHp, C.red)
+            local barX = clamp(e.x - bw / 2, 46, Game.w - bw - 46)
+            local barY = clamp(e.y - e.r - 16, 178, Game.h - 82)
+            bar(barX, barY, bw, bh, e.hp / e.maxHp, C.red)
         end
     end
 
@@ -2841,7 +2845,7 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.subtitle or Game.fonts.small)
     color(C.cyan, 0.78)
-    love.graphics.printf("6大关30小关 · 线性变难+关底升压", 0, 126, w, "center")
+    love.graphics.printf("6大关30小关 · 首关养成 · 二关升压", 0, 126, w, "center")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted, 0.70)
     love.graphics.printf("撑住倒计时，收集材料，把一台白板机体养成怪物。", 0, 156, w, "center")
@@ -2898,56 +2902,76 @@ local function drawMenu()
     -- 首页不再提供模式切换，只保留生存模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("目标：逐关线性变难；每个大关末尾形成淘汰峰。", deckX + 28, deckY + 96, 500, "left")
+    love.graphics.printf("目标：第一大关养成；第二大关起线性变难，关底淘汰。", deckX + 28, deckY + 96, 500, "left")
     uiButton("Q  降低", deckX + deckW - 220, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
     uiButton("E  提高", deckX + deckW - 112, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
 end
 
+local function drawSettlementCard(title, value, x, y, w, h, accent, detail)
+    panel(x, y, w, h)
+    love.graphics.setFont(Game.fonts.tiny)
+    color(accent or C.cyan)
+    love.graphics.printf(title, x + 16, y + 14, w - 32, "left")
+    love.graphics.setFont(Game.fonts.normal)
+    color(C.white)
+    love.graphics.printf(value, x + 16, y + 42, w - 32, "left")
+    if detail then
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.muted)
+        love.graphics.printf(detail, x + 16, y + 76, w - 32, "left")
+    end
+end
+
 local function drawLevelUp()
-    love.graphics.setColor(0, 0, 0, 0.58)
+    love.graphics.setColor(0, 0, 0, 0.62)
     love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
-    panel(Game.w / 2 - 620, 145, 1240, 500)
+    panel(Game.w / 2 - 660, 110, 1320, 640)
+
     love.graphics.setFont(Game.fonts.big)
     color(C.gold)
-    love.graphics.printf("关卡完成：选择奖励", Game.w / 2 - 620, 182, 1240, "center")
+    love.graphics.printf("关卡完成", Game.w / 2 - 620, 142, 1240, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
+    love.graphics.printf("选择一个成长奖励，然后进入补给商店。数字该归位，别挤成一坨废铁账单。", Game.w / 2 - 620, 188, 1240, "center")
+
     local wr = Game.waveRewards or {}
-    local settlement = string.format(
-        "%s 结算：%s｜击杀 %d｜材料 +%d",
-        chapterWaveLabel(wr.wave or Game.wave),
-        wr.reason or "波次完成",
-        wr.kills or 0,
-        wr.coins or 0
-    )
-    love.graphics.printf(settlement, Game.w / 2 - 560, 258, 1120, "center")
-    local detail = string.format("收获 +%d｜通关奖励 +%d｜按 1 / 2 / 3 或点击卡牌选择，随后进入商店。", wr.harvest or 0, wr.clear or 0)
-    love.graphics.printf(detail, Game.w / 2 - 560, 296, 1120, "center")
+    local cardY, cardH = 232, 112
+    local cardW, gap = 278, 22
+    local sx = Game.w / 2 - (cardW * 4 + gap * 3) / 2
+    drawSettlementCard("本关", chapterWaveLabel(wr.wave or Game.wave), sx, cardY, cardW, cardH, C.gold, wr.reason or "波次完成")
+    drawSettlementCard("收益", "+" .. tostring(wr.coins or 0) .. " 材料", sx + (cardW + gap), cardY, cardW, cardH, C.cyan, "收获 +" .. tostring(wr.harvest or 0) .. " / 通关 +" .. tostring(wr.clear or 0))
+    drawSettlementCard("击杀", tostring(wr.kills or 0), sx + (cardW + gap) * 2, cardY, cardW, cardH, C.red, "当前危险 " .. tostring(Game.danger or 0))
+    drawSettlementCard("小目标", wr.objective and ("+" .. wr.objective) or "未完成", sx + (cardW + gap) * 3, cardY, cardW, cardH, wr.objective and C.gold or C.muted, Game.sideObjective and Game.sideObjective.name or "本关目标")
+
     local damageRows = {}
     for name, dmg in pairs(Game.runStats.damageByWeapon or {}) do damageRows[#damageRows + 1] = {name = name, damage = dmg} end
     table.sort(damageRows, function(a, b) return a.damage > b.damage end)
     local dmgText = {}
     for i = 1, math.min(4, #damageRows) do dmgText[#dmgText + 1] = damageRows[i].name .. " " .. math.floor(damageRows[i].damage) end
+    panel(Game.w / 2 - 570, 364, 1140, 54)
+    love.graphics.setFont(Game.fonts.tiny)
     color(C.cyan)
-    love.graphics.printf("武器伤害：" .. (#dmgText > 0 and table.concat(dmgText, " ｜ ") or "暂无"), Game.w / 2 - 560, 326, 1120, "center")
-    if wr.objective then
-        color(C.gold)
-        love.graphics.printf("小目标奖励：" .. wr.objective, Game.w / 2 - 560, 350, 1120, "center")
-    end
-    local w, h, gap = 330, 190, 34
-    local sx = Game.w / 2 - (w * 3 + gap * 2) / 2
+    love.graphics.printf("武器伤害", Game.w / 2 - 548, 376, 120, "left")
+    color(C.white)
+    love.graphics.printf(#dmgText > 0 and table.concat(dmgText, "   /   ") or "暂无", Game.w / 2 - 420, 376, 950, "left")
+
+    love.graphics.setFont(Game.fonts.normal)
+    color(C.gold)
+    love.graphics.printf("选择奖励", Game.w / 2 - 560, 446, 1120, "center")
+    local w, h, rewardGap = 330, 190, 34
+    local rewardX = Game.w / 2 - (w * 3 + rewardGap * 2) / 2
     for i, r in ipairs(Game.levelChoices) do
-        local x = sx + (i - 1) * (w + gap)
-        panel(x, 376, w, h)
+        local x = rewardX + (i - 1) * (w + rewardGap)
+        panel(x, 500, w, h)
         local rc = rarityColor[r.rarity or "rare"] or C.cyan
         color(rc, 0.95)
-        love.graphics.rectangle("fill", x, 376, w, 6, 6, 6)
+        love.graphics.rectangle("fill", x, 500, w, 6, 6, 6)
         love.graphics.setFont(Game.fonts.normal)
         color(C.white)
-        love.graphics.printf(i .. ". " .. r.name, x + 16, 408, w - 32, "center")
+        love.graphics.printf(i .. ". " .. r.name, x + 16, 532, w - 32, "center")
         love.graphics.setFont(Game.fonts.small)
         color(C.cyan)
-        love.graphics.printf(r.desc, x + 22, 474, w - 44, "center")
+        love.graphics.printf(r.desc, x + 22, 598, w - 44, "center")
     end
 end
 
@@ -3764,7 +3788,7 @@ local function drawNextWavePanel(x, y, w, h)
     love.graphics.printf(chapterWaveLabel(Game.wave) .. " · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("6 大关 30 小关 · 线性变难+关底升压 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
+    love.graphics.printf("6 大关 30 小关 · 首关养成/二关升压 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
 
     local pillW = (w - 62) / 2
     if protocol then tip = drawAffixInfoPill(protocol, "协议", x + 24, y + 122, pillW, 58, mx, my) or tip end
@@ -4258,11 +4282,11 @@ local function handlePointer(x, y)
         if hitRect(x, y, deckX + deckW - 112, deckY + 88, 94, 30) then Game.danger = math.min(6, Game.danger + 1); return true end
         if hitRect(x, y, Game.w / 2 - 140, deckY + 30, 280, 62) then resetRun(); return true end
     elseif Game.state == "levelup" then
-        local w, h, gap = 330, 210, 34
+        local w, h, gap = 330, 190, 34
         local sx = Game.w / 2 - (w * 3 + gap * 2) / 2
         for i = 1, 3 do
             local cx = sx + (i - 1) * (w + gap)
-            if hitRect(x, y, cx, 350, w, h) then chooseLevelReward(i); return true end
+            if hitRect(x, y, cx, 500, w, h) then chooseLevelReward(i); return true end
         end
     elseif Game.state == "shop" then
         local marginX = 40
