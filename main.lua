@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.42"
+local VERSION = "v2026.05.23.46"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -3265,7 +3265,8 @@ local function drawWorld()
         end
     end
 
-    if not (p.invuln > 0 and math.floor(p.invuln * 16) % 2 == 0) then
+    -- 无敌状态保持机体稳定可见；主动技能只用固定光环提示，不再用闪烁隐藏。
+    do
         local skill = p.activeSkill
         if skill and (skill.duration or 0) > 0 then
             love.graphics.setBlendMode("add")
@@ -3792,27 +3793,27 @@ local function weaponTooltip(weapon, titlePrefix, compareWeapon)
         attr("穿透", v.pierce, "pierce", true),
         attr("弹射", v.bounce, "bounce", true)
     }
-    if weapon.legendaryDesc then lines[#lines + 1] = {text = "传说机制：" .. weapon.legendaryDesc, color = C.gold, gap = 6} end
-    if weapon.parts and #weapon.parts > 0 then
-        local partNames = {}
-        for _, part in ipairs(weapon.parts) do partNames[#partNames + 1] = part.name end
-        lines[#lines + 1] = {text = "随机部件：" .. table.concat(partNames, " / "), color = C.cyan, gap = 6}
-    end
-    if weapon.affixTags and #weapon.affixTags > 0 then lines[#lines + 1] = {text = "随机词缀：" .. table.concat(weapon.affixTags, " / "), color = C.gold, gap = 6} end
+    local affixNames = {}
+    for _, part in ipairs(weapon.parts or {}) do affixNames[#affixNames + 1] = part.tag or part.name end
+    for _, tag in ipairs(weapon.affixTags or {}) do affixNames[#affixNames + 1] = tag end
+    if weapon.legendaryDesc then affixNames[#affixNames + 1] = weapon.legendaryTitle or "传说协议" end
+    if #affixNames > 0 then lines[#lines + 1] = {text = "词缀：" .. table.concat(affixNames, " / "), color = C.gold, gap = 6} end
+    local affixDetails = {}
+    if weapon.legendaryDesc then affixDetails[#affixDetails + 1] = weapon.legendaryDesc end
+    if weapon.splash then affixDetails[#affixDetails + 1] = "爆炸半径 " .. weapon.splash end
+    if weapon.chain then affixDetails[#affixDetails + 1] = "连锁 " .. (weapon.chain + (p.gear.echoOverdrive and 1 or 0)) .. " 次" end
+    if weapon.aura then affixDetails[#affixDetails + 1] = "牵引光环 " .. weapon.aura end
+    if weapon.sixthPierce then affixDetails[#affixDetails + 1] = "每第 6 发 +1 穿透" end
+    if weapon.sparkSplit then affixDetails[#affixDetails + 1] = "击杀分裂火花" end
+    if weapon.echoRamp then affixDetails[#affixDetails + 1] = "弹射后伤害递增" end
+    if weapon.voidSlow or weapon.heavy or weapon.overloadTax then affixDetails[#affixDetails + 1] = "高收益代价：开火短暂拖慢机体" end
+    if weapon.killHaste then affixDetails[#affixDetails + 1] = "击杀后短暂提高射击节奏" end
+    if weapon.executeLowHp then affixDetails[#affixDetails + 1] = "低血处刑增伤" end
+    if weapon.hiveSplit then affixDetails[#affixDetails + 1] = "击杀后虫群分裂" end
+    if weapon.arcMark then affixDetails[#affixDetails + 1] = "连锁叠电痕并爆电" end
+    if weapon.voidCollapse then affixDetails[#affixDetails + 1] = "虚空光环周期坍缩" end
+    if #affixDetails > 0 then lines[#lines + 1] = {text = "词缀说明：" .. table.concat(affixDetails, " / "), color = C.white, gap = 6} end
     if compareWeapon then lines[#lines + 1] = {text = "对比对象：当前装备的「" .. (compareWeapon.name or "武器") .. "」", color = C.gold, gap = 6} end
-    if weapon.splash then lines[#lines + 1] = {text = "特殊：爆炸半径 " .. weapon.splash, color = C.gold, gap = 6} end
-    if weapon.chain then lines[#lines + 1] = {text = "特殊：连锁 " .. (weapon.chain + (p.gear.echoOverdrive and 1 or 0)) .. " 次", color = C.gold, gap = 6} end
-    if weapon.aura then lines[#lines + 1] = {text = "特殊：牵引光环 " .. weapon.aura, color = C.gold, gap = 6} end
-    if weapon.sixthPierce then lines[#lines + 1] = {text = "性格：每第 6 发 +1 穿透", color = C.gold, gap = 6} end
-    if weapon.sparkSplit then lines[#lines + 1] = {text = "性格：击杀分裂火花", color = C.gold, gap = 6} end
-    if weapon.echoRamp then lines[#lines + 1] = {text = "性格：弹射后伤害递增", color = C.gold, gap = 6} end
-    if weapon.voidSlow or weapon.heavy or weapon.overloadTax then lines[#lines + 1] = {text = "性格：高收益代价，开火短暂拖慢机体", color = C.gold, gap = 6} end
-    if weapon.killHaste then lines[#lines + 1] = {text = "性格：击杀后短暂提高射击节奏", color = C.gold, gap = 6} end
-    if weapon.executeLowHp then lines[#lines + 1] = {text = "性格：低血处刑增伤", color = C.gold, gap = 6} end
-    if weapon.hiveSplit then lines[#lines + 1] = {text = "性格：击杀后虫群分裂", color = C.gold, gap = 6} end
-    if weapon.arcMark then lines[#lines + 1] = {text = "性格：连锁叠电痕爆电", color = C.gold, gap = 6} end
-    if weapon.voidCollapse then lines[#lines + 1] = {text = "性格：虚空光环周期坍缩", color = C.gold, gap = 6} end
-    if weapon.desc then lines[#lines + 1] = {text = "说明：" .. weapon.desc, color = C.muted, gap = 6} end
     return {title = (titlePrefix or "武器") .. "：" .. (weapon.name or "未知武器"), lines = lines, width = compareWeapon and 430 or 400}
 end
 
@@ -3906,6 +3907,41 @@ waveThreatSummary = function(wave)
     return #parts > 0 and table.concat(parts, " / ") or "常规混合敌群"
 end
 
+local function moduleComboHintForItem(item)
+    if not item or not isPermanentModule(item) then return nil end
+    local key = mergeKeyForItem(item)
+    local present = {}
+    for _, owned in ipairs((Game.player and Game.player.items) or {}) do
+        present[mergeKeyForItem(owned)] = true
+    end
+    present[key] = true
+    local partial = nil
+    for _, combo in ipairs(moduleCombos or {}) do
+        local hasKey, missing = false, {}
+        for _, req in ipairs(combo.requires or {}) do
+            if req == key then hasKey = true end
+            if not present[req] then missing[#missing + 1] = req end
+        end
+        if hasKey then
+            local text = (combo.name or combo.id or "组合") .. "：" .. comboBonusText(combo)
+            if #missing == 0 then return "已联动 " .. text end
+            if #missing == 1 then partial = partial or ("可凑 " .. text) end
+        end
+    end
+    return partial
+end
+
+local function moduleSlotTooltip(item)
+    if not item then return nil end
+    local lines = {
+        "价格：◆ " .. (item.price or 0),
+        {text = "效果：" .. modText(item.desc or "无效果"), color = C.white, gap = 6}
+    }
+    local combo = moduleComboHintForItem(item)
+    if combo then lines[#lines + 1] = {text = "联动：" .. combo, color = C.gold, gap = 6} end
+    return {title = item.name or "未知模块", lines = lines}
+end
+
 local function itemTooltip(item)
     if not item then return nil end
     local kindText = kindLabel[item.kind] or item.kind or "模块"
@@ -3924,8 +3960,6 @@ local function itemTooltip(item)
         local tip = weaponTooltip(def, "商品武器", selected)
         table.insert(tip.lines, 1, "价格：◆ " .. item.price .. " · " .. itemLevelText(item))
         table.insert(tip.lines, 2, {text = "类型：" .. kindText .. " · " .. kindDesc, color = C.muted})
-        local rec = itemRecommendationReason(item)
-        if rec then tip.lines[#tip.lines + 1] = {text = "推荐：" .. rec, color = C.gold, gap = 8} end
         if not selected then
             tip.lines[#tip.lines + 1] = {text = "提示：先点击右侧武器槽，选择要对比的武器。", color = C.muted, gap = 8}
         end
@@ -3936,9 +3970,7 @@ local function itemTooltip(item)
         {text = "类型：" .. kindText .. " · " .. kindDesc, color = C.muted},
         {text = "效果：" .. modText(item.desc or "无说明"), color = C.white, gap = 6}
     }
-    if item.flag then lines[#lines + 1] = "特殊协议：" .. item.flag end
-    local rec = itemRecommendationReason(item)
-    if rec then lines[#lines + 1] = {text = "推荐：" .. rec, color = C.gold, gap = 8} end
+    if item.flag then lines[#lines + 1] = {text = "词缀说明：" .. item.flag, color = C.gold, gap = 6} end
     return {title = "商品：" .. (item.name or "未知模块"), lines = lines}
 end
 
@@ -3992,7 +4024,7 @@ local function drawShopCard(item, i, x, y, w, h)
         cardTags = {
             {text = rarityText, color = rc, primary = true},
             {text = kindText, color = C.white},
-            {text = itemRecommendationReason(item) and "推荐" or itemLevelText(item), color = C.white}
+            {text = itemLevelText(item), color = C.white}
         }
     end
     love.graphics.setFont(Game.fonts.tiny)
@@ -4167,33 +4199,39 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
     for i = 1, 4 do
         local weapon = p.weapons[i]
         local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
-        local sy = weaponY + math.floor((i - 1) / 2) * 40
+        local sy = weaponY + math.floor((i - 1) / 2) * 52
         local accent = weapon and (elements[weapon.element] or elements.kinetic).color or C.white
         local selected = weapon and i == (Game.selectedWeaponIndex or 1)
         color(accent, weapon and 0.13 or 0.05)
-        love.graphics.rectangle("fill", sx, sy, slotW, 32, 9, 9)
+        love.graphics.rectangle("fill", sx, sy, slotW, 44, 9, 9)
         color(selected and C.gold or accent, selected and 0.78 or (weapon and 0.44 or 0.18))
         love.graphics.setLineWidth(selected and 2 or 1)
-        love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 31, 9, 9)
+        love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 43, 9, 9)
         love.graphics.setLineWidth(1)
-        local weaponText = weapon and compactDesc(weapon.name, showSell and 9 or 12) or "空武器"
-        local priceW = weapon and 52 or 0
-        local nameW = slotW - (showSell and 106 or 26) - priceW
-        textInBox(weaponText, sx + 10, sy, nameW, 32, Game.fonts.tiny, weapon and C.white or C.muted, weapon and "left" or "center")
-        if weapon then textInBox("◆" .. tostring(weapon.price or 0), sx + slotW - (showSell and 100 or 62), sy + 5, 52, 22, Game.fonts.tiny, C.gold, "center") end
-        if weapon and showSell then
-            color(C.red, 0.14); love.graphics.rectangle("fill", sx + slotW - 42, sy + 5, 32, 22, 7, 7)
-            color(C.red, 0.58); love.graphics.rectangle("line", sx + slotW - 42, sy + 5, 32, 22, 7, 7)
-            textInBox("卖", sx + slotW - 42, sy + 5, 32, 22, Game.fonts.tiny, C.red, "center")
+        if weapon then
+            local elem = elements[weapon.element] or elements.kinetic
+            local nameW = slotW - (showSell and 64 or 20)
+            love.graphics.setFont(Game.fonts.tiny)
+            color(C.white)
+            love.graphics.printf(compactDesc(weapon.name, showSell and 10 or 14), sx + 10, sy + 5, nameW, "left")
+            color(C.muted)
+            love.graphics.printf("◆" .. tostring(weapon.price or 0) .. " · " .. elem.name .. " · 伤害 " .. math.floor((weapon.damage or 0) + 0.5) .. "×" .. (weapon.count or 1), sx + 10, sy + 24, nameW, "left")
+        else
+            textInBox("空武器槽", sx + 10, sy, slotW - 20, 44, Game.fonts.tiny, C.muted, "center")
         end
-        if weapon and hitRect(mx, my, sx, sy, slotW, 32) then
+        if weapon and showSell then
+            color(C.red, 0.14); love.graphics.rectangle("fill", sx + slotW - 42, sy + 8, 32, 28, 7, 7)
+            color(C.red, 0.58); love.graphics.rectangle("line", sx + slotW - 42, sy + 8, 32, 28, 7, 7)
+            textInBox("卖", sx + slotW - 42, sy + 8, 32, 28, Game.fonts.tiny, C.red, "center")
+        end
+        if weapon and hitRect(mx, my, sx, sy, slotW, 44) then
             local tip = weaponTooltip(weapon, selected and "当前武器 · 对比中" or "当前武器")
             tip.lines[#tip.lines + 1] = {text = showSell and "操作：点击槽位选中；点击右侧“卖”出售。" or "当前暂停中：构筑信息只读展示。", color = C.gold, gap = 8}
             return tip
         end
     end
 
-    local shieldLabelY = y + 252
+    local shieldLabelY = y + 276
     color(C.white, 0.12)
     love.graphics.rectangle("fill", x + 14, shieldLabelY - 12, w - 28, 1)
     color(C.cyan)
@@ -4201,26 +4239,33 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
     local shieldY = shieldLabelY + 28
     local shield = p.shieldItem
     color(C.cyan, shield and 0.16 or 0.07)
-    love.graphics.rectangle("fill", x + 14, shieldY, w - 28, 40, 10, 10)
+    love.graphics.rectangle("fill", x + 14, shieldY, w - 28, 48, 10, 10)
     color(C.cyan, shield and 0.52 or 0.22)
-    love.graphics.rectangle("line", x + 14.5, shieldY + 0.5, w - 29, 39, 10, 10)
-    textInBox(shield and compactDesc(shield.name, showSell and 13 or 18) or "空护盾槽", x + 26, shieldY, w - (showSell and 178 or 146), 40, Game.fonts.tiny, shield and C.white or C.muted, shield and "left" or "center")
-    if shield then textInBox("◆" .. tostring(shield.price or 0), x + w - (showSell and 124 or 96), shieldY + 8, 56, 24, Game.fonts.tiny, C.gold, "center") end
-    if shield and showSell then
-        color(C.red, 0.14); love.graphics.rectangle("fill", x + w - 66, shieldY + 8, 38, 24, 7, 7)
-        color(C.red, 0.58); love.graphics.rectangle("line", x + w - 66, shieldY + 8, 38, 24, 7, 7)
-        textInBox("卖", x + w - 66, shieldY + 8, 38, 24, Game.fonts.tiny, C.red, "center")
+    love.graphics.rectangle("line", x + 14.5, shieldY + 0.5, w - 29, 47, 10, 10)
+    if shield then
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.white)
+        love.graphics.printf(compactDesc(shield.name, showSell and 18 or 24), x + 26, shieldY + 6, w - (showSell and 160 or 100), "left")
+        color(C.muted)
+        love.graphics.printf("◆" .. tostring(shield.price or 0) .. " · " .. compactDesc(shield.desc or "护盾组件", 24), x + 26, shieldY + 27, w - (showSell and 160 or 100), "left")
     else
-        textInBox(shield and "1/1" or "0/1", x + w - 72, shieldY, 44, 40, Game.fonts.tiny, C.cyan, "right")
+        textInBox("空护盾槽", x + 26, shieldY, w - 52, 48, Game.fonts.tiny, C.muted, "center")
     end
-    if shield and hitRect(mx, my, x + 14, shieldY, w - 28, 40) then
+    if shield and showSell then
+        color(C.red, 0.14); love.graphics.rectangle("fill", x + w - 66, shieldY + 10, 38, 28, 7, 7)
+        color(C.red, 0.58); love.graphics.rectangle("line", x + w - 66, shieldY + 10, 38, 28, 7, 7)
+        textInBox("卖", x + w - 66, shieldY + 10, 38, 28, Game.fonts.tiny, C.red, "center")
+    else
+        textInBox(shield and "1/1" or "0/1", x + w - 72, shieldY, 44, 48, Game.fonts.tiny, C.cyan, "right")
+    end
+    if shield and hitRect(mx, my, x + 14, shieldY, w - 28, 48) then
         local tip = itemTooltip(shield)
         tip.lines[#tip.lines + 1] = {text = showSell and "操作：点击右侧“卖”出售护盾。" or "当前暂停中：构筑信息只读展示。", color = C.gold, gap = 8}
         return tip
     end
 
     local items = p.items or {}
-    local moduleY = shieldY + 76
+    local moduleY = shieldY + 84
     local moduleBottom = y + h - 16
     local moduleH = math.max(80, moduleBottom - moduleY)
     local slotCost = itemSlotUpgradeCost()
@@ -4231,7 +4276,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
     love.graphics.printf("效能 ×" .. string.format("%.2f", itemSlotEffectMultiplier()) .. " · 组合 " .. #(p.synergies or {}), x + 14, moduleY - 12, upX - x - 22, "left")
     uiButton(slotCost and ("升级槽位 ◆" .. slotCost) or "槽位满级", upX, upY, upW, upH, slotCost and C.green or C.muted, C.white, Game.fonts.tiny)
 
-    local cardH, cardGap = 32, 8
+    local cardH, cardGap = 46, 8
     local visible = math.max(1, math.floor((moduleH + cardGap) / (cardH + cardGap)))
     local maxScroll = math.max(0, #items - visible)
     Game.buildModuleScroll = clamp(math.floor(Game.buildModuleScroll or 0), 0, maxScroll)
@@ -4251,17 +4296,21 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
             love.graphics.rectangle("fill", x + 14, sy, w - 28, cardH, 8, 8)
             color(accent, 0.40)
             love.graphics.rectangle("line", x + 14.5, sy + 0.5, w - 29, cardH - 1, 8, 8)
-            textInBox(compactDesc(item.name, showSell and 13 or 18), x + 26, sy, w - (showSell and 150 or 112), cardH, Game.fonts.tiny, C.white, "left")
-            textInBox(itemLevelText(item), x + w - (showSell and 100 or 64), sy + 5, 52, 22, Game.fonts.tiny, C.gold, "center")
+            local comboHint = moduleComboHintForItem(item)
+            local effectText = compactDesc(item.desc or itemLevelText(item), comboHint and 16 or 24)
+            if comboHint then effectText = effectText .. " · " .. compactDesc(comboHint, 14) end
+            color(C.white)
+            love.graphics.printf(compactDesc(item.name, showSell and 12 or 16), x + 26, sy + 6, w - (showSell and 176 or 138), "left")
+            textInBox("◆" .. tostring(item.price or 0), x + w - (showSell and 112 or 76), sy + 5, 52, 22, Game.fonts.tiny, C.gold, "center")
+            color(C.muted)
+            love.graphics.printf(effectText, x + 26, sy + 25, w - (showSell and 152 or 116), "left")
             if showSell then
-                color(C.red, 0.14); love.graphics.rectangle("fill", x + w - 40, sy + 5, 26, 22, 7, 7)
-                color(C.red, 0.58); love.graphics.rectangle("line", x + w - 40, sy + 5, 26, 22, 7, 7)
-                textInBox("卖", x + w - 40, sy + 5, 26, 22, Game.fonts.tiny, C.red, "center")
+                color(C.red, 0.14); love.graphics.rectangle("fill", x + w - 40, sy + 9, 26, 28, 7, 7)
+                color(C.red, 0.58); love.graphics.rectangle("line", x + w - 40, sy + 9, 26, 28, 7, 7)
+                textInBox("卖", x + w - 40, sy + 9, 26, 28, Game.fonts.tiny, C.red, "center")
             end
             if hitRect(mx, my, x + 14, sy, w - 28, cardH) then
-                local tip = itemTooltip(item)
-                tip.lines[#tip.lines + 1] = {text = showSell and "操作：滚轮浏览模块；点击右侧“卖”出售。" or "滚轮浏览模块。", color = C.gold, gap = 8}
-                return tip
+                return moduleSlotTooltip(item)
             end
         end
         if maxScroll > 0 then
@@ -4287,24 +4336,24 @@ local function handleBuildPanelClick(px, py, x, y, w, h)
     for i = 1, 4 do
         local weapon = p.weapons[i]
         local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
-        local sy = weaponY + math.floor((i - 1) / 2) * 40
-        if weapon and hitRect(px, py, sx, sy, slotW, 32) then
-            if hitRect(px, py, sx + slotW - 42, sy + 5, 32, 22) then return sellWeapon(i) end
+        local sy = weaponY + math.floor((i - 1) / 2) * 52
+        if weapon and hitRect(px, py, sx, sy, slotW, 44) then
+            if hitRect(px, py, sx + slotW - 42, sy + 8, 32, 28) then return sellWeapon(i) end
             Game.selectedWeaponIndex = i
             playCue("shop"); toast("已选中武器槽 " .. i .. "：" .. weapon.name)
             return true
         end
     end
 
-    local shieldY = y + 280
-    if p.shieldItem and hitRect(px, py, x + w - 66, shieldY + 8, 38, 24) then return sellShield() end
+    local shieldY = y + 304
+    if p.shieldItem and hitRect(px, py, x + w - 66, shieldY + 10, 38, 28) then return sellShield() end
 
     local items = p.items or {}
-    local moduleY = shieldY + 76
+    local moduleY = shieldY + 84
     local moduleBottom = y + h - 16
     local moduleH = math.max(80, moduleBottom - moduleY)
     if hitRect(px, py, x + w - 146, moduleY - 34, 132, 28) then return upgradeItemSlots() end
-    local cardH, cardGap = 32, 8
+    local cardH, cardGap = 46, 8
     local visible = math.max(1, math.floor((moduleH + cardGap) / (cardH + cardGap)))
     local maxScroll = math.max(0, #items - visible)
     Game.buildModuleScroll = clamp(math.floor(Game.buildModuleScroll or 0), 0, maxScroll)
@@ -4313,7 +4362,7 @@ local function handleBuildPanelClick(px, py, x, y, w, h)
         local idx = startIndex + row
         if not items[idx] then break end
         local sy = moduleY + row * (cardH + cardGap)
-        if hitRect(px, py, x + w - 40, sy + 5, 26, 22) then return sellItem(idx) end
+        if hitRect(px, py, x + w - 40, sy + 9, 26, 28) then return sellItem(idx) end
     end
     return false
 end
@@ -4591,7 +4640,7 @@ local function drawShop()
     color(C.muted)
     local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
     local incomeText = Game.lastWaveIncome and ("上波收入 +" .. Game.lastWaveIncome .. " · ") or ""
-    love.graphics.printf(incomeText .. shopBudgetHint() .. " · 武器槽 " .. #Game.player.weapons .. "/4 · " .. shieldText .. " · 模块槽 Lv." .. (Game.player.itemSlotLevel or 1) .. " " .. #(Game.player.items or {}) .. "/" .. (Game.player.itemSlots or ITEM_SLOT_BASE), infoX, 74, infoW, "center")
+    love.graphics.printf("当前材料 ◆" .. Game.coins .. " · " .. incomeText .. shopBudgetHint() .. " · 武器槽 " .. #Game.player.weapons .. "/4 · " .. shieldText .. " · 模块槽 Lv." .. (Game.player.itemSlotLevel or 1) .. " " .. #(Game.player.items or {}) .. "/" .. (Game.player.itemSlots or ITEM_SLOT_BASE), infoX, 74, infoW, "center")
 
     local rerollCost = 3 + Game.shopRefresh * 2
     uiButton("进入下一波", actionX, actionY, nextW, actionH, C.gold, C.white, Game.fonts.small)
@@ -4671,7 +4720,8 @@ local function drawPauseOverlay()
 
     color(C.white, 0.10)
     love.graphics.rectangle("fill", x + leftW + 10, y + 28, 1, h - 56)
-    drawCompactBuildPanel(rightX, y + 28, rightW, h - 56, {showSell = false})
+    local tip = drawCompactBuildPanel(rightX, y + 28, rightW, h - 56, {showSell = false})
+    drawTooltip(tip)
 end
 
 local function drawEnd(title, subtitle, c)
@@ -4914,9 +4964,9 @@ function love.wheelmoved(_, y)
     local mx, my = mousePosition()
     if not hitRect(mx, my, sideX, contentY, sideW, contentH) then return end
     local items = Game.player.items or {}
-    local moduleY = contentY + 280 + 76
+    local moduleY = contentY + 304 + 84
     local moduleH = math.max(80, contentY + contentH - 16 - moduleY)
-    local visible = math.max(1, math.floor((moduleH + 8) / (32 + 8)))
+    local visible = math.max(1, math.floor((moduleH + 8) / (46 + 8)))
     local maxScroll = math.max(0, #items - visible)
     Game.buildModuleScroll = clamp((Game.buildModuleScroll or 0) - y, 0, maxScroll)
 end
