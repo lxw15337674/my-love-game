@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.50"
+local VERSION = "v2026.05.23.52"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -557,7 +557,7 @@ local basePlayerDef = {
     hp = 76,
     shield = 36,
     speed = 250,
-    coins = 18,
+    coins = 100,
     stats = {
         damage = 1.00, fireRate = 1.00, crit = 0.06, critDamage = 1.65,
         range = 1.00, projectileSpeed = 1.00,
@@ -1905,7 +1905,7 @@ local function resetRun()
     local ch = selectedCharacter()
     Game.time = 0
     Game.wave = 1
-    Game.coins = ch.coins or 18
+    Game.coins = ch.coins or 100
     Game.kills = 0
     Game.freeRefresh = 1
     Game.slotFreeUsed = {}
@@ -3421,11 +3421,17 @@ local function drawMenu()
     love.graphics.printf("机器人大战", 0, titleY - 2, w, "center")
 
     love.graphics.setFont(Game.fonts.subtitle or Game.fonts.small)
-    color(C.cyan, 0.78)
-    love.graphics.printf("6大关30小关 · 首关养成 · 二关升压", 0, 126, w, "center")
+    color(C.white, 0.92)
+    love.graphics.printf("10大关30小关 · 首关养成 · 二关升压", 0, 124, w, "center")
+    local introW, introH = 760, 38
+    local introX, introY = w / 2 - introW / 2, 154
+    color(C.panel, 0.56)
+    love.graphics.rectangle("fill", introX, introY, introW, introH, 12, 12)
+    color(C.cyan, 0.22)
+    love.graphics.rectangle("line", introX + 0.5, introY + 0.5, introW - 1, introH - 1, 12, 12)
     love.graphics.setFont(Game.fonts.tiny)
-    color(C.muted, 0.70)
-    love.graphics.printf("撑住倒计时，收集材料，把一台白板机体养成怪物。", 0, 156, w, "center")
+    color(C.white, 0.94)
+    love.graphics.printf("撑住倒计时，收集材料，把一台白板机体养成怪物。", introX + 20, introY + 9, introW - 40, "center")
 
     local heroX, heroY = w / 2, h / 2
     local cx, cy = heroX, heroY
@@ -3469,19 +3475,25 @@ local function drawMenu()
     love.graphics.setFont(Game.fonts.small)
 
     local dangerText = Game.danger == 0 and "基础难度" or ("危险等级 " .. Game.danger)
+    local diffX, diffY, diffW = deckX + deckW - 406, deckY + 18, 378
+    color(C.panel, 0.52)
+    love.graphics.rectangle("fill", diffX, diffY, diffW, 100, 14, 14)
+    color(C.gold, 0.30)
+    love.graphics.rectangle("line", diffX + 0.5, diffY + 0.5, diffW - 1, 99, 14, 14)
+    love.graphics.setFont(Game.fonts.tiny)
     color(C.gold)
-    love.graphics.printf("难度选择", deckX + deckW - 358, deckY + 26, 330, "right")
+    love.graphics.printf("难度选择", diffX + 18, diffY + 10, diffW - 36, "left")
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
-    love.graphics.printf(dangerText, deckX + deckW - 358, deckY + 52, 330, "right")
+    love.graphics.printf(dangerText, diffX + 18, diffY + 30, diffW - 36, "center")
+    uiButton("‹ Q 降低", diffX + 18, diffY + 60, 154, 34, C.cyan, C.white, Game.fonts.tiny)
+    uiButton("E 提高 ›", diffX + diffW - 172, diffY + 60, 154, 34, C.cyan, C.white, Game.fonts.tiny)
 
     uiButton("开始实验", w / 2 - 140, deckY + 30, 280, 62, C.gold, C.white, Game.fonts.normal)
     -- 首页不再提供模式切换，只保留战役模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
     love.graphics.printf("目标：第一大关养成；第二大关起线性变难，关底淘汰。", deckX + 28, deckY + 96, 500, "left")
-    uiButton("Q  降低", deckX + deckW - 220, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
-    uiButton("E  提高", deckX + deckW - 112, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
 end
 
 local function drawSettlementCard(title, value, x, y, w, h, accent, detail)
@@ -3535,20 +3547,35 @@ local function drawLevelUp()
     love.graphics.setFont(Game.fonts.normal)
     color(C.gold)
     love.graphics.printf("选择奖励", Game.w / 2 - 560, 446, 1120, "center")
-    local w, h, rewardGap = 330, 190, 34
+    local w, h, rewardGap = 330, 210, 34
     local rewardX = Game.w / 2 - (w * 3 + rewardGap * 2) / 2
+    local mx, my = mousePosition()
     for i, r in ipairs(Game.levelChoices) do
-        local x = rewardX + (i - 1) * (w + rewardGap)
-        panel(x, 500, w, h)
+        local x, y = rewardX + (i - 1) * (w + rewardGap), 486
+        local hover = hitRect(mx, my, x, y, w, h)
+        local lift = hover and -6 or 0
+        local yy = y + lift
         local rc = rarityColor[r.rarity or "rare"] or C.cyan
+        panel(x, yy, w, h)
+        color(rc, hover and 0.18 or 0.08)
+        love.graphics.rectangle("fill", x + 8, yy + 10, w - 16, h - 20, 14, 14)
         color(rc, 0.95)
-        love.graphics.rectangle("fill", x, 500, w, 6, 6, 6)
+        love.graphics.rectangle("fill", x, yy, w, 6, 6, 6)
+        color(rc, hover and 0.78 or 0.30)
+        love.graphics.setLineWidth(hover and 3 or 1)
+        love.graphics.rectangle("line", x + 0.5, yy + 0.5, w - 1, h - 1, 14, 14)
+        love.graphics.setLineWidth(1)
+        drawCapsule("快捷键 " .. i, x + 18, yy + 18, 88, 24, {font = Game.fonts.tiny, fg = hover and C.gold or C.muted, border = hover and C.gold or C.white, bgAlpha = hover and 0.20 or 0.12, borderAlpha = hover and 0.28 or 0.10})
         love.graphics.setFont(Game.fonts.normal)
         color(C.white)
-        love.graphics.printf(i .. ". " .. r.name, x + 16, 532, w - 32, "center")
-        love.graphics.setFont(Game.fonts.small)
-        color(C.cyan)
-        love.graphics.printf(r.desc, x + 22, 598, w - 44, "center")
+        love.graphics.printf(r.name, x + 16, yy + 56, w - 32, "center")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(hover and C.white or C.cyan)
+        local rewardDesc = tostring(r.desc or "")
+        if #rewardDesc > 38 then rewardDesc = rewardDesc:sub(1, 36) .. "…" end
+        love.graphics.printf(rewardDesc, x + 28, yy + 112, w - 56, "center")
+        local chooseText = hover and "点击后立即选择" or "点击选择"
+        drawCapsule(chooseText, x + 58, yy + h - 38, w - 116, 26, {font = Game.fonts.tiny, fg = hover and C.gold or C.muted, border = hover and C.gold or C.white, bgAlpha = hover and 0.26 or 0.14, borderAlpha = hover and 0.28 or 0.10})
     end
 end
 
@@ -4047,17 +4074,12 @@ local function drawShopCard(item, i, x, y, w, h)
     end
     love.graphics.setFont(Game.fonts.tiny)
     drawTagRow(cardTags, x + 18, y + 13, w - 82)
-    local topLockX, topLockY, topLockW, topLockH = x + w - 58, y + 10, 40, 30
+    local topLockX, topLockY, topLockW, topLockH = x + w - 74, y + 10, 56, 30
     color(C.white, Game.locked[i] and 0.18 or 0.07)
     love.graphics.rectangle("fill", topLockX, topLockY, topLockW, topLockH, 9, 9)
     color(Game.locked[i] and C.white or C.muted, Game.locked[i] and 0.86 or 0.48)
     love.graphics.rectangle("line", topLockX + 0.5, topLockY + 0.5, topLockW - 1, topLockH - 1, 9, 9)
-    if Game.locked[i] then
-        textInBox("锁", topLockX, topLockY, topLockW, topLockH, Game.fonts.tiny, C.white, "center")
-    else
-        love.graphics.rectangle("line", topLockX + 13, topLockY + 13, 14, 11, 3, 3)
-        love.graphics.arc("line", topLockX + 20, topLockY + 13, 6, math.pi, TAU)
-    end
+    textInBox(Game.locked[i] and "锁定" or "锁货", topLockX, topLockY, topLockW, topLockH, Game.fonts.tiny, Game.locked[i] and C.white or C.muted, "center")
 
     love.graphics.setFont(Game.fonts.small)
     color(C.white)
@@ -4067,9 +4089,10 @@ local function drawShopCard(item, i, x, y, w, h)
         love.graphics.printf(itemLevelText(item), x + 18, y + 56, w - 36, "right")
     end
     love.graphics.setFont(Game.fonts.tiny)
-    local desc = compactDesc(item.desc, 30)
-    color(C.muted)
-    love.graphics.printf(desc, x + 18, y + 88, w - 36, "left")
+    local missing = math.max(0, (item.price or 0) - Game.coins)
+    local statusText = affordable and "状态：可购买" or ("状态：缺材料 " .. missing)
+    color(affordable and C.green or C.red, affordable and 0.92 or 0.88)
+    love.graphics.printf(statusText, x + 18, y + 88, w - 36, "left")
 
     local buyY = y + h - 36
     local displayY, displayH = y + 120, math.max(42, buyY - y - 130)
@@ -4104,14 +4127,15 @@ local function drawShopCard(item, i, x, y, w, h)
         color(effectColor)
         love.graphics.printf(descText, x + 34, displayY + 36, w - 68, "left")
     end
-    local buyColor = affordable and C.gold or C.muted
-    color(buyColor, hover and 0.28 or 0.12)
+    local buyColor = affordable and C.green or C.red
+    local buyBgAlpha = affordable and (hover and 0.34 or 0.18) or 0.10
+    color(buyColor, buyBgAlpha)
     love.graphics.rectangle("fill", x + 18, buyY - 4, w - 36, 34, 10, 10)
-    color(buyColor, hover and 0.78 or 0.42)
+    color(buyColor, affordable and (hover and 0.82 or 0.48) or 0.42)
     love.graphics.setLineWidth(hover and 2 or 1)
     love.graphics.rectangle("line", x + 18, buyY - 4, w - 36, 34, 10, 10)
     love.graphics.setLineWidth(1)
-    local buyText = affordable and ("购买  " .. i .. "  · ◆ " .. item.price) or ("材料不足 · ◆ " .. item.price)
+    local buyText = affordable and ("可购买  " .. i .. "  · 花费 ◆" .. item.price) or ("缺材料 " .. missing .. " · 需 ◆" .. item.price)
     centeredText(buyText, x + 18, buyY - 4, w - 36, 34, Game.fonts.tiny, buyColor, "center")
 
     if Game.shopRollTimer and Game.shopRollTimer > 0 then
@@ -4227,7 +4251,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         love.graphics.rectangle("line", sx + 0.5, sy + 0.5, slotW - 1, 43, 9, 9)
         love.graphics.setLineWidth(1)
         if weapon then
-            local nameW = slotW - (showSell and 64 or 20)
+            local nameW = slotW - (showSell and 78 or 20)
             love.graphics.setFont(Game.fonts.tiny)
             color(C.white)
             love.graphics.printf(compactDesc(weapon.name, showSell and 11 or 15), sx + 10, sy + 5, nameW, "left")
@@ -4237,9 +4261,9 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
             textInBox("空武器槽", sx + 10, sy, slotW - 20, 44, Game.fonts.tiny, C.muted, "center")
         end
         if weapon and showSell then
-            color(C.red, 0.14); love.graphics.rectangle("fill", sx + slotW - 42, sy + 8, 32, 28, 7, 7)
-            color(C.red, 0.58); love.graphics.rectangle("line", sx + slotW - 42, sy + 8, 32, 28, 7, 7)
-            textInBox("卖", sx + slotW - 42, sy + 8, 32, 28, Game.fonts.tiny, C.red, "center")
+            color(C.red, 0.14); love.graphics.rectangle("fill", sx + slotW - 54, sy + 8, 44, 28, 7, 7)
+            color(C.red, 0.58); love.graphics.rectangle("line", sx + slotW - 54, sy + 8, 44, 28, 7, 7)
+            textInBox("出售", sx + slotW - 54, sy + 8, 44, 28, Game.fonts.tiny, C.red, "center")
         end
         if weapon and hitRect(mx, my, sx, sy, slotW, 44) then
             local tip = weaponTooltip(weapon, selected and "当前武器 · 对比中" or "当前武器")
@@ -4269,9 +4293,9 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         textInBox("空护盾槽", x + 26, shieldY, w - 52, 48, Game.fonts.tiny, C.muted, "center")
     end
     if shield and showSell then
-        color(C.red, 0.14); love.graphics.rectangle("fill", x + w - 66, shieldY + 10, 38, 28, 7, 7)
-        color(C.red, 0.58); love.graphics.rectangle("line", x + w - 66, shieldY + 10, 38, 28, 7, 7)
-        textInBox("卖", x + w - 66, shieldY + 10, 38, 28, Game.fonts.tiny, C.red, "center")
+        color(C.red, 0.14); love.graphics.rectangle("fill", x + w - 78, shieldY + 10, 50, 28, 7, 7)
+        color(C.red, 0.58); love.graphics.rectangle("line", x + w - 78, shieldY + 10, 50, 28, 7, 7)
+        textInBox("出售", x + w - 78, shieldY + 10, 50, 28, Game.fonts.tiny, C.red, "center")
     else
         textInBox(shield and "1/1" or "0/1", x + w - 72, shieldY, 44, 48, Game.fonts.tiny, C.cyan, "right")
     end
@@ -4288,10 +4312,12 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
     local slotCost = itemSlotUpgradeCost()
     local upX, upY, upW, upH = x + w - 146, moduleY - 34, 132, 28
     color(C.gold)
-    love.graphics.printf("模块槽 Lv." .. (p.itemSlotLevel or 1) .. "  " .. #items .. "/" .. (p.itemSlots or ITEM_SLOT_BASE), x + 14, moduleY - 32, upX - x - 22, "left")
+    love.graphics.printf("模块槽 Lv." .. (p.itemSlotLevel or 1) .. "  " .. #items .. "/" .. (p.itemSlots or ITEM_SLOT_BASE), x + 14, moduleY - 36, upX - x - 22, "left")
     color(C.muted)
-    love.graphics.printf("效能 ×" .. string.format("%.2f", itemSlotEffectMultiplier()) .. " · 组合 " .. #(p.synergies or {}), x + 14, moduleY - 12, upX - x - 22, "left")
-    uiButton(slotCost and ("升级槽位 ◆" .. slotCost) or "槽位满级", upX, upY, upW, upH, slotCost and C.green or C.muted, C.white, Game.fonts.tiny)
+    love.graphics.printf("效能 ×" .. string.format("%.2f", itemSlotEffectMultiplier()) .. " · 组合 " .. #(p.synergies or {}), x + 14, moduleY - 16, upX - x - 22, "left")
+    local canUpgradeSlot = slotCost and Game.coins >= slotCost
+    local upgradeText = slotCost and (canUpgradeSlot and ("升级 ◆" .. slotCost) or ("缺 " .. (slotCost - Game.coins))) or "满级"
+    uiButton(upgradeText, upX, upY, upW, upH, canUpgradeSlot and C.green or (slotCost and C.red or C.muted), C.white, Game.fonts.tiny)
 
     local cardH, cardGap = 46, 8
     local visible = math.max(1, math.floor((moduleH + cardGap) / (cardH + cardGap)))
@@ -4324,7 +4350,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
             if showSell then
                 color(C.red, 0.14); love.graphics.rectangle("fill", x + w - 40, sy + 9, 26, 28, 7, 7)
                 color(C.red, 0.58); love.graphics.rectangle("line", x + w - 40, sy + 9, 26, 28, 7, 7)
-                textInBox("卖", x + w - 40, sy + 9, 26, 28, Game.fonts.tiny, C.red, "center")
+                textInBox("售", x + w - 40, sy + 9, 26, 28, Game.fonts.tiny, C.red, "center")
             end
             if hitRect(mx, my, x + 14, sy, w - 28, cardH) then
                 return moduleSlotTooltip(item)
@@ -4355,7 +4381,7 @@ local function handleBuildPanelClick(px, py, x, y, w, h)
         local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
         local sy = weaponY + math.floor((i - 1) / 2) * 52
         if weapon and hitRect(px, py, sx, sy, slotW, 44) then
-            if hitRect(px, py, sx + slotW - 42, sy + 8, 32, 28) then return sellWeapon(i) end
+            if hitRect(px, py, sx + slotW - 54, sy + 8, 44, 28) then return sellWeapon(i) end
             Game.selectedWeaponIndex = i
             playCue("shop"); toast("已选中武器槽 " .. i .. "：" .. weapon.name)
             return true
@@ -4363,7 +4389,7 @@ local function handleBuildPanelClick(px, py, x, y, w, h)
     end
 
     local shieldY = y + 304
-    if p.shieldItem and hitRect(px, py, x + w - 66, shieldY + 10, 38, 28) then return sellShield() end
+    if p.shieldItem and hitRect(px, py, x + w - 78, shieldY + 10, 50, 28) then return sellShield() end
 
     local items = p.items or {}
     local moduleY = shieldY + 84
@@ -4902,8 +4928,9 @@ end
 function handlePointer(x, y)
     if Game.state == "menu" then
         local deckX, deckY, deckW = 90, Game.h - 168, Game.w - 180
-        if hitRect(x, y, deckX + deckW - 220, deckY + 88, 94, 30) then Game.danger = math.max(0, Game.danger - 1); return true end
-        if hitRect(x, y, deckX + deckW - 112, deckY + 88, 94, 30) then Game.danger = math.min(6, Game.danger + 1); return true end
+        local diffX, diffY, diffW = deckX + deckW - 406, deckY + 18, 378
+        if hitRect(x, y, diffX + 18, diffY + 60, 154, 34) then Game.danger = math.max(0, Game.danger - 1); return true end
+        if hitRect(x, y, diffX + diffW - 172, diffY + 60, 154, 34) then Game.danger = math.min(6, Game.danger + 1); return true end
         if hitRect(x, y, Game.w / 2 - 140, deckY + 30, 280, 62) then resetRun(); return true end
     elseif Game.state == "levelup" then
         local w, h, gap = 330, 190, 34
