@@ -24,7 +24,7 @@ function cfgReadText(path)
 end
 
 function loadBalanceConfig()
-    local cfg = {moduleStats = {}, moduleBlueprints = {}, affixDefs = {}, waveAffixes = {}}
+    local cfg = {moduleStats = {}, moduleBlueprints = {}, moduleCombos = {}, affixDefs = {}, waveAffixes = {}}
     local text = cfgReadText("balance.cfg") or ""
     for raw in text:gmatch("[^\r\n]+") do
         local line = raw:gsub("#.*$", ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -39,6 +39,14 @@ function loadBalanceConfig()
                 elseif key == "module" then
                     local parts = cfgSplit(value, "|")
                     cfg.moduleBlueprints[#cfg.moduleBlueprints + 1] = {key = parts[1], name = parts[2], kind = parts[3], stats = cfgSplit(parts[4] or "", ",")}
+                elseif key == "module_combo" then
+                    local parts = cfgSplit(value, "|")
+                    local combo = {id = parts[1], name = parts[2], requires = cfgSplit(parts[3] or "", ","), bonuses = {}}
+                    for _, pair in ipairs(cfgSplit(parts[4] or "", ",")) do
+                        local k, v = pair:match("^([%w_]+)%s*=%s*([%d%.%-]+)$")
+                        if k then combo.bonuses[k] = tonumber(v) or 0 end
+                    end
+                    cfg.moduleCombos[#cfg.moduleCombos + 1] = combo
                 elseif key == "affix" then
                     local parts = cfgSplit(value, "|")
                     local affix = {id = parts[1], name = parts[2], kind = parts[3], desc = parts[4]}
@@ -62,7 +70,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.34"
+local VERSION = "v2026.05.23.35"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -155,6 +163,7 @@ local Game = {
         weapons = {},
         items = {},
         itemSlots = ITEM_SLOT_BASE,
+        itemSlotLevel = 1,
         shieldItem = nil,
         gear = {}
     },
@@ -924,11 +933,20 @@ function mergeKeyForItem(item)
     return item and (item.mergeKey or item.name or item.kind or "module") or "module"
 end
 
+function itemSlotLevel()
+    return (Game.player and Game.player.itemSlotLevel) or 1
+end
+
+function itemSlotEffectMultiplier()
+    return 1 + math.max(0, itemSlotLevel() - 1) * (Balance.module_slot_effect_step or 0.06)
+end
+
 function itemSlotUpgradeCost()
     local p = Game.player or {}
+    local level = p.itemSlotLevel or 1
     local slots = p.itemSlots or ITEM_SLOT_BASE
     if slots >= ITEM_SLOT_MAX then return nil end
-    return (Balance.item_slot_upgrade_base or 22) + (slots - ITEM_SLOT_BASE) * (Balance.item_slot_upgrade_step or 14)
+    return (Balance.item_slot_upgrade_base or 22) + (level - 1) * (Balance.item_slot_upgrade_step or 14)
 end
 
 function itemFitsOrCanMerge(item)
@@ -1026,8 +1044,10 @@ function upgradeItemSlots()
     if not cost then toast("模块槽已满级") return false end
     if Game.coins < cost then toast("材料不足，无法升级模块槽") return false end
     Game.coins = Game.coins - cost
-    p.itemSlots = math.min(ITEM_SLOT_MAX, (p.itemSlots or ITEM_SLOT_BASE) + 1)
-    playCue("shop"); toast("模块槽升级：" .. #p.items .. "/" .. p.itemSlots)
+    p.itemSlotLevel = (p.itemSlotLevel or 1) + 1
+    p.itemSlots = math.min(ITEM_SLOT_MAX, ITEM_SLOT_BASE + p.itemSlotLevel - 1)
+    rebuildPlayerBuildStats()
+    playCue("shop"); toast("模块槽 Lv." .. p.itemSlotLevel .. "：容量 " .. #p.items .. "/" .. p.itemSlots .. "，模块效能 ×" .. string.format("%.2f", itemSlotEffectMultiplier()))
     return true
 end
 
@@ -1091,14 +1111,26 @@ applyBuildSynergies = function()
         if w.splash or w.element == "burn" or w.brand == "molten" then explosive = explosive + 1 end
         if w.element == "burn" then burn = burn + 1 end
     end
+    local moduleKeys = {}
     for _, item in ipairs(p.items or {}) do
         local desc = (item.name or "") .. " " .. (item.desc or "")
+        moduleKeys[mergeKeyForItem(item)] = true
         if desc:find("电弧") or desc:find("弹射") then arc = arc + 1 end
         if desc:find("暴击") or desc:find("暴伤") then crit = crit + 1 end
         if desc:find("爆") or desc:find("燃") then explosive = explosive + 1 end
         if desc:find("护盾") then shield = shield + 1 end
     end
     p.synergies = {}
+    for _, combo in ipairs(moduleCombos or {}) do
+        local ok = true
+        for _, req in ipairs(combo.requires or {}) do
+            if not moduleKeys[req] then ok = false; break end
+        end
+        if ok then
+            for stat, value in pairs(combo.bonuses or {}) do applyModuleBonus(p, stat, value) end
+            p.synergies[#p.synergies + 1] = "模块组合·" .. (combo.name or combo.id or "组合") .. "：" .. comboBonusText(combo)
+        end
+    end
     if arc >= 2 then
         p.gear.autoArc = true
         p.synergies[#p.synergies + 1] = "电弧2：弹射+1/追踪电弧"
@@ -1134,7 +1166,8 @@ rebuildPlayerBuildStats = function()
     if shieldItem then applyShieldStats(p, shieldItem) end
     for _, item in ipairs(items) do
         if item.effects then
-            for _, e in ipairs(item.effects) do e.roll.apply(p, e.value) end
+            local mult = itemSlotEffectMultiplier()
+            for _, e in ipairs(item.effects) do e.roll.apply(p, e.value * mult) end
         elseif item.apply then
             item.apply(p)
         end
@@ -1338,6 +1371,27 @@ if Balance.moduleStats and next(Balance.moduleStats) then
     end
 end
 if Balance.moduleBlueprints and #Balance.moduleBlueprints > 0 then moduleBlueprints = Balance.moduleBlueprints end
+moduleCombos = Balance.moduleCombos or {}
+
+function applyModuleBonus(p, stat, value)
+    if stat == "hp" then
+        p.maxHp = p.maxHp + math.floor(value + 0.5)
+        p.hp = math.min(p.maxHp, p.hp + math.floor(value * 0.5 + 0.5))
+    elseif stat == "pickup" then
+        p.pickup = p.pickup + math.floor(value + 0.5)
+    elseif p.stats and p.stats[stat] ~= nil then
+        p.stats[stat] = p.stats[stat] + value
+    end
+end
+
+function comboBonusText(combo)
+    local parts = {}
+    for stat, value in pairs(combo.bonuses or {}) do
+        local def = moduleStatDefs[stat]
+        if def and def.desc then parts[#parts + 1] = def.desc(value) end
+    end
+    return table.concat(parts, " / ")
+end
 
 function moduleValueScale(rarity)
     local wave = itemLevelForWave(Game.wave or 1)
@@ -1804,6 +1858,7 @@ local function resetRun()
     Game.selectedWeaponIndex = 1
     Game.player.items = {}
     Game.player.itemSlots = ITEM_SLOT_BASE
+    Game.player.itemSlotLevel = 1
     Game.player.shieldItem = nil
     Game.player.gear = {}
     Game.tempBuffs = {}
@@ -4016,9 +4071,9 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         local items = p.items or {}
         local itemY = y + 146
         color(C.gold)
-        love.graphics.printf("模块槽 " .. #items .. "/" .. (p.itemSlots or ITEM_SLOT_BASE), x + 14, itemY - 28, w - 28, "left")
+        love.graphics.printf("模块槽 Lv." .. (p.itemSlotLevel or 1) .. "  " .. #items .. "/" .. (p.itemSlots or ITEM_SLOT_BASE), x + 14, itemY - 28, w - 28, "left")
         color(C.muted)
-        love.graphics.printf("3 个同名自动融合；商店可升级容量。", x + 118, itemY - 28, w - 132, "right")
+        love.graphics.printf("效能 ×" .. string.format("%.2f", itemSlotEffectMultiplier()) .. " · 组合 " .. #(p.synergies or {}), x + 150, itemY - 28, w - 164, "right")
         for i = 1, math.min(#items, 18) do
             local item = items[i]
             local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
@@ -4053,7 +4108,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
             color(C.white, 0.05)
             love.graphics.rectangle("fill", x + 14, itemY, w - 28, 34, 8, 8)
             color(C.muted)
-            textInBox("暂无模块 · 容量 " .. (p.itemSlots or ITEM_SLOT_BASE), x + 26, itemY, w - 52, 34, Game.fonts.tiny, C.muted, "left")
+            textInBox("暂无模块 · 槽 Lv." .. (p.itemSlotLevel or 1) .. " · 容量 " .. (p.itemSlots or ITEM_SLOT_BASE), x + 26, itemY, w - 52, 34, Game.fonts.tiny, C.muted, "left")
         end
         return nil
     end
@@ -4072,6 +4127,21 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
         color(C.white, 0.06)
         love.graphics.rectangle("fill", sx, sy, statW, 18, 6, 6)
         textInBox(row[1] .. "  " .. row[2], sx + 8, sy, statW - 16, 18, Game.fonts.tiny, C.white, "center")
+    end
+
+    local synY = y + 226
+    color(C.gold)
+    love.graphics.printf("组合效果", x + 14, synY, w - 28, "left")
+    local synergies = p.synergies or {}
+    if #synergies == 0 then
+        color(C.muted)
+        love.graphics.printf("暂无组合：装备不同模块可激活额外属性。", x + 88, synY, w - 102, "right")
+    else
+        for i = 1, math.min(#synergies, 3) do
+            color(C.gold, 0.10)
+            love.graphics.rectangle("fill", x + 14, synY + 20 + (i - 1) * 22, w - 28, 18, 6, 6)
+            textInBox(compactDesc(synergies[i], 34), x + 22, synY + 20 + (i - 1) * 22, w - 44, 18, Game.fonts.tiny, C.gold, "left")
+        end
     end
 
     love.graphics.setFont(Game.fonts.tiny)
@@ -4467,12 +4537,12 @@ local function drawShop()
     color(C.muted)
     local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
     local incomeText = Game.lastWaveIncome and ("上波收入 +" .. Game.lastWaveIncome .. " · ") or ""
-    love.graphics.printf(incomeText .. shopBudgetHint() .. " · 武器槽 " .. #Game.player.weapons .. "/4 · " .. shieldText .. " · 模块槽 " .. #(Game.player.items or {}) .. "/" .. (Game.player.itemSlots or ITEM_SLOT_BASE), infoX, 74, infoW, "center")
+    love.graphics.printf(incomeText .. shopBudgetHint() .. " · 武器槽 " .. #Game.player.weapons .. "/4 · " .. shieldText .. " · 模块槽 Lv." .. (Game.player.itemSlotLevel or 1) .. " " .. #(Game.player.items or {}) .. "/" .. (Game.player.itemSlots or ITEM_SLOT_BASE), infoX, 74, infoW, "center")
 
     local rerollCost = 3 + Game.shopRefresh * 2
     local refreshText = Game.freeRefresh > 0 and ("免费刷新 " .. Game.freeRefresh .. " 次") or ("刷新 " .. rerollCost .. " 材料")
     local slotCost = itemSlotUpgradeCost()
-    local upgradeText = slotCost and ("模块槽 +1 · ◆" .. slotCost) or "模块槽满级"
+    local upgradeText = slotCost and ("模块槽 Lv." .. ((Game.player.itemSlotLevel or 1) + 1) .. " · ◆" .. slotCost) or "模块槽满级"
     uiButton(refreshText, actionX, actionY + 4, refreshW, actionH - 8, C.cyan)
     uiButton("进入下一波", actionX + refreshW + actionGap, actionY, nextW, actionH, C.gold, C.white, Game.fonts.small)
     uiButton(upgradeText, actionX + refreshW + actionGap + nextW + actionGap, actionY + 4, sellW, actionH - 8, slotCost and C.green or C.muted)
