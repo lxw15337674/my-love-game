@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.49"
+local VERSION = "v2026.05.23.50"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -3054,30 +3054,33 @@ local function drawHud()
     drawCapsule("材料 " .. Game.coins, lx + 370, hudY + 18, 118, 28, {fg = C.gold, border = C.gold, align = "center", padX = 14, bgAlpha = 0.22, borderAlpha = 0.16})
     drawCapsule("击杀 " .. Game.kills, lx + 370, hudY + 56, 118, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.white, align = "center", padX = 14, bgAlpha = 0.16, borderAlpha = 0.10})
 
-    -- 中：主任务。普通关显示倒计时，关底显示 Boss 击破目标。
+    -- 中：主任务。只保留一个主读数；章节、危险和小目标退到辅助胶囊，别和倒计时抢戏。
     local plan = currentWavePlan()
     local bossMode = plan.boss == true
     local midX = Game.w / 2
-    local timerW, timerH = 156, 76
-    local timerX, timerY = midX - timerW / 2, hudY + 12
+    local timerW, timerH = 170, 78
+    local timerX, timerY = midX - timerW / 2, hudY + 10
     color(C.white, 0.10)
     love.graphics.rectangle("fill", timerX, timerY, timerW, timerH, 18, 18)
-    color(C.cyan, 0.42)
+    color(C.cyan, 0.46)
     love.graphics.setLineWidth(2)
     love.graphics.rectangle("line", timerX + 0.5, timerY + 0.5, timerW - 1, timerH - 1, 18, 18)
     love.graphics.setLineWidth(1)
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf(bossMode and "关底" or "剩余生存", timerX, timerY + 8, timerW, "center")
+    love.graphics.printf(bossMode and "主目标" or "倒计时", timerX, timerY + 8, timerW, "center")
     love.graphics.setFont(Game.fonts.big)
     color(C.white)
-    love.graphics.printf(bossMode and "BOSS" or string.format("%02d", math.max(0, math.ceil(Game.waveTime))), timerX, timerY + 24, timerW, "center")
+    local mainTargetText = bossMode and "BOSS" or string.format("%02d", math.max(0, math.ceil(Game.waveTime)))
+    love.graphics.printf(mainTargetText, timerX, timerY + 24, timerW, "center")
 
-    drawCapsule(chapterWaveLabel(Game.wave), midX - 252, hudY + 22, 130, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.16})
-    drawCapsule(plan.name or "生存波次", midX - 252, hudY + 58, 130, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.18, borderAlpha = 0.10})
-    local objectiveText = bossMode and (Game.bossDefeated and "Boss 已击破" or "击破 Boss") or (Game.objectiveText or selectedObjective().name)
-    drawCapsule(objectiveText, midX + 122, hudY + 22, 162, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.16})
-    drawCapsule("危险 " .. Game.danger .. " · " .. survivalPhaseName(), midX + 122, hudY + 58, 162, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.18, borderAlpha = 0.10})
+    local leftInfoX, sideW = midX - 284, 170
+    drawCapsule(chapterWaveLabel(Game.wave), leftInfoX, hudY + 20, sideW, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.16})
+    drawCapsule(plan.name or "生存波次", leftInfoX, hudY + 58, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.18, borderAlpha = 0.10})
+    local rightInfoX = midX + 114
+    local sideObjective = Game.sideObjective and (Game.sideObjective.name .. " " .. math.floor(Game.sideObjective.progress or 0) .. "/" .. Game.sideObjective.target) or "小目标 无"
+    drawCapsule(bossMode and (Game.bossDefeated and "Boss 已击破" or "击破 Boss") or sideObjective, rightInfoX, hudY + 20, sideW, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.16})
+    drawCapsule("危险 " .. Game.danger .. " · " .. survivalPhaseName(), rightInfoX, hudY + 58, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.18, borderAlpha = 0.10})
 
     -- 右：即时操作/威胁。长说明留给商店情报，战斗中别念小作文。
     local rx, rw = Game.w - 430, 392
@@ -3097,11 +3100,15 @@ local function drawHud()
     local boss = nil
     for _, e in ipairs(Game.enemies or {}) do if e.boss then boss = e; break end end
     if boss then
+        local bossW = 560
+        local bossX = Game.w / 2 - bossW / 2
+        local bossY = hudY + hudH + 10
+        drawCapsule("Boss状态 · " .. (boss.name or "关底目标"), bossX, bossY - 26, bossW, 22, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, bgAlpha = 0.18, borderAlpha = 0.12, align = "center"})
         if (boss.maxShield or 0) > 0 then
-            drawBarCapsule("Boss护盾", math.ceil(math.max(0, boss.shield or 0)) .. "/" .. math.ceil(boss.maxShield or 0), rx, hudY + 84, rw, 18, math.max(0, boss.shield or 0) / math.max(1, boss.maxShield or 1), C.cyan)
-            drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), rx, hudY + 106, rw, 18, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
+            drawBarCapsule("Boss护盾", math.ceil(math.max(0, boss.shield or 0)) .. "/" .. math.ceil(boss.maxShield or 0), bossX, bossY, bossW, 24, math.max(0, boss.shield or 0) / math.max(1, boss.maxShield or 1), C.cyan)
+            drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), bossX, bossY + 30, bossW, 24, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
         else
-            drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), rx, hudY + 86, rw, 22, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
+            drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), bossX, bossY, bossW, 26, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
         end
     else
         drawCapsule("敌群 " .. #Game.enemies, rx, hudY + 86, rw, 22, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.16, borderAlpha = 0.10, align = "left", padX = 14})
