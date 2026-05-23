@@ -2,7 +2,7 @@
 -- Robot War prototype
 -- LOVE 11.x arena roguelite inspired by short-wave survivor games and loot-driven builds.
 
-local VERSION = "v2026.05.23.03"
+local VERSION = "v2026.05.23.08"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -10,7 +10,8 @@ local ACTIVE_SKILL_SPEED_MULT = 2.1
 local CHAPTER_SIZE = 5
 local CHAPTER_NAMES = {"铁幕", "赤炉", "断链", "黑箱", "天灾", "归零"}
 local SMALL_WAVE_DURATION = 30
-local RUN_TARGET_WAVES = 20
+local CAMPAIGN_WAVES = CHAPTER_SIZE * #CHAPTER_NAMES
+local AVERAGE_RUN_TARGET_WAVE = 20
 
 local Game = {
     w = VIRTUAL_W,
@@ -19,7 +20,7 @@ local Game = {
     time = 0,
     wave = 1,
     waveTime = SMALL_WAVE_DURATION,
-    maxWave = RUN_TARGET_WAVES,
+    maxWave = CAMPAIGN_WAVES,
     coins = 0,
     kills = 0,
     shopRefresh = 0,
@@ -240,14 +241,24 @@ local wavePlans = {
 
 local function wavePlanAt(wave)
     local safeWave = math.max(1, wave or 1)
-    local base = wavePlans[((safeWave - 1) % #wavePlans) + 1] or wavePlans[#wavePlans]
     local chapterIndex = math.floor((safeWave - 1) / CHAPTER_SIZE) + 1
+    local chapterWave = ((safeWave - 1) % CHAPTER_SIZE) + 1
+    local base = wavePlans[((safeWave - 1) % #wavePlans) + 1] or wavePlans[#wavePlans]
+    if chapterWave == CHAPTER_SIZE then base = wavePlans[#wavePlans] end
     local plan = {}
     for k, v in pairs(base) do plan[k] = v end
     plan.duration = SMALL_WAVE_DURATION
-    plan.interval = math.max(0.38, (base.interval or 1.0) - (chapterIndex - 1) * 0.035)
-    plan.pack = (base.pack or 1) + math.floor((chapterIndex - 1) / 2)
-    plan.name = base.name or "生存波次"
+    plan.interval = math.max(0.38, (base.interval or 1.0) - (chapterIndex - 1) * 0.030 - (chapterWave == CHAPTER_SIZE and 0.10 or 0))
+    plan.pack = (base.pack or 1) + math.floor((chapterIndex - 1) / 2) + (chapterWave == CHAPTER_SIZE and 1 or 0)
+    plan.name = chapterWave == CHAPTER_SIZE and ((CHAPTER_NAMES[chapterIndex] or "终局") .. "关底") or (base.name or "生存波次")
+    if chapterWave == CHAPTER_SIZE then
+        plan.boss = true
+        plan.events = {
+            {time = 0.2, enemy = (chapterIndex % 2 == 0 or chapterIndex == #CHAPTER_NAMES) and "boss" or "elite", side = "right", toast = "关底压力：核心单位接入"},
+            {time = 12, enemy = "elite", side = "left", toast = "关底增援：左侧精英"},
+            {time = 23, enemy = "elite", side = "bottom", toast = "关底增援：底线突破"}
+        }
+    end
     return plan
 end
 
@@ -672,35 +683,66 @@ local function pickSpawnSide(plan)
     local sides = plan and plan.sides or {"left", "right", "top", "bottom"}
     return sides[rnd(1, #sides)]
 end
+local function enemyArenaBounds(e)
+    local r = (e and e.r or 14) + 6
+    return r, 150 + r, Game.w - r, Game.h - 62 - r
+end
+
+local function markAndClampEnemyArena(e)
+    local left, top, right, bottom = enemyArenaBounds(e)
+    if e.x >= left and e.x <= right and e.y >= top and e.y <= bottom then e.enteredArena = true end
+    if e.enteredArena then
+        e.x = clamp(e.x, left, right)
+        e.y = clamp(e.y, top, bottom)
+    end
+end
+
 
 function survivalProgress()
     return clamp((Game.waveElapsed or 0) / math.max(1, SURVIVAL_DURATION), 0, 1)
 end
 
 function runProgress()
-    return clamp(((Game.wave or 1) - 1 + survivalProgress()) / math.max(1, Game.maxWave or RUN_TARGET_WAVES), 0, 1)
+    return clamp(((Game.wave or 1) - 1 + survivalProgress()) / math.max(1, Game.maxWave or CAMPAIGN_WAVES), 0, 1)
+end
+
+function difficultyProgress()
+    -- 平均 10 分钟目标不是硬时长；小关压力按波次线性变难。
+    -- 第 20 小关约等于平均 10 分钟压力目标，30 小关继续进入高手挑战段。
+    local waveLinear = ((Game.wave or 1) - 1 + survivalProgress()) / math.max(1, AVERAGE_RUN_TARGET_WAVE)
+    return clamp(waveLinear, 0, 1.45)
+end
+
+function chapterGatePressure()
+    local _, chapterWave, _, chapterIndex = chapterInfoAt(Game.wave)
+    if chapterWave ~= CHAPTER_SIZE then return 0 end
+    -- 第 1 大关关底是警告；第 2 大关关底开始淘汰普通玩家；之后逐步抬高门槛。
+    return ({0.24, 0.62, 0.80, 1.00, 1.16, 1.32})[chapterIndex] or 1.32
 end
 
 function survivalEnemyCurve()
     local waveT = survivalProgress()
-    local runT = runProgress()
+    local pressureT = difficultyProgress()
+    local gateT = chapterGatePressure()
     return {
-        hp = 1.00 + 0.36 * (waveT ^ 1.25) + 1.12 * (runT ^ 1.35),
-        damage = 1.00 + 0.18 * waveT + 0.62 * (runT ^ 1.25),
-        speed = 1.00 + 0.08 * waveT + 0.12 * runT,
-        armor = math.floor(runT * 2.3),
-        pack = math.floor(waveT * 1.2 + runT * 1.6),
-        interval = 1.00 - 0.10 * waveT - 0.16 * runT,
-        cap = 40 + math.floor(waveT * 24) + math.floor(runT * 70) + Game.danger * 8
+        hp = 1.00 + 0.08 * waveT + 0.82 * pressureT + gateT * 0.58,
+        damage = 1.00 + 0.05 * waveT + 0.48 * pressureT + gateT * 0.36,
+        speed = 1.00 + 0.025 * waveT + 0.09 * pressureT + gateT * 0.045,
+        armor = math.floor(pressureT * 1.8 + gateT * 1.45),
+        pack = math.floor(pressureT * 1.25 + gateT * 2.15),
+        interval = 1.00 - 0.045 * waveT - 0.13 * pressureT - gateT * 0.08,
+        cap = 40 + math.floor(waveT * 10) + math.floor(pressureT * 50) + math.floor(gateT * 42) + Game.danger * 8
     }
 end
 
 function survivalPhaseName()
-    local t = runProgress()
-    if t < 0.20 then return "启动期" end
+    local t = clamp(difficultyProgress(), 0, 1)
+    local _, chapterWave = chapterInfoAt(Game.wave)
+    if chapterWave == CHAPTER_SIZE then return "关底清算" end
+    if t < 0.20 then return "侦察期" end
     if t < 0.45 then return "扩张期" end
     if t < 0.70 then return "压迫期" end
-    if t < 0.90 then return "失控期" end
+    if t < 0.90 then return "淘汰期" end
     return "终局清算"
 end
 
@@ -712,19 +754,24 @@ local function spawnEnemy(def, opts)
     local bonus = currentAffixBonuses()
     local curve = survivalEnemyCurve()
     local dangerScale = 1 + Game.danger * 0.08
-    local scale = (opts.scale or 1) * (1 + (Game.wave - 1) * 0.055) * bonus.enemyHp * dangerScale * curve.hp
+    local scale = (opts.scale or 1) * (1 + (Game.wave - 1) * 0.040) * bonus.enemyHp * dangerScale * curve.hp
     local hp = def.hp * scale
     local shield = (def.shield or 0) * scale
     Game.enemies[#Game.enemies + 1] = {
         name = def.name, x = x, y = y, r = def.r,
         hp = hp, maxHp = hp, shield = shield, maxShield = shield, defense = def.defense or (shield > 0 and "shield" or ((def.armor or 0) > 0 and "armor" or "flesh")), shieldRegen = def.shieldRegen or 0,
-        speed = (def.speed + Game.wave * 1.0) * bonus.enemySpeed * curve.speed * (1 + Game.danger * 0.025),
+        speed = (def.speed + Game.wave * 0.85) * bonus.enemySpeed * curve.speed * (1 + Game.danger * 0.025),
         damage = def.damage * bonus.enemyDamage * curve.damage * (1 + Game.danger * 0.06), armor = (def.armor or 0) + bonus.enemyArmor + curve.armor,
         color = def.color, xp = def.xp, coin = def.coin, treasureCoin = def.treasureCoin, sprite = def.sprite, behavior = def.behavior or "chase",
         elite = def.elite, boss = def.boss, treasure = def.treasure,
         shootTimer = rnd() * 1.2, dashTimer = rnd() * 1.6, wanderTimer = rnd() * 1.4, wanderAngle = rnd() * TAU,
         burn = 0, slow = 0, corrosion = 0, lastHit = 0
     }
+    local spawned = Game.enemies[#Game.enemies]
+    if def.boss or def.elite then
+        spawned.enteredArena = true
+        markAndClampEnemyArena(spawned)
+    end
     if def.boss then
         toast("Boss 接入：" .. def.name)
         addText(Game.w / 2 - 46, 154, "Boss", C.red)
@@ -2002,10 +2049,12 @@ local function updateEnemies(dt)
         end
         e.x = e.x + math.cos(moveAngle) * spd * dt
         e.y = e.y + math.sin(moveAngle) * spd * dt
+        markAndClampEnemyArena(e)
         if distance(e.x, e.y, p.x, p.y) < e.r + p.r then
             if (e.damage or 0) > 0 then damagePlayer(e.damage) end
             e.x = e.x - math.cos(a) * 18
             e.y = e.y - math.sin(a) * 18
+            markAndClampEnemyArena(e)
         end
         if e.lastHit and e.lastHit > 0 then e.lastHit = e.lastHit - dt end
         if e.shield and e.shield < (e.maxShield or 0) and (e.lastHit or 0) <= 0 then
@@ -2337,7 +2386,14 @@ function love.update(dt)
             love.event.quit()
         end
     elseif os.getenv("LOVE_AUTOSHOT") == "1" and not Game.autoShotDone then
-        if Game.state == "menu" then resetRun() end
+        if Game.state == "menu" then
+            resetRun()
+            if os.getenv("LOVE_AUTOWAVE") then
+                Game.wave = clamp(tonumber(os.getenv("LOVE_AUTOWAVE")) or Game.wave, 1, Game.maxWave)
+                Game.runStats.highestWave = Game.wave
+                startWave()
+            end
+        end
         if Game.time > 2.0 then
             Game.autoShotDone = true
             love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-prototype.png")
@@ -2785,7 +2841,7 @@ local function drawMenu()
 
     love.graphics.setFont(Game.fonts.subtitle or Game.fonts.small)
     color(C.cyan, 0.78)
-    love.graphics.printf("20小关约10分钟 · 每小关30秒 · 自动射击", 0, 126, w, "center")
+    love.graphics.printf("6大关30小关 · 线性变难+关底升压", 0, 126, w, "center")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted, 0.70)
     love.graphics.printf("撑住倒计时，收集材料，把一台白板机体养成怪物。", 0, 156, w, "center")
@@ -2842,7 +2898,7 @@ local function drawMenu()
     -- 首页不再提供模式切换，只保留生存模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("目标：20 个 30 秒小关；难度按整局逐步升压。", deckX + 28, deckY + 96, 500, "left")
+    love.graphics.printf("目标：逐关线性变难；每个大关末尾形成淘汰峰。", deckX + 28, deckY + 96, 500, "left")
     uiButton("Q  降低", deckX + deckW - 220, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
     uiButton("E  提高", deckX + deckW - 112, deckY + 88, 94, 30, C.cyan, C.white, Game.fonts.tiny)
 end
@@ -3708,7 +3764,7 @@ local function drawNextWavePanel(x, y, w, h)
     love.graphics.printf(chapterWaveLabel(Game.wave) .. " · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("20 小关约 10 分钟 · 当前小关 30 秒 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
+    love.graphics.printf("6 大关 30 小关 · 线性变难+关底升压 · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
 
     local pillW = (w - 62) / 2
     if protocol then tip = drawAffixInfoPill(protocol, "协议", x + 24, y + 122, pillW, 58, mx, my) or tip end
