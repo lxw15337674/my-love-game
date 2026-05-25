@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.23.56"
+local VERSION = "v2026.05.25.57"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -3228,21 +3228,26 @@ local function drawTwoLineCapsule(label, value, x, y, w, h, accent, opts)
     love.graphics.printf(value, x + 10, yy + labelFont:getHeight() + gap, w - 20, opts.align or "center")
 end
 
-local function drawBarCapsule(label, value, x, y, w, h, pct, accent)
-    color(C.panel, 0.58)
-    love.graphics.rectangle("fill", x, y, w, h, 12, 12)
-    color(accent, 0.40)
-    love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, 12, 12)
-    love.graphics.setFont(Game.fonts.tiny)
-    local labelW = 54
-    local valueW = 72
-    color(C.muted)
-    love.graphics.printf(label, x + 12, y + math.floor((h - Game.fonts.tiny:getHeight()) / 2), labelW, "left")
-    local barX, barY = x + 70, y + math.floor((h - 10) / 2)
-    local barW = w - 70 - valueW - 14
-    bar(barX, barY, barW, 10, pct, accent, {0.02, 0.024, 0.05})
-    color(C.white)
-    love.graphics.printf(value, x + w - valueW - 12, y + math.floor((h - Game.fonts.tiny:getHeight()) / 2), valueW, "right")
+local function drawBarCapsule(label, value, x, y, w, h, pct, accent, opts)
+    opts = opts or {}
+    color(C.panel, opts.bgAlpha or 0.66)
+    love.graphics.rectangle("fill", x, y, w, h, opts.radius or 12, opts.radius or 12)
+    color(accent, opts.borderAlpha or 0.46)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, opts.radius or 12, opts.radius or 12)
+    local labelFont = opts.labelFont or Game.fonts.tiny
+    local valueFont = opts.valueFont or Game.fonts.tiny
+    local labelW = opts.labelW or 58
+    local valueW = opts.valueW or 84
+    local barH = opts.barH or 11
+    love.graphics.setFont(labelFont)
+    color(opts.labelColor or C.muted)
+    love.graphics.printf(label, x + 12, y + math.floor((h - labelFont:getHeight()) / 2), labelW, "left")
+    local barX, barY = x + labelW + 24, y + math.floor((h - barH) / 2)
+    local barW = w - (barX - x) - valueW - 14
+    bar(barX, barY, barW, barH, pct, accent, {0.02, 0.024, 0.05})
+    love.graphics.setFont(valueFont)
+    color(opts.valueColor or C.white)
+    love.graphics.printf(value, x + w - valueW - 12, y + math.floor((h - valueFont:getHeight()) / 2), valueW, "right")
 end
 
 local waveThreatSummary
@@ -3252,23 +3257,25 @@ local function drawHud()
     local hpPct = clamp(p.hp / math.max(1, p.maxHp), 0, 1)
     local shieldPct = clamp(p.shield / math.max(1, p.maxShield), 0, 1)
     local dangerPulse = 0.5 + 0.5 * math.sin((love.timer.getTime() or 0) * 8.0)
-    local hudY, hudH = 14, 116
+    local hudY, hudH = 14, 124
     panel(18, hudY, Game.w - 36, hudH)
+    color(C.white, 0.035)
+    love.graphics.rectangle("fill", 26, hudY + 8, Game.w - 52, hudH - 16, 16, 16)
 
     -- 左：生存状态必须比材料/击杀更抢眼。原型可以乱，战斗 HUD 不能乱。
     local lx = 36
     local hpColor = hpPct < 0.35 and C.red or C.pink
-    drawBarCapsule("生命", math.ceil(p.hp) .. "/" .. p.maxHp, lx, hudY + 12, 346, 34, hpPct, hpColor)
-    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 54, 346, 30, shieldPct, C.cyan)
+    drawBarCapsule("生命", math.ceil(p.hp) .. "/" .. p.maxHp, lx, hudY + 12, 370, 40, hpPct, hpColor, {valueFont = Game.fonts.small, valueW = 104, barH = 13})
+    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 60, 370, 34, shieldPct, C.cyan, {valueFont = Game.fonts.tiny, valueW = 104, barH = 11})
     if hpPct < 0.35 then
         color(C.red, 0.16 + dangerPulse * 0.18)
-        love.graphics.rectangle("line", lx - 4, hudY + 8, 354, 42, 12, 12)
+        love.graphics.rectangle("line", lx - 4, hudY + 8, 378, 48, 12, 12)
         love.graphics.setFont(Game.fonts.tiny)
         color(C.red, 0.90)
-        love.graphics.printf("核心受损", lx + 236, hudY + 20, 96, "right")
+        love.graphics.printf("核心受损", lx + 258, hudY + 24, 96, "right")
     end
-    drawCapsule("材料 " .. Game.coins, lx + 370, hudY + 18, 118, 28, {fg = C.gold, border = C.gold, align = "center", padX = 14, bgAlpha = 0.22, borderAlpha = 0.16})
-    drawCapsule("击杀 " .. Game.kills, lx + 370, hudY + 56, 118, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.white, align = "center", padX = 14, bgAlpha = 0.16, borderAlpha = 0.10})
+    drawTwoLineCapsule("材料", "◆" .. tostring(Game.coins), lx + 392, hudY + 12, 132, 44, C.gold, {bgAlpha = 0.34, borderAlpha = 0.30, valueFont = Game.fonts.small})
+    drawCapsule("击杀 " .. Game.kills, lx + 392, hudY + 64, 132, 28, {font = Game.fonts.tiny, fg = C.white, border = C.white, align = "center", padX = 14, bgAlpha = 0.22, borderAlpha = 0.14})
 
     -- 中：主任务。只保留一个主读数；章节、危险和小目标退到辅助胶囊，别和倒计时抢戏。
     local plan = currentWavePlan()
@@ -3292,11 +3299,11 @@ local function drawHud()
 
     local leftInfoX, sideW = midX - 284, 170
     drawCapsule(chapterWaveLabel(Game.wave), leftInfoX, hudY + 20, sideW, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.16})
-    drawCapsule(plan.name or "生存波次", leftInfoX, hudY + 58, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.18, borderAlpha = 0.10})
+    drawCapsule(plan.name or "生存波次", leftInfoX, hudY + 58, sideW, 26, {font = Game.fonts.tiny, fg = C.white, border = C.gold, bgAlpha = 0.24, borderAlpha = 0.14})
     local rightInfoX = midX + 114
     local sideObjective = Game.sideObjective and (Game.sideObjective.name .. " " .. math.floor(Game.sideObjective.progress or 0) .. "/" .. Game.sideObjective.target) or "小目标 无"
     drawCapsule(bossMode and (Game.bossDefeated and "Boss 已击破" or "击破 Boss") or sideObjective, rightInfoX, hudY + 20, sideW, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.16})
-    drawCapsule("危险 " .. Game.danger .. " · " .. survivalPhaseName(), rightInfoX, hudY + 58, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.18, borderAlpha = 0.10})
+    drawCapsule("危险 " .. Game.danger .. " · " .. survivalPhaseName(), rightInfoX, hudY + 58, sideW, 26, {font = Game.fonts.tiny, fg = C.white, border = C.cyan, bgAlpha = 0.24, borderAlpha = 0.14})
 
     -- 右：即时操作/威胁。长说明留给商店情报，战斗中别念小作文。
     local rx, rw = Game.w - 430, 392
@@ -3310,8 +3317,8 @@ local function drawHud()
         skillText = "空格 冷却 " .. string.format("%.1f", skill.cd) .. "s"
         skillFg = C.muted
     end
-    drawCapsule(skillText, rx, hudY + 14, rw, 30, {font = Game.fonts.tiny, fg = skillFg, border = skillFg, bgAlpha = 0.28, borderAlpha = 0.22, align = "left", padX = 14})
-    drawCapsule("威胁：" .. waveThreatSummary(Game.wave), rx, hudY + 52, rw, 28, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, bgAlpha = 0.24, borderAlpha = 0.16, align = "left", padX = 14})
+    drawCapsule(skillText, rx, hudY + 14, rw, 32, {font = Game.fonts.tiny, fg = skillFg, border = skillFg, bgAlpha = 0.34, borderAlpha = 0.26, align = "left", padX = 14})
+    drawCapsule("威胁：" .. waveThreatSummary(Game.wave), rx, hudY + 56, rw, 30, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, bgAlpha = 0.30, borderAlpha = 0.20, align = "left", padX = 14})
 
     local boss = nil
     for _, e in ipairs(Game.enemies or {}) do if e.boss then boss = e; break end end
@@ -3327,7 +3334,7 @@ local function drawHud()
             drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), bossX, bossY, bossW, 26, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
         end
     else
-        drawCapsule("敌群 " .. #Game.enemies, rx, hudY + 86, rw, 22, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.16, borderAlpha = 0.10, align = "left", padX = 14})
+        drawCapsule("敌群 " .. #Game.enemies, rx, hudY + 96, rw, 22, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.18, borderAlpha = 0.12, align = "left", padX = 14})
     end
 end
 
