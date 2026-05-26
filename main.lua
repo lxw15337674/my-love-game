@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.26.74"
+local VERSION = "v2026.05.26.76"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -1011,7 +1011,7 @@ local function pickSpawnSide(plan)
 end
 function enemyVisualRadius(e)
     local r = e and e.r or 14
-    if e and e.boss then return r * 2.35 + 10 end
+    if e and e.boss then return r * 3.25 + 16 end
     if e and e.elite then return r * 2.10 + 8 end
     return r + 14
 end
@@ -1130,6 +1130,10 @@ local function spawnEnemy(def, opts)
     }
     local spawned = Game.enemies[#Game.enemies]
     if def.boss then
+        local left, top, right, bottom = enemyArenaBounds(spawned)
+        spawned.x = clamp(spawned.x, left, right)
+        spawned.y = clamp(spawned.y, top, bottom)
+        spawned.enteredArena = true
         spawned.bossPhase = 1
         spawned.bossPhaseName = "校准射击"
         spawned.bossAttackTimer = 0.75
