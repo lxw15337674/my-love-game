@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.26.76"
+local VERSION = "v2026.05.26.77"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -2242,6 +2242,7 @@ function applyElementStatus(e, elem, statusDamage, source, chance)
     if elem == "kinetic" then return false end
     local p = Game.player
     local procChance = chance
+    if procChance ~= nil and procChance <= 0 then return false end
     if procChance == nil then procChance = 1 end
     procChance = clamp(procChance + ((p and p.stats and p.stats.elementChance) or 0), 0, 0.90)
     if rnd() > procChance then return false end

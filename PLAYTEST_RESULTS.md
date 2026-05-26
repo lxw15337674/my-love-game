@@ -3,6 +3,44 @@
 > 本轮是半自动基线记录：用现有 LÖVE 自动截图采集 wave 1/3/6/9/12 的战斗与商店状态，并结合当前配置计算压力/经济快照。它不是完整人工通关结论，不能替代后续真实游玩测试。
 
 
+## 2026-05-26 21:37 CST · v2026.05.26.77 多轮自动记录
+
+### 范围
+
+- baseline 自然开局：连续 3 轮目标 wave 3，记录文件：
+  - `tmp/playtest-20260526-133657-v77-baseline-wave3-run1.md`
+  - `tmp/playtest-20260526-133715-v77-baseline-wave3-run2.md`
+  - `tmp/playtest-20260526-133726-v77-baseline-wave3-run3.md`
+- `balanced` 测试构筑：
+  - wave 3→6：`tmp/playtest-20260526-133230-balanced-wave6-from3.md`
+  - wave 9→12：`tmp/playtest-20260526-133428-v77-balanced-wave12-from9.md`
+  - wave 12 直跑：`tmp/playtest-20260526-133632-v77-balanced-wave12-direct.md`
+- 注意：本轮仍是简单自动驾驶 / 专用测试构筑记录，不等同人工完整通关。
+
+### 结果摘要
+
+| 记录 | 结果 | 关键观察 |
+| --- | --- | --- |
+| baseline run1 wave 1→3 | 死亡于 wave 3 | wave 1/2 可清，wave 2 后满血但护盾仅 `23/36`。 |
+| baseline run2 wave 1→3 | 抵达 wave 3 后商店 | wave 3 结束仅 `33/76` 生命、`0/36` 护盾，属于低容错通过。 |
+| baseline run3 wave 1→3 | 死亡于 wave 3 | wave 2 后 `68/76` 生命、`0/36` 护盾，仍死于第一 Boss。 |
+| balanced wave 3→6 | 抵达 wave 6 后商店 | Boss/清场主链路可用，强构筑全程满状态。 |
+| balanced wave 9→12 | 420 秒模拟中止 | 不再 stack overflow；wave 9/10/11 可过，但连跑到 wave 12 前节奏拖长。 |
+| balanced wave 12 直跑 | 抵达 wave 12 后商店 | wave 12 Boss 可击破，说明第四 Boss 本体不是绝对断点。 |
+
+### 修复记录
+
+- 发现并修复电弧链式伤害递归：二段/链式电弧伤害传入 `statusChance=0` 时，旧逻辑仍叠加玩家元素附着概率，可能继续触发跳电并导致 stack overflow。
+- v77 起显式 `statusChance <= 0` 直接禁用异常附着，保留主武器自然附着。
+
+### 结论
+
+- 当前不能判定“难度/玩法已经 ok”。
+- 早期自然构筑在第一 Boss 附近仍偏硬：3 轮只有 1 轮通过，且通过样本血盾余量低。
+- 中后期强构筑主链路可用，但 wave 9→12 连跑出现节奏拖长，需要半人工验证真实击杀效率和购买决策。
+- 暂不做玩法结构或数值大改；建议下一步先讨论小幅早期保底/第一 Boss 门槛调整方案。
+
+
 ## 2026-05-26 19:43 CST · v2026.05.26.76 自动记录复核
 
 ### 范围
