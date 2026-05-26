@@ -19,6 +19,7 @@
 - 入场时继续走统一缩放链路：`wavePowerScale(Game.wave) × currentAffixBonuses() × survivalEnemyCurve() × dangerScale`。
 - 第一大关仍保留教学保护：首个 Boss 波降低血盾和护盾回复，避免新机制叠加数值墙。
 - 随机 Boss 不绑定固定大关；同一个 Boss 放到 wave 3 和 wave 21，靠动态缩放、章节词缀、支援敌人和刷怪压力区分难度。
+- 前两章是 Boss 机制教学段：第一 Boss 地面区只做视觉教学、禁普通刷怪和 Boss 召唤；第二 Boss 降低伤害/区域/支援压力；第三章后逐步恢复完整 Boss 关压力。
 
 ## Boss 列表
 
@@ -245,7 +246,7 @@
 
 ## 当前实现状态
 
-- 已实现：20 个 Boss 基础模板、随机 Boss 池、每波 Boss 锁定、动态数值缩放接入、各 Boss pattern 的第一版机制差异。
+- 已实现：20 个 Boss 基础模板、随机 Boss 池、每波 Boss 锁定、动态数值缩放接入、各 Boss pattern 的第一版机制差异，以及前两章 Boss 教学/整备保护。
 - 已验证：`luac -p main.lua` 和 `git diff --check` 通过；`balanced` 直跑 wave 3 / 6 / 9 / 12 均可击破 Boss；新增强制测试入口 `LOVE_AUTOPLAY_BOSS_ID` 可逐个点名回归。
 - 待验证：自然构筑下每个 Boss 的通过率、死亡原因、耗时、UI 可读性和是否有机制重叠造成的不公平。
 - 待打磨：独立 Boss 贴图、专属音效、更明确的战前情报和商店推荐。

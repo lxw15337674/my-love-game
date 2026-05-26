@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.26.79"
+local VERSION = "v2026.05.26.80"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -504,17 +504,26 @@ local function wavePlanAt(wave)
     plan.interval = math.max(0.42, (base.interval or 1.0) - (chapterIndex - 1) * 0.030 - (chapterWave == CHAPTER_SIZE and 0.04 or 0))
     plan.pack = (base.pack or 1) + math.floor((chapterIndex - 1) / 2) + (chapterWave == CHAPTER_SIZE and 0 or 0)
     plan.name = chapterWave == CHAPTER_SIZE and ((CHAPTER_NAMES[chapterIndex] or "终局") .. "关底 Boss") or (base.name or "清理敌群")
-    if chapterWave ~= CHAPTER_SIZE and chapterIndex >= 2 then
+    if chapterWave ~= CHAPTER_SIZE and chapterIndex >= 3 then
         plan.events[#plan.events + 1] = {time = 9, enemy = "zoner", side = "top", toast = "封锁织网者：战场切割"}
+    end
+    if chapterIndex == 2 and chapterWave == 1 then
+        plan.interval = math.max(plan.interval or 1.0, 1.02)
+        plan.pack = math.max(1, (plan.pack or 1) - 1)
+        for _, entry in ipairs(plan.enemies or {}) do
+            if entry[1] == "bomber" then entry[2] = math.min(entry[2], 1) end
+            if entry[1] == "shell" then entry[2] = math.max(8, math.floor(entry[2] * 0.58)) end
+            if entry[1] == "rammer" then entry[2] = math.max(4, math.floor(entry[2] * 0.65)) end
+        end
     end
     if chapterWave == CHAPTER_SIZE then
         plan.boss = true
         plan.events = {
             {time = 0.2, enemy = "boss", side = "right", toast = "目标：打爆 Boss"}
         }
-        if chapterIndex >= 2 then plan.events[#plan.events + 1] = {time = 12, enemy = "zoner", side = "top", toast = "封锁织网者：压缩战场"} end
-        if chapterIndex >= 2 then plan.events[#plan.events + 1] = {time = 16, enemy = "bomber", side = "top", toast = "燃烧投手支援入场"} end
-        plan.events[#plan.events + 1] = {time = 24, enemy = "elite", side = "left", toast = "Boss护卫：左侧精英"}
+        if chapterIndex >= 3 then plan.events[#plan.events + 1] = {time = 12, enemy = "zoner", side = "top", toast = "封锁织网者：压缩战场"} end
+        if chapterIndex >= 3 then plan.events[#plan.events + 1] = {time = 16, enemy = "bomber", side = "top", toast = "燃烧投手支援入场"} end
+        if chapterIndex >= 2 then plan.events[#plan.events + 1] = {time = 24, enemy = "elite", side = "left", toast = "Boss护卫：左侧精英"} end
     end
     return plan
 end
@@ -1158,16 +1167,27 @@ local function spawnEnemy(def, opts)
     local scale = (opts.scale or 1) * wavePowerScale(Game.wave) * bonus.enemyHp * dangerScale * curve.hp
     local hp = def.hp * scale
     local shield = (def.shield or 0) * scale
+    local speed = (def.speed + Game.wave * 0.85) * bonus.enemySpeed * curve.speed * (1 + Game.danger * 0.025)
+    local damage = def.damage * wavePowerScale(Game.wave) * bonus.enemyDamage * curve.damage * (1 + Game.danger * 0.06)
+    local armor = (def.armor or 0) + bonus.enemyArmor + curve.armor
     if def.boss and (Game.wave or 1) <= CHAPTER_SIZE then
-        -- 第一 Boss 是教学标杆：保留三段机制，但避免新机制叠加数值曲线后变成拖沓血盾墙。
-        hp = hp * 0.72
-        shield = shield * 0.68
+        -- 第一 Boss 是教学标杆：保留机制语言，但随机池扩到 20 后不能让冲刺/区域/恢复型模板在入门关形成数值墙。
+        hp = hp * 0.60
+        shield = shield * 0.56
+        speed = speed * 0.86
+        damage = damage * 0.32
+        armor = math.max(0, armor - 1)
+    elseif def.boss then
+        local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
+        local bossDamageRamp = clamp(0.25 + chapterIndex * 0.11, 0.47, 1.00)
+        damage = damage * bossDamageRamp
+        speed = speed * clamp(0.86 + chapterIndex * 0.035, 0.92, 1.00)
     end
     Game.enemies[#Game.enemies + 1] = {
         name = def.name, x = x, y = y, r = def.r,
         hp = hp, maxHp = hp, shield = shield, maxShield = shield, defense = def.defense or (shield > 0 and "shield" or ((def.armor or 0) > 0 and "armor" or "flesh")), shieldRegen = def.shieldRegen or 0,
-        speed = (def.speed + Game.wave * 0.85) * bonus.enemySpeed * curve.speed * (1 + Game.danger * 0.025),
-        damage = def.damage * wavePowerScale(Game.wave) * bonus.enemyDamage * curve.damage * (1 + Game.danger * 0.06), armor = (def.armor or 0) + bonus.enemyArmor + curve.armor,
+        speed = speed,
+        damage = damage, armor = armor,
         color = def.color, xp = def.xp, coin = def.coin, treasureCoin = def.treasureCoin, sprite = def.sprite, behavior = def.behavior or "chase",
         zoneRadius = def.zoneRadius, zoneDuration = def.zoneDuration, zoneCooldown = def.zoneCooldown, zoneDamage = def.zoneDamage,
         elite = def.elite, boss = def.boss, bossPattern = def.bossPattern, phaseLabels = def.phaseLabels, bossRole = def.bossRole, treasure = def.treasure,
@@ -1187,7 +1207,10 @@ local function spawnEnemy(def, opts)
         spawned.bossWeakTimer = 0
         spawned.damageTakenMult = 1
         if (Game.wave or 1) <= CHAPTER_SIZE then
-            spawned.shieldRegen = (spawned.shieldRegen or 0) * 0.55
+            spawned.shieldRegen = (spawned.shieldRegen or 0) * 0.45
+            spawned.bossAttackTimer = math.max(spawned.bossAttackTimer or 0, 1.60)
+            spawned.bossSpecialTimer = math.max(spawned.bossSpecialTimer or 0, 4.8)
+            spawned.bossSummonTimer = math.max(spawned.bossSummonTimer or 0, 5.8)
         end
         toast("Boss 接入：" .. def.name)
         addText(Game.w / 2 - 46, 154, "Boss", C.red)
@@ -1200,11 +1223,19 @@ end
 
 local function spawnPack(plan)
     plan = plan or currentWavePlan()
+    if plan.boss then
+        local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
+        if chapterIndex <= 2 then return end
+    end
     local side = pickSpawnSide(plan)
     local bonus = currentAffixBonuses()
     local curve = survivalEnemyCurve()
     if #Game.enemies >= curve.cap then return end
     local pack = math.min((plan.pack or 1) + bonus.extraPack + curve.pack, math.max(1, curve.cap - #Game.enemies))
+    if plan.boss then
+        local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
+        pack = math.max(1, math.floor(pack * clamp(0.24 + chapterIndex * 0.13, 0.36, 0.78)))
+    end
     for _ = 1, pack do spawnEnemy(weightedEnemy(plan), {side = side}) end
 end
 
@@ -2094,6 +2125,15 @@ local function startWave()
     Game.pendingRewardNextState = nil
     Game.waveRewards = {wave = Game.wave, reason = "", kills = 0, coins = 0, clear = 0}
     local p = Game.player
+    if plan.boss then
+        local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
+        local earlyBoss = chapterIndex <= 2
+        local minHp = (p.maxHp or p.hp or 1) * (earlyBoss and 0.85 or 0.62)
+        local minShield = (p.maxShield or p.shield or 0) * (earlyBoss and 1.00 or 0.75)
+        if (p.hp or 0) < minHp then p.hp = minHp end
+        if (p.shield or 0) < minShield then p.shield = minShield end
+        toast(earlyBoss and "Boss 前整备：教学保护" or "Boss 前整备：护盾补给")
+    end
     p.waveDamageBonus = 0
     p.waveFireRateBonus = 0
     p.waveElementChance = 0
@@ -2540,7 +2580,7 @@ local function updateBullets(dt)
                         end
                     end
                     burst(e.x, e.y, b.color, 14, 150)
-                    if b.fireSplash and b.element == "burn" then igniteFireZone(e.x, e.y, math.min(110, (b.splash or 58) + 18), 2.8, math.max(4, hitDamage * 0.10)) end
+                    if b.fireSplash and b.element == "burn" then igniteFireZone(e.x, e.y, math.min(110, (b.splash or 58) + 18), 2.8, math.max(4, hitDamage * 0.10), nil, nil, "燃烧残焰", false) end
                 end
                 if dead and Game.player.gear.blink and b.crit then Game.player.gear.nextCrit = true end
                 if b.bounce and b.bounce > 0 then
@@ -2617,10 +2657,10 @@ local function fireEnemyShot(e, a, speed, radius, damageMult, colorOverride, sou
     Game.enemyShots[#Game.enemyShots + 1] = {x = e.x, y = e.y, vx = math.cos(a) * spd, vy = math.sin(a) * spd, r = radius or 6, damage = e.damage * (damageMult or 0.75), color = colorOverride or e.color, life = 3.0, source = sourceLabel or (e.boss and "Boss弹幕" or "敌弹")}
 end
 
-function igniteFireZone(x, y, radius, duration, damage, zoneColor, coreColor, label)
+function igniteFireZone(x, y, radius, duration, damage, zoneColor, coreColor, label, hurtsPlayer)
     Game.fireZones = Game.fireZones or {}
     local outer = zoneColor or C.orange
-    Game.fireZones[#Game.fireZones + 1] = {x = x, y = y, r = radius or 82, life = duration or 4.6, maxLife = duration or 4.6, damage = damage or 8, tick = 0, color = outer, coreColor = coreColor or C.red, label = label or (outer == C.purple and "封锁区" or "燃烧区")}
+    Game.fireZones[#Game.fireZones + 1] = {x = x, y = y, r = radius or 82, life = duration or 4.6, maxLife = duration or 4.6, damage = damage or 8, tick = 0, color = outer, coreColor = coreColor or C.red, label = label or (outer == C.purple and "封锁区" or "燃烧区"), hurtsPlayer = hurtsPlayer ~= false}
     burst(x, y, outer, 22, 220)
 end
 
@@ -2664,6 +2704,7 @@ local function setBossPhase(e, phase)
 end
 
 local function spawnBossMinion(id, side, scale)
+    if currentWavePlan().boss and (Game.wave or 1) <= CHAPTER_SIZE then return end
     local def = enemyDefs[id]
     if def then spawnEnemy(def, {side = side or pickSpawnSide(currentWavePlan()), scale = scale or 0.85}) end
 end
@@ -2676,10 +2717,17 @@ local function bossTargetZone(e, radius, duration, damageMult, zoneColor, coreCo
     local px, py = -vy, vx
     e.bossZoneFlip = not e.bossZoneFlip
     local side = e.bossZoneFlip and 1 or -1
+    local plan = currentWavePlan()
+    local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
+    local introBoss = plan.boss and (Game.wave or 1) <= CHAPTER_SIZE
+    local bossZoneRamp = plan.boss and clamp(0.35 + chapterIndex * 0.09, 0.45, 1.00) or 1
+    local zoneRadius = (radius or 96) * (introBoss and 0.78 or 1)
+    local zoneDuration = (duration or 4.2) * (introBoss and 0.55 or 1)
+    local zoneDamage = (e.damage or 12) * (damageMult or 0.45) * bossZoneRamp * (introBoss and 0.22 or 1)
     local zx = clamp(p.x + vx * (lead or 112) + px * side * (sideOffset or 86), 96, Game.w - 96)
     local zy = clamp(p.y + vy * (lead or 112) + py * side * (sideOffset or 86), 178, Game.h - 90)
-    igniteFireZone(zx, zy, radius or 96, duration or 4.2, math.max(5, (e.damage or 12) * (damageMult or 0.45)), zoneColor or C.purple, coreColor or C.red, label or "压制区")
-    addText(zx - 38, zy - (radius or 96) - 14, label or "压制区", zoneColor or C.purple)
+    igniteFireZone(zx, zy, zoneRadius, zoneDuration, math.max(introBoss and 0.5 or 5, zoneDamage), zoneColor or C.purple, coreColor or C.red, label or "压制区", not introBoss)
+    addText(zx - 38, zy - zoneRadius - 14, label or "压制区", zoneColor or C.purple)
 end
 
 local function bossFanShot(e, a, count, spread, speed, radius, damageMult, c)
@@ -2970,7 +3018,7 @@ local function updateFireZones(dt)
         local z = Game.fireZones[i]
         z.life = z.life - dt
         z.tick = (z.tick or 0) - dt
-        if distance(z.x, z.y, p.x, p.y) < z.r + p.r * 0.35 and z.tick <= 0 then
+        if z.hurtsPlayer ~= false and distance(z.x, z.y, p.x, p.y) < z.r + p.r * 0.35 and z.tick <= 0 then
             damagePlayer(z.damage or 6, z.label or "危险区域", z.x, z.y, z.color)
             z.tick = 0.45
         end
@@ -3248,6 +3296,11 @@ local function finalizeWaveReward(reason)
     awardSideObjective()
     local base = clearRewardForWave(finishedWave)
     addCoins(base, "clear")
+    if finishedWave % CHAPTER_SIZE == 0 and finishedWave < (Game.maxWave or CAMPAIGN_WAVES) then
+        p.hp = math.max(p.hp or 0, (p.maxHp or p.hp or 1) * 0.72)
+        p.shield = math.max(p.shield or 0, (p.maxShield or p.shield or 0) * 0.85)
+        if Game.waveRewards then Game.waveRewards.chapterRepair = "章节整备" end
+    end
     if autoplayCaptureWave then autoplayCaptureWave(summary) end
     Game.lastWaveIncome = (Game.waveRewards and Game.waveRewards.coins) or base
     generateLevelChoices()
@@ -3328,7 +3381,12 @@ local function updatePlaying(dt)
         local pressure = math.max(0, Game.waveElapsed / SURVIVAL_DURATION)
         local bonus = currentAffixBonuses()
         local curve = survivalEnemyCurve()
-        Game.spawnTimer = math.max(0.38, ((plan.interval or 1.0) * bonus.intervalMult * curve.interval) - pressure * 0.10)
+        local interval = ((plan.interval or 1.0) * bonus.intervalMult * curve.interval) - pressure * 0.10
+        if plan.boss then
+            local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
+            interval = interval * clamp(2.10 - chapterIndex * 0.12, 1.22, 1.90)
+        end
+        Game.spawnTimer = math.max(0.38, interval)
     end
     updatePlayer(dt)
     updateWeapons(dt)
@@ -3591,7 +3649,14 @@ function autoplayUpdate(dt)
         Game.autoplayWallClock = (Game.autoplayWallClock or 0) + dt
         local maxSimSeconds = tonumber(os.getenv("LOVE_AUTOPLAY_MAX_SIM_SECONDS")) or 180
         if Game.autoplayWallClock > maxSimSeconds then
-            autoplayLine("\n## 中止\n\n自动跑局超过 " .. tostring(maxSimSeconds) .. " 秒模拟时间，停止记录。\n")
+            local bossInfo = ""
+            for _, e in ipairs(Game.enemies or {}) do
+                if e.boss then
+                    bossInfo = "；当前 Boss：" .. tostring(e.name or Game.waveBossName or "?") .. " " .. tostring(math.max(0, math.ceil(((e.hp or 0) / math.max(1, e.maxHp or e.hp or 1)) * 100))) .. "%"
+                    break
+                end
+            end
+            autoplayLine("\n## 中止\n\n自动跑局超过 " .. tostring(maxSimSeconds) .. " 秒模拟时间，停止记录；当前 wave " .. tostring(Game.wave or "?") .. bossInfo .. "。\n")
             love.event.quit()
         end
         return
@@ -3623,7 +3688,10 @@ function autoplayUpdate(dt)
         return
     end
     if Game.state == "gameover" then
-        autoplayLine("\n## 结论\n\n自动跑局死亡于 wave " .. tostring(Game.wave or "?") .. "。\n")
+        local p = Game.player or {}
+        local bossText = Game.waveBossName and ("；本波 Boss：" .. tostring(Game.waveBossName)) or ""
+        local hitText = Game.lastHitSource and ("；最后受击：" .. tostring(Game.lastHitSource) .. (Game.lastHitDamage and (" -" .. tostring(Game.lastHitDamage)) or "")) or ""
+        autoplayLine("\n## 结论\n\n自动跑局死亡于 wave " .. tostring(Game.wave or "?") .. bossText .. hitText .. "；生命/护盾 " .. tostring(math.ceil(p.hp or 0)) .. "/" .. tostring(p.maxHp or 0) .. " / " .. tostring(math.ceil(p.shield or 0)) .. "/" .. tostring(p.maxShield or 0) .. "。\n")
         love.event.quit()
     elseif Game.state == "victory" then
         autoplayLine("\n## 结论\n\n自动跑局通关。\n")

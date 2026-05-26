@@ -3,6 +3,41 @@
 > 本轮是半自动基线记录：用现有 LÖVE 自动截图采集 wave 1/3/6/9/12 的战斗与商店状态，并结合当前配置计算压力/经济快照。它不是完整人工通关结论，不能替代后续真实游玩测试。
 
 
+## 2026-05-26 23:14 CST · v2026.05.26.80 Boss 教学阀与第二章坡度回归
+
+### 范围
+
+- 在 20 Boss 随机池后，修正早期自然构筑稳定性。
+- 新增/调整：第一 Boss 教学保护、前两章 Boss 前整备、Boss 击破后章节整备、第二章普通关/第二 Boss 坡度、玩家燃烧残焰不再自伤、自动跑局死亡/超时详情。
+- 记录文件：
+  - `tmp/natural20/playtest-v80l-natural-target6-run1.md`
+  - `tmp/natural20/playtest-v80l-natural-target6-run2.md`
+  - `tmp/natural20/playtest-v80l-natural-target6-run3.md`
+  - `tmp/natural20/playtest-v80l-balanced-wave9-direct.md`
+  - `tmp/natural20/playtest-v80l-balanced-wave12-direct.md`
+
+### 自然构筑 target wave 6
+
+| Run | Wave 3 Boss | Wave 6 Boss | 结果 | 备注 |
+| --- | --- | --- | --- | --- |
+| 1 | 终焉播报机 | 零度列车 | 抵达 wave 6 后商店 | 通过，结束 77/106 HP、104/121.5 护盾。 |
+| 2 | 碎星决斗者 | 天灾反应堆 | 死亡于 wave 6 | 死于泄压区；第二 Boss 区域型仍需后续观察。 |
+| 3 | 终焉播报机 | 裂心机核 | 抵达 wave 6 后商店 | 通过，结束 55/76 HP、68/80 护盾。 |
+
+### 高波测试构筑直跑
+
+| Wave | Boss | 结果 | 备注 |
+| --- | --- | --- | --- |
+| 9 | 蜂巢母机 | Boss 击破 | balanced 直跑通过。 |
+| 12 | 深井压缩者 | Boss 击破 | balanced 直跑通过；击杀数 119，仍需自然构筑复核拖时。 |
+
+### 结论
+
+- 早期 Boss 随机池不再稳定卡死在 wave 3；自然构筑 target wave 6 达到 2/3 通过。
+- 第二章 Boss 仍存在区域型失败样本，不能视为完整自然难度收口。
+- 中后段 Boss 链路未被教学阀改崩：balanced wave 9 / 12 直跑通过。
+
+
 ## 2026-05-26 22:22 CST · v2026.05.26.79 20 Boss 点名回归
 
 ### 范围
