@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.26.72"
+local VERSION = "v2026.05.26.73"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -220,6 +220,8 @@ local C = {
     muted = {0.68, 0.72, 0.80},
     pink = {0.88, 0.48, 0.60},
     cyan = {0.48, 0.72, 0.80},
+    blue = {0.30, 0.56, 1.00},
+    shield = {0.30, 0.56, 1.00},
     gold = {0.88, 0.70, 0.42},
     red = {0.90, 0.34, 0.36},
     green = {0.48, 0.72, 0.54},
@@ -412,13 +414,13 @@ enemyDefs = {
     drifter = {name = "漂移噪声", sprite = "enemy_drifter", defense = "flesh", hp = 18, speed = 78, damage = 9, r = 14, color = C.red, xp = 3, coin = 2, behavior = "chase"},
     splinter = {name = "裂片", sprite = "enemy_splinter", defense = "flesh", hp = 12, speed = 130, damage = 7, r = 10, color = C.orange, xp = 2, coin = 1, behavior = "charger"},
     shell = {name = "壳层记忆", sprite = "enemy_shell", defense = "armor", hp = 44, speed = 50, damage = 13, r = 20, color = C.red, armor = 3, xp = 5, coin = 4, behavior = "guard"},
-    wisp = {name = "电弧游魂", sprite = "enemy_wisp", defense = "shield", hp = 18, shield = 26, shieldRegen = 2.2, speed = 105, damage = 8, r = 13, color = C.purple, xp = 4, coin = 3, behavior = "shooter"},
-    bulwark = {name = "护盾卫士", sprite = "enemy_shell", defense = "shield", hp = 34, shield = 54, shieldRegen = 2.6, speed = 58, damage = 12, r = 20, color = C.purple, armor = 0, xp = 6, coin = 5, behavior = "guard"},
-    elite = {name = "坏蛋精英", sprite = "enemy_elite", defense = "shield", hp = 150, shield = 90, shieldRegen = 3.0, speed = 64, damage = 18, r = 28, color = C.purple, armor = 2, xp = 16, coin = 12, elite = true, behavior = "aura"},
+    wisp = {name = "电弧游魂", sprite = "enemy_wisp", defense = "shield", hp = 18, shield = 26, shieldRegen = 2.2, speed = 105, damage = 8, r = 13, color = C.blue, xp = 4, coin = 3, behavior = "shooter"},
+    bulwark = {name = "护盾卫士", sprite = "enemy_shell", defense = "shield", hp = 34, shield = 54, shieldRegen = 2.6, speed = 58, damage = 12, r = 20, color = C.blue, armor = 0, xp = 6, coin = 5, behavior = "guard"},
+    elite = {name = "坏蛋精英", sprite = "enemy_elite", defense = "shield", hp = 150, shield = 90, shieldRegen = 3.0, speed = 64, damage = 18, r = 28, color = C.blue, armor = 2, xp = 16, coin = 12, elite = true, behavior = "aura"},
     treasure = {name = "宝藏信标", sprite = "pickup_coin", defense = "flesh", hp = 16, speed = 112, damage = 0, r = 16, color = C.gold, xp = 1, coin = 5, treasureCoin = 18, treasure = true, behavior = "treasure"},
     bomber = {name = "燃烧投手", sprite = "enemy_splinter", defense = "flesh", hp = 38, speed = 72, damage = 10, r = 15, color = C.orange, xp = 4, coin = 4, behavior = "bomber"},
     rammer = {name = "突击钻头", sprite = "enemy_splinter", defense = "armor", hp = 52, speed = 96, damage = 16, r = 18, color = C.red, armor = 1, xp = 6, coin = 5, behavior = "rammer"},
-    zoner = {name = "封锁织网者", sprite = "enemy_wisp", defense = "shield", hp = 42, shield = 24, shieldRegen = 1.4, speed = 68, damage = 11, r = 17, color = C.purple, armor = 0, xp = 7, coin = 6, behavior = "zoner", zoneRadius = 96, zoneDuration = 4.8, zoneCooldown = 3.5, zoneDamage = 6},
+    zoner = {name = "封锁织网者", sprite = "enemy_wisp", defense = "shield", hp = 42, shield = 24, shieldRegen = 1.4, speed = 68, damage = 11, r = 17, color = C.blue, armor = 0, xp = 7, coin = 6, behavior = "zoner", zoneRadius = 96, zoneDuration = 4.8, zoneCooldown = 3.5, zoneDamage = 6},
     boss = {name = "裂心机核", sprite = "boss_heartbreak", defense = "armor", hp = 1900, shield = 260, shieldRegen = 1.2, speed = 48, damage = 24, r = 46, color = C.pink, armor = 2, xp = 80, coin = 60, boss = true, behavior = "boss"}
 }
 
@@ -1766,7 +1768,7 @@ local slotSymbols = configuredSlotSymbols({
     {id = "coin", name = "材料", mark = "◆", color = C.gold, weight = 28},
     {id = "weapon", name = "武器", mark = "⚙", color = C.cyan, weight = 18},
     {id = "temp", name = "战术", mark = "战", color = C.purple, weight = 18},
-    {id = "shield", name = "护盾", mark = "盾", color = C.green, weight = 14},
+    {id = "shield", name = "护盾", mark = "盾", color = C.blue, weight = 14},
     {id = "heal", name = "修复", mark = "❤", color = C.pink, weight = 14},
     {id = "blackbox", name = "黑箱", mark = "箱", color = C.purple, weight = 8},
     {id = "rare", name = "稀有", mark = "稀", color = C.orange, weight = 6}
@@ -2304,8 +2306,8 @@ function damageEnemy(e, amount, element, crit, source, statusChance, statusDamag
         dmg = dmg - used
         if hadShield and e.shield <= 0 then
             e.shield = 0
-            addText(e.x - 16, e.y - e.r - 24, "破盾", C.cyan)
-            burst(e.x, e.y, C.cyan, 24, 220)
+            addText(e.x - 16, e.y - e.r - 24, "破盾", C.blue)
+            burst(e.x, e.y, C.blue, 24, 220)
             if elem == "arc" then
                 for _, other in ipairs(Game.enemies or {}) do
                     if other ~= e and distance(e.x, e.y, other.x, other.y) < 130 then damageEnemy(other, math.max(4, amount * 0.22), "arc", false, "破盾电爆", 0, 0) end
@@ -2534,18 +2536,18 @@ local function damagePlayer(amount, source, sourceX, sourceY, sourceColor)
         amount = amount - used
     end
     if amount > 0 then p.hp = p.hp - amount end
-    local hitColor = amount > 0 and C.red or C.cyan
+    local hitColor = amount > 0 and C.red or C.blue
     Game.lastHitDamage = math.ceil(rawAmount)
     addText(p.x - 44, p.y - p.r - 48, "-" .. tostring(math.ceil(rawAmount)) .. "  " .. hitSource, hitColor, {life = 1.05, scale = 1.28, font = Game.fonts.small})
     burst(p.x, p.y, hitColor, amount > 0 and 18 or 12, amount > 0 and 170 or 130)
     if hadShield and p.shield <= 0 then
-        addText(p.x - 34, p.y - 42, "护盾破裂", C.cyan)
-        burst(p.x, p.y, C.cyan, 24, 190)
+        addText(p.x - 34, p.y - 42, "护盾破裂", C.blue)
+        burst(p.x, p.y, C.blue, 24, 190)
         if p.gear.shieldBurst then
             for _, e in ipairs(Game.enemies) do
                 if distance(p.x, p.y, e.x, e.y) < 165 then damageEnemy(e, 32 * p.stats.damage, "arc", false, "护盾脉冲") end
             end
-            burst(p.x, p.y, C.cyan, 38, 240)
+            burst(p.x, p.y, C.blue, 38, 240)
         end
     end
     if p.hp <= 0 then Game.state = "gameover" end
@@ -3755,7 +3757,7 @@ local function drawHud()
     local lx = 36
     local hpColor = hpPct < 0.35 and C.red or C.pink
     drawBarCapsule("生命", math.ceil(p.hp) .. "/" .. p.maxHp, lx, hudY + 10, 370, 58, hpPct, hpColor, {centerValue = true, valueFont = Game.fonts.big, labelW = 54, barH = 8, bgAlpha = 0.72, borderAlpha = 0.58})
-    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 76, 370, 42, shieldPct, C.cyan, {centerValue = true, valueFont = Game.fonts.normal, labelW = 54, barH = 6, bgAlpha = 0.50, borderAlpha = 0.30, labelAlpha = 0.62})
+    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 76, 370, 42, shieldPct, C.blue, {centerValue = true, valueFont = Game.fonts.normal, labelW = 54, barH = 6, bgAlpha = 0.50, borderAlpha = 0.30, labelAlpha = 0.62})
     if hpPct < 0.35 then
         color(C.red, 0.16 + dangerPulse * 0.18)
         love.graphics.rectangle("line", lx - 4, hudY + 6, 378, 62, 12, 12)
@@ -3770,13 +3772,13 @@ local function drawHud()
     local plan = currentWavePlan()
     local bossMode = plan.boss == true
     local midX = Game.w / 2
-    local timerFont = Game.fonts.big or Game.fonts.timer
+    local timerFont = Game.fonts.timer or Game.fonts.normal
     local mainTargetText = bossMode and "打爆" or ("撑住 " .. string.format("%02d", math.max(0, math.ceil(Game.waveTime))))
     love.graphics.setFont(timerFont)
     local textW, textH = timerFont:getWidth(mainTargetText), timerFont:getHeight()
-    local timerW = math.max(bossMode and 148 or 236, textW + 68)
-    local timerH = math.max(76, textH + 18)
-    local timerX, timerY = midX - timerW / 2, hudY + 48
+    local timerW = math.max(bossMode and 118 or 190, textW + 38)
+    local timerH = math.max(54, textH + 8)
+    local timerX, timerY = midX - timerW / 2, hudY + 58
     local timerCx, timerCy = timerX + timerW / 2, timerY + timerH / 2
     local now = love.timer.getTime() or 0
     if Game.hudTimerText ~= mainTargetText then
@@ -3788,16 +3790,16 @@ local function drawHud()
     local framePulse = 0.50 + 0.50 * math.sin(now * 7.0)
 
     love.graphics.setBlendMode("add")
-    color(C.cyan, 0.10 + pulse * 0.10)
-    love.graphics.rectangle("fill", timerX - 12, timerY - 10, timerW + 24, timerH + 20, 19, 19)
+    color(C.cyan, 0.07 + pulse * 0.06)
+    love.graphics.rectangle("fill", timerX - 7, timerY - 6, timerW + 14, timerH + 12, 14, 14)
     love.graphics.setBlendMode("alpha")
     color(C.white, 0.18 + pulse * 0.08)
-    love.graphics.rectangle("fill", timerX, timerY, timerW, timerH, 15, 15)
+    love.graphics.rectangle("fill", timerX, timerY, timerW, timerH, 12, 12)
     color(C.cyan, 0.78 + pulse * 0.18 + framePulse * 0.04)
     love.graphics.setLineWidth(3)
-    love.graphics.rectangle("line", timerX + 0.5, timerY + 0.5, timerW - 1, timerH - 1, 15, 15)
+    love.graphics.rectangle("line", timerX + 0.5, timerY + 0.5, timerW - 1, timerH - 1, 12, 12)
     love.graphics.setLineWidth(1)
-    drawCapsule("目标", timerX + 34, timerY - 24, timerW - 68, 22, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.34, borderAlpha = 0.10, align = "center", radius = 8, padX = 8})
+    drawCapsule("目标", timerX + 24, timerY - 20, timerW - 48, 18, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.22, borderAlpha = 0.08, align = "center", radius = 7, padX = 8})
 
     color(C.white, 0.88 + pulse * 0.12)
     love.graphics.push()
@@ -3839,7 +3841,7 @@ local function drawHud()
         local phaseLabel = boss.bossPhaseName and (" · " .. boss.bossPhaseName) or ""
         drawCapsule("Boss状态 · " .. (boss.name or "关底目标") .. phaseLabel, bossX, bossY - 26, bossW, 22, {font = Game.fonts.tiny, fg = (boss.bossWeakTimer or 0) > 0 and C.gold or C.gold, border = (boss.bossWeakTimer or 0) > 0 and C.gold or C.gold, bgAlpha = 0.18, borderAlpha = 0.12, align = "center"})
         if (boss.maxShield or 0) > 0 then
-            drawBarCapsule("Boss护盾", math.ceil(math.max(0, boss.shield or 0)) .. "/" .. math.ceil(boss.maxShield or 0), bossX, bossY, bossW, 30, math.max(0, boss.shield or 0) / math.max(1, boss.maxShield or 1), C.purple, {labelW = 98, valueW = 150, valueFont = Game.fonts.tiny, barH = 8, bgAlpha = 0.50, borderAlpha = 0.26})
+            drawBarCapsule("Boss护盾", math.ceil(math.max(0, boss.shield or 0)) .. "/" .. math.ceil(boss.maxShield or 0), bossX, bossY, bossW, 30, math.max(0, boss.shield or 0) / math.max(1, boss.maxShield or 1), C.blue, {labelW = 98, valueW = 150, valueFont = Game.fonts.tiny, barH = 8, bgAlpha = 0.50, borderAlpha = 0.26})
             drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), bossX, bossY + 36, bossW, 32, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red, {labelW = 98, valueW = 170, valueFont = Game.fonts.tiny, barH = 9, bgAlpha = 0.58, borderAlpha = 0.36})
         else
             drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), bossX, bossY, bossW, 34, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red, {labelW = 98, valueW = 170, valueFont = Game.fonts.tiny, barH = 9, bgAlpha = 0.58, borderAlpha = 0.36})
@@ -4064,7 +4066,7 @@ local function drawWorld()
         if (e.shield or 0) > 0 and (e.maxShield or 0) > 0 then
             local shieldPulse = 0.45 + 0.55 * math.sin((love.timer.getTime() or 0) * 7 + e.x * 0.01)
             love.graphics.setBlendMode("add")
-            color(C.purple, 0.18 + shieldPulse * 0.14)
+            color(C.blue, 0.18 + shieldPulse * 0.14)
             love.graphics.setLineWidth(2)
             love.graphics.circle("line", e.x, e.y, e.r * 2.82)
             love.graphics.setLineWidth(1)
@@ -4094,7 +4096,7 @@ local function drawWorld()
             local barX = clamp(e.x - bw / 2, 46, Game.w - bw - 46)
             local barY = clamp(e.y - e.r - 16, 178, Game.h - 82)
             if (e.maxShield or 0) > 0 then
-                bar(barX, barY - bh - 2, bw, math.max(4, bh - 1), (e.shield or 0) / math.max(1, e.maxShield), C.purple)
+                bar(barX, barY - bh - 2, bw, math.max(4, bh - 1), (e.shield or 0) / math.max(1, e.maxShield), C.blue)
             end
             bar(barX, barY, bw, bh, e.hp / e.maxHp, C.red)
         end
@@ -4489,7 +4491,7 @@ end
 
 function shopItemAccent(item)
     if item.kind == "weapon" then return C.orange end
-    if item.kind == "shield" then return C.cyan end
+    if item.kind == "shield" then return C.blue end
     if item.kind == "temp" then return C.purple end
     if item.kind == "legend" then return C.gold end
     return rarityColor[item.rarity or "common"] or C.white
