@@ -3,6 +3,48 @@
 > 本轮是半自动基线记录：用现有 LÖVE 自动截图采集 wave 1/3/6/9/12 的战斗与商店状态，并结合当前配置计算压力/经济快照。它不是完整人工通关结论，不能替代后续真实游玩测试。
 
 
+## 2026-05-26 22:22 CST · v2026.05.26.79 20 Boss 点名回归
+
+### 范围
+
+- 使用 `LOVE_AUTOPLAY_BOSS_ID` 强制逐个指定 20 个 Boss。
+- 测试方式：`balanced` 测试构筑，wave 6 直跑。
+- 记录目录：`tmp/boss20/playtest-v79-*-wave6.md`。
+- 注意：这是基础链路回归，不等同自然构筑难度结论。
+
+### 结果摘要
+
+| Boss ID | Boss | 结果 | 击杀数 |
+| --- | --- | --- | --- |
+| `boss_heartbreak` | 裂心机核 | Boss 击破 | 1 |
+| `boss_forge` | 赤炉执刑者 | Boss 击破 | 1 |
+| `boss_bulwark` | 铁幕壁垒 | Boss 击破 | 1 |
+| `boss_hive` | 蜂巢母机 | Boss 击破 | 1 |
+| `boss_glacier` | 冷井裁决体 | Boss 击破 | 1 |
+| `boss_venom` | 蚀刻孢群 | Boss 击破 | 1 |
+| `boss_void` | 黑箱坍缩核 | Boss 击破 | 1 |
+| `boss_rail` | 白噪狙击塔 | Boss 击破 | 1 |
+| `boss_reactor` | 天灾反应堆 | Boss 击破 | 1 |
+| `boss_reboot` | 重启终端 | Boss 击破 | 1 |
+| `boss_storm` | 电磁审判庭 | Boss 击破 | 1 |
+| `boss_mirror` | 量子镜像体 | Boss 击破 | 1 |
+| `boss_reclaimer` | 回收圣棺 | Boss 击破 | 2 |
+| `boss_minefield` | 地雷织网机 | Boss 击破 | 1 |
+| `boss_duelist` | 碎星决斗者 | Boss 击破 | 1 |
+| `boss_prism` | 棱镜分光仪 | Boss 击破 | 1 |
+| `boss_gravity` | 深井压缩者 | Boss 击破 | 1 |
+| `boss_stitcher` | 血肉缝合塔 | Boss 击破 | 4 |
+| `boss_train` | 零度列车 | Boss 击破 | 1 |
+| `boss_broadcast` | 终焉播报机 | Boss 击破 | 1 |
+
+### 结论
+
+- 20 个 Boss 模板均可生成、进入战斗、被击破并结算。
+- `luac -p main.lua` 和 `git diff --check` 通过。
+- 回收圣棺、血肉缝合塔已体现召唤/恢复型机制，但 wave 6 下仍可控。
+- 下一步仍需自然构筑和高波次连续战役验证，重点看召唤/区域/恢复 Boss 是否拖时。
+
+
 ## 2026-05-26 22:08 CST · v2026.05.26.78 10 Boss 随机池回归
 
 ### 范围

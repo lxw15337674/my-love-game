@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.26.78"
+local VERSION = "v2026.05.26.79"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -435,10 +435,20 @@ bossDefs = {
     boss_void = {name = "黑箱坍缩核", sprite = "boss_heartbreak", defense = "shield", hp = 1680, shield = 360, shieldRegen = 1.8, speed = 45, damage = 25, r = 49, color = C.purple, armor = 2, xp = 86, coin = 66, boss = true, behavior = "boss", bossPattern = "void", phaseLabels = {"引力锁定", "黑箱牵引", "坍缩奇点"}, bossRole = "牵引 / 密集惩罚"},
     boss_rail = {name = "白噪狙击塔", sprite = "boss_heartbreak", defense = "armor", hp = 1580, shield = 260, shieldRegen = 1.1, speed = 36, damage = 31, r = 43, color = C.white, armor = 2, xp = 84, coin = 65, boss = true, behavior = "boss", bossPattern = "rail", phaseLabels = {"测距锁线", "交叉狙击", "白噪齐射"}, bossRole = "高伤狙击 / 走位校验"},
     boss_reactor = {name = "天灾反应堆", sprite = "boss_heartbreak", defense = "armor", hp = 2050, shield = 180, shieldRegen = 0.9, speed = 40, damage = 28, r = 54, color = C.red, armor = 3, xp = 88, coin = 68, boss = true, behavior = "boss", bossPattern = "reactor", phaseLabels = {"反应堆升温", "灾变泄压", "核心熔毁"}, bossRole = "爆炸环 / 高压终盘"},
-    boss_reboot = {name = "重启终端", sprite = "boss_heartbreak", defense = "shield", hp = 1760, shield = 300, shieldRegen = 1.6, speed = 52, damage = 26, r = 48, color = C.gold, armor = 2, xp = 90, coin = 70, boss = true, behavior = "boss", bossPattern = "reboot", phaseLabels = {"协议重放", "多态切换", "重启归零"}, bossRole = "混合机制 / 最终综合考"}
+    boss_reboot = {name = "重启终端", sprite = "boss_heartbreak", defense = "shield", hp = 1760, shield = 300, shieldRegen = 1.6, speed = 52, damage = 26, r = 48, color = C.gold, armor = 2, xp = 90, coin = 70, boss = true, behavior = "boss", bossPattern = "reboot", phaseLabels = {"协议重放", "多态切换", "重启归零"}, bossRole = "混合机制 / 最终综合考"},
+    boss_storm = {name = "电磁审判庭", sprite = "boss_heartbreak", defense = "shield", hp = 1660, shield = 430, shieldRegen = 2.2, speed = 58, damage = 25, r = 47, color = C.cyan, armor = 1, xp = 86, coin = 66, boss = true, behavior = "boss", bossPattern = "storm", phaseLabels = {"雷场充能", "链式裁决", "电磁过载"}, bossRole = "电弧链 / 破盾压力"},
+    boss_mirror = {name = "量子镜像体", sprite = "boss_heartbreak", defense = "flesh", hp = 1500, shield = 260, shieldRegen = 1.2, speed = 66, damage = 22, r = 43, color = C.purple, armor = 1, xp = 84, coin = 65, boss = true, behavior = "boss", bossPattern = "mirror", phaseLabels = {"残像校准", "镜像分裂", "多相折返"}, bossRole = "残像 / 目标切换"},
+    boss_reclaimer = {name = "回收圣棺", sprite = "boss_heartbreak", defense = "armor", hp = 1850, shield = 330, shieldRegen = 2.4, speed = 34, damage = 21, r = 52, color = C.gold, armor = 4, xp = 88, coin = 68, boss = true, behavior = "boss", bossPattern = "reclaimer", phaseLabels = {"回收协议", "护盾再生", "废料圣棺"}, bossRole = "恢复 / 持久战"},
+    boss_minefield = {name = "地雷织网机", sprite = "boss_heartbreak", defense = "armor", hp = 1700, shield = 210, shieldRegen = 1.0, speed = 44, damage = 27, r = 46, color = C.orange, armor = 2, xp = 84, coin = 65, boss = true, behavior = "boss", bossPattern = "minefield", phaseLabels = {"布雷启动", "网格封锁", "连锁爆破"}, bossRole = "地雷区 / 路线规划"},
+    boss_duelist = {name = "碎星决斗者", sprite = "boss_heartbreak", defense = "flesh", hp = 1600, shield = 180, shieldRegen = 0.9, speed = 76, damage = 30, r = 42, color = C.red, armor = 1, xp = 86, coin = 66, boss = true, behavior = "boss", bossPattern = "duelist", phaseLabels = {"锁定挑战", "突刺连段", "处刑星轨"}, bossRole = "冲刺 / 单点高压"},
+    boss_prism = {name = "棱镜分光仪", sprite = "boss_heartbreak", defense = "shield", hp = 1620, shield = 320, shieldRegen = 1.7, speed = 46, damage = 24, r = 46, color = C.white, armor = 1, xp = 86, coin = 66, boss = true, behavior = "boss", bossPattern = "prism", phaseLabels = {"分光校准", "元素折射", "全谱压制"}, bossRole = "多元素 / 读色反应"},
+    boss_gravity = {name = "深井压缩者", sprite = "boss_heartbreak", defense = "armor", hp = 1920, shield = 250, shieldRegen = 1.1, speed = 39, damage = 26, r = 53, color = C.purple, armor = 3, xp = 88, coin = 68, boss = true, behavior = "boss", bossPattern = "gravity", phaseLabels = {"井口开启", "压力折叠", "深井塌缩"}, bossRole = "重力井 / 站位破坏"},
+    boss_stitcher = {name = "血肉缝合塔", sprite = "boss_heartbreak", defense = "flesh", hp = 2150, shield = 80, shieldRegen = 0.4, speed = 32, damage = 24, r = 55, color = C.pink, armor = 1, xp = 88, coin = 68, boss = true, behavior = "boss", bossPattern = "stitcher", phaseLabels = {"血肉增殖", "缝合护卫", "畸变狂潮"}, bossRole = "厚血 / 小怪献祭"},
+    boss_train = {name = "零度列车", sprite = "boss_heartbreak", defense = "armor", hp = 1740, shield = 220, shieldRegen = 1.0, speed = 70, damage = 28, r = 50, color = C.ice, armor = 2, xp = 86, coin = 66, boss = true, behavior = "boss", bossPattern = "train", phaseLabels = {"轨道预冷", "寒潮冲撞", "终点急冻"}, bossRole = "横冲 / 轨道预警"},
+    boss_broadcast = {name = "终焉播报机", sprite = "boss_heartbreak", defense = "shield", hp = 1820, shield = 280, shieldRegen = 1.5, speed = 48, damage = 27, r = 48, color = C.gold, armor = 2, xp = 90, coin = 70, boss = true, behavior = "boss", bossPattern = "broadcast", phaseLabels = {"死亡播报", "协议串扰", "终焉倒放"}, bossRole = "混合广播 / 节奏干扰"}
 }
 
-bossPool = {"boss_heartbreak", "boss_forge", "boss_bulwark", "boss_hive", "boss_glacier", "boss_venom", "boss_void", "boss_rail", "boss_reactor", "boss_reboot"}
+bossPool = {"boss_heartbreak", "boss_forge", "boss_bulwark", "boss_hive", "boss_glacier", "boss_venom", "boss_void", "boss_rail", "boss_reactor", "boss_reboot", "boss_storm", "boss_mirror", "boss_reclaimer", "boss_minefield", "boss_duelist", "boss_prism", "boss_gravity", "boss_stitcher", "boss_train", "boss_broadcast"}
 enemyDefs.boss = bossDefs.boss_heartbreak
 
 applyConfiguredEnemies()
@@ -526,6 +536,8 @@ local function currentWavePlan()
     return wavePlanAt(Game.wave)
 end
 local function rollBossIdForWave(wave)
+    local forced = os.getenv("LOVE_AUTOPLAY_BOSS_ID")
+    if forced and bossDefs and bossDefs[forced] then return forced end
     if not bossPool or #bossPool == 0 then return "boss_heartbreak" end
     local picked = bossPool[rnd(1, #bossPool)]
     if #bossPool > 1 then
@@ -2792,6 +2804,124 @@ local function updateBossBehavior(e, dt, a, distToPlayer)
         if e.enteredArena and e.bossSpecialTimer <= 0 then
             bossTargetZone(e, 96 + phase * 8, 4.2, 0.48, mode == "forge" and C.orange or C.purple, C.red, phase == 2 and "协议过热" or "归零点")
             e.bossSpecialTimer = randf(2.8, 3.6)
+        end
+    elseif pattern == "storm" then
+        speedMult = speedMult * 1.08
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 8 or 5, phase >= 2 and 1.10 or 0.72, 278 + phase * 20, 6, 0.50, C.cyan)
+            e.bossAttackTimer = phase >= 3 and 0.72 or 0.98
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            for _, other in ipairs(Game.enemies or {}) do
+                if other ~= e and not other.boss and distance(e.x, e.y, other.x, other.y) < 280 then damageEnemy(other, math.max(6, (e.damage or 20) * 0.22), "arc", false, "电磁裁决", 0, 0) end
+            end
+            bossTargetZone(e, 88 + phase * 6, 3.6, 0.36, C.cyan, C.blue, "雷场")
+            e.bossSpecialTimer = randf(2.6, 3.4)
+        end
+    elseif pattern == "mirror" then
+        speedMult = speedMult * 1.18
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a + randf(-0.25, 0.25), phase >= 3 and 6 or 4, 0.82, 245 + phase * 22, 6, 0.44, C.purple)
+            e.bossAttackTimer = phase >= 3 and 0.78 or 1.02
+        end
+        if e.enteredArena and e.bossSummonTimer <= 0 then
+            for _ = 1, phase do spawnBossMinion(rnd() < 0.5 and "wisp" or "splinter", pickSpawnSide(currentWavePlan()), 0.50 + phase * 0.05) end
+            addText(e.x - 32, e.y - e.r - 24, "残像", C.purple)
+            e.bossSummonTimer = phase >= 3 and 3.2 or 4.5
+        end
+    elseif pattern == "reclaimer" then
+        speedMult = speedMult * 0.62
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 5 or 3, 0.58, 218, 8, 0.42, C.gold)
+            e.bossAttackTimer = 1.18
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            local heal = math.min((e.maxHp or e.hp) * 0.055, 95 + Game.wave * 4)
+            e.hp = math.min(e.maxHp or e.hp, (e.hp or 0) + heal)
+            e.shield = math.min(e.maxShield or 0, (e.shield or 0) + heal * 0.65)
+            addText(e.x - 34, e.y - e.r - 28, "回收修复", C.gold)
+            spawnBossMinion("treasure", pickSpawnSide(currentWavePlan()), 0.80)
+            e.bossSpecialTimer = phase >= 3 and 5.4 or 6.8
+        end
+    elseif pattern == "minefield" then
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 6 or 4, 0.92, 232, 7, 0.46, C.orange)
+            e.bossAttackTimer = phase >= 3 and 0.88 or 1.12
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            for n = 1, phase + 1 do bossTargetZone(e, 58 + phase * 8, 5.0, 0.42, C.orange, C.red, "地雷", randf(52, 140), randf(42, 118)) end
+            e.bossSpecialTimer = randf(3.0, 4.0)
+        end
+    elseif pattern == "duelist" then
+        speedMult = speedMult * 1.24
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 3 or 1, phase >= 3 and 0.22 or 0, 390 + phase * 48, 6, 0.76, C.red)
+            addText(e.x - 28, e.y - e.r - 24, "决斗锁定", C.red)
+            e.bossAttackTimer = phase >= 3 and 0.70 or 1.05
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            moveAngle = a
+            speedMult = speedMult * (2.4 + phase * 0.28)
+            e.bossSpecialTimer = randf(2.4, 3.2)
+        end
+    elseif pattern == "prism" then
+        local colors = {C.red, C.cyan, C.green, C.ice, C.purple, C.gold}
+        local c = colors[((Game.wave + phase + math.floor((Game.time or 0) * 0.6)) % #colors) + 1]
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 9 or 6, 1.22, 245 + phase * 18, 6, 0.44, c)
+            e.bossAttackTimer = phase >= 3 and 0.82 or 1.04
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            bossTargetZone(e, 82 + phase * 8, 3.8, 0.40, c, C.white, "分光区")
+            e.bossSpecialTimer = randf(2.7, 3.5)
+        end
+    elseif pattern == "gravity" then
+        speedMult = speedMult * 0.74
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 7 or 5, 0.96, 220 + phase * 14, 8, 0.50, C.purple)
+            e.bossAttackTimer = phase >= 3 and 0.90 or 1.14
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            local pull = 0.060 + phase * 0.014
+            Game.player.x = Game.player.x + (e.x - Game.player.x) * pull
+            Game.player.y = Game.player.y + (e.y - Game.player.y) * pull
+            bossTargetZone(e, 118 + phase * 8, 4.4, 0.44, C.purple, C.blue, "重力井", 60, 42)
+            e.bossSpecialTimer = randf(3.0, 3.9)
+        end
+    elseif pattern == "stitcher" then
+        speedMult = speedMult * 0.58
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 6 or 4, 0.82, 224, 8, 0.46, C.pink)
+            e.bossAttackTimer = phase >= 3 and 0.96 or 1.20
+        end
+        if e.enteredArena and e.bossSummonTimer <= 0 then
+            for _ = 1, phase + 1 do spawnBossMinion(rnd() < 0.5 and "drifter" or "rammer", pickSpawnSide(currentWavePlan()), 0.58 + phase * 0.06) end
+            e.hp = math.min(e.maxHp or e.hp, (e.hp or 0) + math.min(60 + Game.wave * 3, (e.maxHp or e.hp) * 0.035))
+            addText(e.x - 38, e.y - e.r - 28, "血肉缝合", C.pink)
+            e.bossSummonTimer = phase >= 3 and 3.6 or 4.8
+        end
+    elseif pattern == "train" then
+        speedMult = speedMult * 1.35
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 5 or 3, 0.44, 300 + phase * 20, 7, 0.54, C.ice)
+            e.bossAttackTimer = phase >= 3 and 0.78 or 1.06
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            bossTargetZone(e, 72 + phase * 7, 3.2, 0.48, C.ice, C.blue, "寒潮轨道", 150, 18)
+            moveAngle = a
+            speedMult = speedMult * 1.75
+            e.bossSpecialTimer = randf(2.8, 3.6)
+        end
+    elseif pattern == "broadcast" then
+        local c = phase == 1 and C.gold or (phase == 2 and C.cyan or C.red)
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 8 or 5, phase >= 3 and 1.08 or 0.76, 252 + phase * 20, 7, 0.50, c)
+            e.bossAttackTimer = phase >= 3 and 0.78 or 1.00
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            if phase >= 2 then spawnBossMinion(rnd() < 0.5 and "bomber" or "wisp", pickSpawnSide(currentWavePlan()), 0.62 + phase * 0.05) end
+            bossTargetZone(e, 90 + phase * 8, 3.9, 0.44, c, C.purple, phase >= 3 and "终焉倒放" or "串扰区")
+            e.bossSpecialTimer = randf(2.8, 3.7)
         end
     else
         if e.bossAttackTimer <= 0 then
