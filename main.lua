@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.26.77"
+local VERSION = "v2026.05.26.78"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -232,6 +232,8 @@ local C = {
 
 local weaponDefs
 local enemyDefs
+local bossDefs
+local bossPool
 
 function cfgColor(name, fallback)
     return (C and C[name]) or fallback or C.white
@@ -420,9 +422,24 @@ enemyDefs = {
     treasure = {name = "宝藏信标", sprite = "pickup_coin", defense = "flesh", hp = 16, speed = 112, damage = 0, r = 16, color = C.gold, xp = 1, coin = 5, treasureCoin = 18, treasure = true, behavior = "treasure"},
     bomber = {name = "燃烧投手", sprite = "enemy_splinter", defense = "flesh", hp = 38, speed = 72, damage = 10, r = 15, color = C.orange, xp = 4, coin = 4, behavior = "bomber"},
     rammer = {name = "突击钻头", sprite = "enemy_splinter", defense = "armor", hp = 52, speed = 96, damage = 16, r = 18, color = C.red, armor = 1, xp = 6, coin = 5, behavior = "rammer"},
-    zoner = {name = "封锁织网者", sprite = "enemy_wisp", defense = "shield", hp = 42, shield = 24, shieldRegen = 1.4, speed = 68, damage = 11, r = 17, color = C.blue, armor = 0, xp = 7, coin = 6, behavior = "zoner", zoneRadius = 96, zoneDuration = 4.8, zoneCooldown = 3.5, zoneDamage = 6},
-    boss = {name = "裂心机核", sprite = "boss_heartbreak", defense = "armor", hp = 1900, shield = 260, shieldRegen = 1.2, speed = 48, damage = 24, r = 46, color = C.pink, armor = 2, xp = 80, coin = 60, boss = true, behavior = "boss"}
+    zoner = {name = "封锁织网者", sprite = "enemy_wisp", defense = "shield", hp = 42, shield = 24, shieldRegen = 1.4, speed = 68, damage = 11, r = 17, color = C.blue, armor = 0, xp = 7, coin = 6, behavior = "zoner", zoneRadius = 96, zoneDuration = 4.8, zoneCooldown = 3.5, zoneDamage = 6}
 }
+
+bossDefs = {
+    boss_heartbreak = {name = "裂心机核", sprite = "boss_heartbreak", defense = "armor", hp = 1900, shield = 260, shieldRegen = 1.2, speed = 48, damage = 24, r = 46, color = C.pink, armor = 2, xp = 80, coin = 60, boss = true, behavior = "boss", bossPattern = "heartbreak", phaseLabels = {"校准射击", "裂隙封锁", "核心暴露"}, bossRole = "弹幕 / 封锁教学"},
+    boss_forge = {name = "赤炉执刑者", sprite = "boss_heartbreak", defense = "flesh", hp = 1720, shield = 120, shieldRegen = 0.8, speed = 55, damage = 27, r = 48, color = C.orange, armor = 1, xp = 82, coin = 62, boss = true, behavior = "boss", bossPattern = "forge", phaseLabels = {"热炉点火", "熔线横扫", "过热审判"}, bossRole = "燃烧区域 / 近身压迫"},
+    boss_bulwark = {name = "铁幕壁垒", sprite = "boss_heartbreak", defense = "shield", hp = 1550, shield = 520, shieldRegen = 3.0, speed = 38, damage = 22, r = 52, color = C.blue, armor = 3, xp = 84, coin = 64, boss = true, behavior = "boss", bossPattern = "bulwark", phaseLabels = {"护盾校准", "壁垒增殖", "破盾反扑"}, bossRole = "高护盾 / 召唤卫士"},
+    boss_hive = {name = "蜂巢母机", sprite = "boss_heartbreak", defense = "flesh", hp = 1650, shield = 190, shieldRegen = 1.0, speed = 62, damage = 21, r = 44, color = C.green, armor = 1, xp = 80, coin = 62, boss = true, behavior = "boss", bossPattern = "hive", phaseLabels = {"蜂群试探", "母巢分裂", "集群暴走"}, bossRole = "召唤 / 弹幕密度"},
+    boss_glacier = {name = "冷井裁决体", sprite = "boss_heartbreak", defense = "armor", hp = 1780, shield = 240, shieldRegen = 1.4, speed = 42, damage = 23, r = 47, color = C.ice, armor = 2, xp = 82, coin = 63, boss = true, behavior = "boss", bossPattern = "glacier", phaseLabels = {"低温锁定", "霜环切割", "冻结裁决"}, bossRole = "减速区 / 节奏冻结"},
+    boss_venom = {name = "蚀刻孢群", sprite = "boss_heartbreak", defense = "flesh", hp = 1880, shield = 90, shieldRegen = 0.6, speed = 50, damage = 24, r = 45, color = C.green, armor = 1, xp = 82, coin = 64, boss = true, behavior = "boss", bossPattern = "venom", phaseLabels = {"腐蚀孢子", "毒圈扩散", "衰变爆发"}, bossRole = "腐蚀易伤 / 区域逼位"},
+    boss_void = {name = "黑箱坍缩核", sprite = "boss_heartbreak", defense = "shield", hp = 1680, shield = 360, shieldRegen = 1.8, speed = 45, damage = 25, r = 49, color = C.purple, armor = 2, xp = 86, coin = 66, boss = true, behavior = "boss", bossPattern = "void", phaseLabels = {"引力锁定", "黑箱牵引", "坍缩奇点"}, bossRole = "牵引 / 密集惩罚"},
+    boss_rail = {name = "白噪狙击塔", sprite = "boss_heartbreak", defense = "armor", hp = 1580, shield = 260, shieldRegen = 1.1, speed = 36, damage = 31, r = 43, color = C.white, armor = 2, xp = 84, coin = 65, boss = true, behavior = "boss", bossPattern = "rail", phaseLabels = {"测距锁线", "交叉狙击", "白噪齐射"}, bossRole = "高伤狙击 / 走位校验"},
+    boss_reactor = {name = "天灾反应堆", sprite = "boss_heartbreak", defense = "armor", hp = 2050, shield = 180, shieldRegen = 0.9, speed = 40, damage = 28, r = 54, color = C.red, armor = 3, xp = 88, coin = 68, boss = true, behavior = "boss", bossPattern = "reactor", phaseLabels = {"反应堆升温", "灾变泄压", "核心熔毁"}, bossRole = "爆炸环 / 高压终盘"},
+    boss_reboot = {name = "重启终端", sprite = "boss_heartbreak", defense = "shield", hp = 1760, shield = 300, shieldRegen = 1.6, speed = 52, damage = 26, r = 48, color = C.gold, armor = 2, xp = 90, coin = 70, boss = true, behavior = "boss", bossPattern = "reboot", phaseLabels = {"协议重放", "多态切换", "重启归零"}, bossRole = "混合机制 / 最终综合考"}
+}
+
+bossPool = {"boss_heartbreak", "boss_forge", "boss_bulwark", "boss_hive", "boss_glacier", "boss_venom", "boss_void", "boss_rail", "boss_reactor", "boss_reboot"}
+enemyDefs.boss = bossDefs.boss_heartbreak
 
 applyConfiguredEnemies()
 
@@ -508,6 +525,23 @@ end
 local function currentWavePlan()
     return wavePlanAt(Game.wave)
 end
+local function rollBossIdForWave(wave)
+    if not bossPool or #bossPool == 0 then return "boss_heartbreak" end
+    local picked = bossPool[rnd(1, #bossPool)]
+    if #bossPool > 1 then
+        for _ = 1, 8 do
+            if picked ~= Game.lastBossId then break end
+            picked = bossPool[rnd(1, #bossPool)]
+        end
+    end
+    return picked
+end
+
+local function selectedBossDef()
+    local id = Game.waveBossId or "boss_heartbreak"
+    return (bossDefs and bossDefs[id]) or (bossDefs and bossDefs.boss_heartbreak) or enemyDefs.boss
+end
+
 local affixDefs = {
     bounty = {name = "赏金", kind = "reward", desc = "材料 +25%", coinMult = 1.25},
     overcharge = {name = "过载", kind = "reward", desc = "伤害 +10%", playerDamage = 1.10},
@@ -1124,7 +1158,7 @@ local function spawnEnemy(def, opts)
         damage = def.damage * wavePowerScale(Game.wave) * bonus.enemyDamage * curve.damage * (1 + Game.danger * 0.06), armor = (def.armor or 0) + bonus.enemyArmor + curve.armor,
         color = def.color, xp = def.xp, coin = def.coin, treasureCoin = def.treasureCoin, sprite = def.sprite, behavior = def.behavior or "chase",
         zoneRadius = def.zoneRadius, zoneDuration = def.zoneDuration, zoneCooldown = def.zoneCooldown, zoneDamage = def.zoneDamage,
-        elite = def.elite, boss = def.boss, treasure = def.treasure,
+        elite = def.elite, boss = def.boss, bossPattern = def.bossPattern, phaseLabels = def.phaseLabels, bossRole = def.bossRole, treasure = def.treasure,
         shootTimer = rnd() * 1.2, dashTimer = rnd() * 1.6, wanderTimer = rnd() * 1.4, wanderAngle = rnd() * TAU,
         burn = 0, slow = 0, corrosion = 0, lastHit = 0
     }
@@ -1135,7 +1169,7 @@ local function spawnEnemy(def, opts)
         spawned.y = clamp(spawned.y, top, bottom)
         spawned.enteredArena = true
         spawned.bossPhase = 1
-        spawned.bossPhaseName = "校准射击"
+        spawned.bossPhaseName = (spawned.phaseLabels and spawned.phaseLabels[1]) or "校准射击"
         spawned.bossAttackTimer = 0.75
         spawned.bossSpecialTimer = 2.4
         spawned.bossWeakTimer = 0
@@ -2022,6 +2056,14 @@ end
 
 local function startWave()
     local plan = currentWavePlan()
+    if plan.boss then
+        Game.waveBossId = rollBossIdForWave(Game.wave)
+        local boss = selectedBossDef()
+        Game.waveBossName = boss and boss.name or "关底 Boss"
+    else
+        Game.waveBossId = nil
+        Game.waveBossName = nil
+    end
     Game.player.x, Game.player.y = Game.w / 2, Game.h / 2
     Game.player.lastMoveX, Game.player.lastMoveY = 0, -1
     Game.state = "playing"
@@ -2188,7 +2230,7 @@ local function killEnemy(e)
     if Game.waveRewards then Game.waveRewards.kills = (Game.waveRewards.kills or 0) + 1 end
     addObjectiveProgress("kill", 1)
     if e.elite then addObjectiveProgress("elite", 1) end
-    if e.boss then Game.bossDefeated = true; toast("Boss 已打爆") end
+    if e.boss then Game.bossDefeated = true; Game.lastBossId = Game.waveBossId; toast("Boss 已打爆：" .. (e.name or "关底目标")) end
     if e.treasure then addObjectiveProgress("treasure", 1) end
     local coinGain = math.max(1, math.floor(e.coin * bonus.coinMult + 0.5))
     addCoins(coinGain)
@@ -2582,27 +2624,50 @@ local function throwFireBomb(e, targetX, targetY)
     addText(e.x, e.y - e.r - 10, "燃烧弹", C.orange)
 end
 
+local function bossPhaseLabel(e, phase)
+    if e.phaseLabels and e.phaseLabels[phase] then return e.phaseLabels[phase] end
+    return ({"校准射击", "裂隙封锁", "核心暴露"})[phase] or "失控"
+end
+
 local function setBossPhase(e, phase)
     if (e.bossPhase or 1) >= phase then return end
     e.bossPhase = phase
+    e.bossPhaseName = bossPhaseLabel(e, phase)
     if phase == 2 then
-        e.bossPhaseName = "裂隙封锁"
         e.bossAttackTimer = 0.55
         e.bossSpecialTimer = 0.35
-        e.shieldRegen = (e.shieldRegen or 0) * 0.45
-        addText(e.x - 54, e.y - e.r - 30, "二阶段：封锁", C.purple)
-        toast("Boss 二阶段：裂隙封锁")
-        burst(e.x, e.y, C.purple, 42, 280)
+        e.shieldRegen = (e.shieldRegen or 0) * 0.50
+        addText(e.x - 54, e.y - e.r - 30, "二阶段：" .. e.bossPhaseName, e.color or C.purple)
+        toast((e.name or "Boss") .. " 二阶段：" .. e.bossPhaseName)
+        burst(e.x, e.y, e.color or C.purple, 42, 280)
     elseif phase == 3 then
-        e.bossPhaseName = "核心暴露"
         e.bossAttackTimer = 0.35
         e.bossSpecialTimer = 0.25
         e.bossWeakTimer = 3.8
         e.damageTakenMult = 1.42
-        addText(e.x - 58, e.y - e.r - 34, "三阶段：弱点暴露", C.gold)
-        toast("Boss 三阶段：核心暴露")
+        addText(e.x - 58, e.y - e.r - 34, "三阶段：" .. e.bossPhaseName, C.gold)
+        toast((e.name or "Boss") .. " 三阶段：" .. e.bossPhaseName)
         burst(e.x, e.y, C.gold, 56, 320)
     end
+end
+
+local function spawnBossMinion(id, side, scale)
+    local def = enemyDefs[id]
+    if def then spawnEnemy(def, {side = side or pickSpawnSide(currentWavePlan()), scale = scale or 0.85}) end
+end
+
+local function bossTargetZone(e, radius, duration, damageMult, zoneColor, coreColor, label, lead, sideOffset)
+    local p = Game.player
+    local a = angleTo(e.x, e.y, p.x, p.y)
+    local vx, vy = p.lastMoveX or math.cos(a), p.lastMoveY or math.sin(a)
+    if math.abs(vx) + math.abs(vy) < 0.05 then vx, vy = math.cos(a), math.sin(a) end
+    local px, py = -vy, vx
+    e.bossZoneFlip = not e.bossZoneFlip
+    local side = e.bossZoneFlip and 1 or -1
+    local zx = clamp(p.x + vx * (lead or 112) + px * side * (sideOffset or 86), 96, Game.w - 96)
+    local zy = clamp(p.y + vy * (lead or 112) + py * side * (sideOffset or 86), 178, Game.h - 90)
+    igniteFireZone(zx, zy, radius or 96, duration or 4.2, math.max(5, (e.damage or 12) * (damageMult or 0.45)), zoneColor or C.purple, coreColor or C.red, label or "压制区")
+    addText(zx - 38, zy - (radius or 96) - 14, label or "压制区", zoneColor or C.purple)
 end
 
 local function bossFanShot(e, a, count, spread, speed, radius, damageMult, c)
@@ -2623,8 +2688,10 @@ local function updateBossBehavior(e, dt, a, distToPlayer)
     end
 
     local phase = e.bossPhase or 1
+    local pattern = e.bossPattern or "heartbreak"
     e.bossAttackTimer = (e.bossAttackTimer or 0) - dt
     e.bossSpecialTimer = (e.bossSpecialTimer or 2.4) - dt
+    e.bossSummonTimer = (e.bossSummonTimer or 3.4) - dt
     e.bossWeakTimer = math.max(0, (e.bossWeakTimer or 0) - dt)
     e.damageTakenMult = e.bossWeakTimer > 0 and 1.42 or 1
 
@@ -2635,56 +2702,118 @@ local function updateBossBehavior(e, dt, a, distToPlayer)
         e.bossWanderTimer = randf(0.85, 1.45)
     end
     local moveAngle = e.bossWanderAngle or a
-    local speedMult = 0.42
+    local speedMult = 0.42 + phase * 0.06
+    e.bossPhaseName = bossPhaseLabel(e, phase)
 
-    if phase == 1 then
-        e.bossPhaseName = "校准射击"
+    if pattern == "forge" then
         if e.bossAttackTimer <= 0 then
-            bossFanShot(e, a, 3, 0.44, 245, 7, 0.68, C.red)
-            e.bossAttackTimer = 1.25
-        end
-    elseif phase == 2 then
-        e.bossPhaseName = "裂隙封锁"
-        speedMult = 0.48
-        if e.bossAttackTimer <= 0 then
-            bossFanShot(e, a, 5, 0.74, 265, 7, 0.62, C.purple)
-            e.bossAttackTimer = 1.05
+            bossFanShot(e, a, phase >= 3 and 7 or 5, phase >= 2 and 0.86 or 0.58, 250 + phase * 18, 8, 0.58, C.orange)
+            e.bossAttackTimer = phase >= 3 and 0.82 or 1.05
         end
         if e.enteredArena and e.bossSpecialTimer <= 0 then
-            local vx, vy = Game.player.lastMoveX or 0, Game.player.lastMoveY or -1
-            if math.abs(vx) + math.abs(vy) < 0.05 then vx, vy = math.cos(a), math.sin(a) end
-            local px, py = -vy, vx
-            local side = (e.bossZoneFlip and 1 or -1)
-            e.bossZoneFlip = not e.bossZoneFlip
-            local zx = clamp(Game.player.x + vx * 118 + px * side * 94, 96, Game.w - 96)
-            local zy = clamp(Game.player.y + vy * 118 + py * side * 94, 178, Game.h - 90)
-            igniteFireZone(zx, zy, 104, 4.2, math.max(5, (e.damage or 12) * 0.45), C.purple, C.red, "裂隙封锁")
-            addText(zx - 38, zy - 118, "裂隙封锁", C.purple)
-            e.bossSpecialTimer = randf(2.9, 3.5)
+            bossTargetZone(e, 88 + phase * 10, 4.4, 0.56, C.orange, C.red, "熔炉线")
+            e.bossSpecialTimer = randf(2.4, 3.1)
+        end
+    elseif pattern == "bulwark" then
+        speedMult = speedMult * 0.72
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 5 or 3, 0.52, 230, 8, 0.50, C.blue)
+            e.bossAttackTimer = 1.18
+        end
+        if e.enteredArena and e.bossSummonTimer <= 0 then
+            spawnBossMinion(phase >= 2 and "bulwark" or "wisp", pickSpawnSide(currentWavePlan()), 0.62 + phase * 0.08)
+            e.bossSummonTimer = phase >= 3 and 3.8 or 5.0
+            addText(e.x - 38, e.y - e.r - 28, "护卫接入", C.blue)
+        end
+    elseif pattern == "hive" then
+        speedMult = speedMult * 1.08
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 9 or 6, 1.18, 245 + phase * 12, 6, 0.44, C.green)
+            e.bossAttackTimer = phase >= 3 and 0.78 or 1.02
+        end
+        if e.enteredArena and e.bossSummonTimer <= 0 then
+            for _ = 1, phase + 1 do spawnBossMinion((rnd() < 0.55) and "splinter" or "drifter", pickSpawnSide(currentWavePlan()), 0.55 + phase * 0.06) end
+            e.bossSummonTimer = phase >= 3 and 3.2 or 4.4
+        end
+    elseif pattern == "glacier" then
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 2 and 5 or 3, 0.70, 222, 8, 0.46, C.ice)
+            e.bossAttackTimer = phase >= 3 and 0.92 or 1.20
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            bossTargetZone(e, 94 + phase * 8, 4.8, 0.40, C.ice, C.blue, "霜环")
+            e.bossSpecialTimer = randf(2.8, 3.6)
+        end
+    elseif pattern == "venom" then
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 6 or 4, 0.82, 238, 7, 0.48, C.green)
+            e.bossAttackTimer = phase >= 3 and 0.88 or 1.10
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            bossTargetZone(e, 104 + phase * 6, 5.2, 0.42, C.green, C.purple, "腐蚀云")
+            e.bossSpecialTimer = randf(2.6, 3.4)
+        end
+    elseif pattern == "void" then
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 7 or 5, 0.96, 214 + phase * 16, 8, 0.52, C.purple)
+            e.bossAttackTimer = phase >= 3 and 0.95 or 1.16
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            local pull = 0.045 + phase * 0.010
+            Game.player.x = Game.player.x + (e.x - Game.player.x) * pull
+            Game.player.y = Game.player.y + (e.y - Game.player.y) * pull
+            bossTargetZone(e, 92 + phase * 12, 4.0, 0.46, C.purple, C.blue, "坍缩点", 80, 64)
+            e.bossSpecialTimer = randf(3.0, 3.8)
+        end
+    elseif pattern == "rail" then
+        speedMult = speedMult * 0.66
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 3 or 1, phase >= 3 and 0.32 or 0, 360 + phase * 40, 6, 0.86, C.white)
+            addText(e.x - 30, e.y - e.r - 24, "锁线", C.white)
+            e.bossAttackTimer = phase >= 3 and 0.74 or 1.12
+        end
+    elseif pattern == "reactor" then
+        speedMult = speedMult * 0.78
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 10 or 6, 1.35, 230 + phase * 18, 8, 0.50, C.red)
+            e.bossAttackTimer = phase >= 3 and 0.82 or 1.12
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            for k = 0, 7 do fireEnemyShot(e, k * TAU / 8, 210 + phase * 24, 8, 0.46, C.orange, "灾变泄压") end
+            bossTargetZone(e, 116, 3.8, 0.52, C.red, C.orange, "泄压区", 68, 44)
+            e.bossSpecialTimer = randf(3.1, 4.0)
+        end
+    elseif pattern == "reboot" then
+        local mode = ({"heartbreak", "forge", "void"})[phase] or "heartbreak"
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, phase >= 3 and 8 or 5, phase >= 3 and 1.04 or 0.72, 250 + phase * 22, 7, 0.54, phase == 2 and C.orange or (phase == 3 and C.purple or C.gold))
+            e.bossAttackTimer = phase >= 3 and 0.82 or 1.05
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            bossTargetZone(e, 96 + phase * 8, 4.2, 0.48, mode == "forge" and C.orange or C.purple, C.red, phase == 2 and "协议过热" or "归零点")
+            e.bossSpecialTimer = randf(2.8, 3.6)
         end
     else
-        e.bossPhaseName = e.bossWeakTimer > 0 and "核心暴露" or "失控齐射"
-        speedMult = 0.54
         if e.bossAttackTimer <= 0 then
-            bossFanShot(e, a, 7, 1.02, 292, 7, 0.58, C.red)
-            e.bossAttackTimer = 0.92
+            bossFanShot(e, a, phase >= 3 and 7 or (phase == 2 and 5 or 3), phase >= 3 and 1.02 or (phase == 2 and 0.74 or 0.44), 245 + phase * 18, 7, phase >= 3 and 0.58 or 0.64, phase == 2 and C.purple or C.red)
+            e.bossAttackTimer = phase >= 3 and 0.92 or (phase == 2 and 1.05 or 1.25)
         end
-        if e.enteredArena and e.bossSpecialTimer <= 0 then
-            e.bossWeakTimer = 2.4
-            e.damageTakenMult = 1.42
-            addText(e.x - 44, e.y - e.r - 32, "弱点窗口", C.gold)
-            burst(e.x, e.y, C.gold, 28, 230)
-            e.bossSpecialTimer = 6.0
+        if phase >= 2 and e.enteredArena and e.bossSpecialTimer <= 0 then
+            bossTargetZone(e, 104, 4.2, 0.45, C.purple, C.red, phase >= 3 and "弱点窗口" or "裂隙封锁")
+            if phase >= 3 then e.bossWeakTimer = 2.4; e.damageTakenMult = 1.42 end
+            e.bossSpecialTimer = phase >= 3 and 6.0 or randf(2.9, 3.5)
         end
     end
 
+    if phase >= 3 and e.bossWeakTimer <= 0 and (pattern == "heartbreak" or pattern == "reboot") then
+        e.bossPhaseName = bossPhaseLabel(e, phase) .. " / 失控齐射"
+    end
     if distToPlayer < 190 then
         moveAngle = angleTo(Game.player.x, Game.player.y, e.x, e.y)
         speedMult = speedMult * 1.18
     end
     return moveAngle, speedMult
 end
-
 local function updateEnemyShots(dt)
     local p = Game.player
     for i = #Game.enemyShots, 1, -1 do
@@ -3050,8 +3179,9 @@ local function updatePlaying(dt)
     local events = plan.events or {}
     while Game.waveEventIndex and events[Game.waveEventIndex] and Game.waveElapsed >= events[Game.waveEventIndex].time do
         local event = events[Game.waveEventIndex]
-        spawnEnemy(enemyDefs[event.enemy] or weightedEnemy(plan), {side = event.side, scale = event.enemy == "boss" and 1 or 1.08})
-        if event.toast then toast(event.toast) end
+        local eventDef = event.enemy == "boss" and selectedBossDef() or (enemyDefs[event.enemy] or weightedEnemy(plan))
+        spawnEnemy(eventDef, {side = event.side, scale = event.enemy == "boss" and 1 or 1.08})
+        if event.toast then toast(event.enemy == "boss" and ("目标：打爆 " .. (Game.waveBossName or "Boss")) or event.toast) end
         Game.waveEventIndex = Game.waveEventIndex + 1
     end
     local dynamicEvents = Game.dynamicEvents or {}
@@ -3186,8 +3316,8 @@ function autoplayLine(text)
         f:write("- 目标波次：" .. tostring(tonumber(os.getenv("LOVE_AUTOPLAY_TARGET_WAVE")) or 12) .. "\n")
         f:write("- 难度：" .. tostring(Game.danger or 0) .. "\n\n")
         f:write("## 波次结果\n\n")
-        f:write("| Wave | 结果 | 击杀 | 收入 | 结束生命 | 结束护盾 | 结算后材料 | 构筑 |\n")
-        f:write("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
+        f:write("| Wave | 结果 | Boss | 击杀 | 收入 | 结束生命 | 结束护盾 | 结算后材料 | 构筑 |\n")
+        f:write("| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n")
         Game.autoplayLogStarted = true
     end
     f:write(text .. "\n")
@@ -3248,7 +3378,8 @@ end
 function autoplayCaptureWave(summary)
     if not autoplayRecordEnabled() then return end
     local p = Game.player or {}
-    autoplayLine("| " .. tostring(summary.wave or Game.wave) .. " | " .. tostring(summary.reason or "完成") .. " | " .. tostring(summary.kills or 0) .. " | " .. tostring(summary.coins or 0) .. " | " .. tostring(math.ceil(p.hp or 0)) .. "/" .. tostring(p.maxHp or 0) .. " | " .. tostring(math.ceil(p.shield or 0)) .. "/" .. tostring(p.maxShield or 0) .. " | " .. tostring(Game.coins or 0) .. " | " .. autoplayBuildText() .. " |")
+    local bossName = Game.waveBossName or "-"
+    autoplayLine("| " .. tostring(summary.wave or Game.wave) .. " | " .. tostring(summary.reason or "完成") .. " | " .. bossName .. " | " .. tostring(summary.kills or 0) .. " | " .. tostring(summary.coins or 0) .. " | " .. tostring(math.ceil(p.hp or 0)) .. "/" .. tostring(p.maxHp or 0) .. " | " .. tostring(math.ceil(p.shield or 0)) .. "/" .. tostring(p.maxShield or 0) .. " | " .. tostring(Game.coins or 0) .. " | " .. autoplayBuildText() .. " |")
 end
 
 function autoplayNearestEnemy()
