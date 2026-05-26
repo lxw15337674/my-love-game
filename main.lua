@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.26.73"
+local VERSION = "v2026.05.26.74"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -3750,8 +3750,10 @@ local function drawHud()
     local dangerPulse = 0.5 + 0.5 * math.sin((love.timer.getTime() or 0) * 8.0)
     local hudY, hudH = 14, 138
     panel(18, hudY, Game.w - 36, hudH)
-    color(C.white, 0.035)
+    color(C.bgA, 0.42)
     love.graphics.rectangle("fill", 26, hudY + 8, Game.w - 52, hudH - 16, 16, 16)
+    color(C.white, 0.045)
+    love.graphics.rectangle("fill", 32, hudY + 14, Game.w - 64, hudH - 28, 14, 14)
 
     -- 左：生存状态必须比材料/击杀更抢眼。原型可以乱，战斗 HUD 不能乱。
     local lx = 36
@@ -3778,7 +3780,7 @@ local function drawHud()
     local textW, textH = timerFont:getWidth(mainTargetText), timerFont:getHeight()
     local timerW = math.max(bossMode and 118 or 190, textW + 38)
     local timerH = math.max(54, textH + 8)
-    local timerX, timerY = midX - timerW / 2, hudY + 58
+    local timerX, timerY = midX - timerW / 2, hudY + 56
     local timerCx, timerCy = timerX + timerW / 2, timerY + timerH / 2
     local now = love.timer.getTime() or 0
     if Game.hudTimerText ~= mainTargetText then
@@ -3809,13 +3811,13 @@ local function drawHud()
     love.graphics.pop()
 
     local leftInfoX, sideW = midX - 304, 154
-    drawCapsule(chapterWaveLabel(Game.wave), leftInfoX, hudY + 24, sideW, 26, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, borderAlpha = 0.12, bgAlpha = 0.18})
-    drawCapsule(plan.name or "清理敌群", leftInfoX, hudY + 62, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.12, borderAlpha = 0.08})
+    drawCapsule(chapterWaveLabel(Game.wave), leftInfoX, hudY + 22, sideW, 26, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, borderAlpha = 0.12, bgAlpha = 0.20})
+    drawCapsule(plan.name or "清理敌群", leftInfoX, hudY + 58, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.14, borderAlpha = 0.08})
     local rightInfoX = midX + 150
     local obj = Game.sideObjective
     local sideObjective = obj and ("可选 " .. (obj.short or obj.name) .. " " .. math.floor(obj.progress or 0) .. "/" .. obj.target) or "可选 无"
-    drawCapsule(bossMode and (Game.bossDefeated and "Boss 已打爆" or "打爆 Boss") or sideObjective, rightInfoX, hudY + 24, sideW, 26, {font = Game.fonts.tiny, fg = C.cyan, border = C.cyan, borderAlpha = 0.12, bgAlpha = 0.16})
-    drawCapsule("危 " .. Game.danger .. " · " .. survivalPhaseName(), rightInfoX, hudY + 62, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.12, borderAlpha = 0.08})
+    drawCapsule(bossMode and (Game.bossDefeated and "Boss 已打爆" or "打爆 Boss") or sideObjective, rightInfoX, hudY + 22, sideW, 26, {font = Game.fonts.tiny, fg = C.cyan, border = C.cyan, borderAlpha = 0.12, bgAlpha = 0.18})
+    drawCapsule("危 " .. Game.danger .. " · " .. survivalPhaseName(), rightInfoX, hudY + 58, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.14, borderAlpha = 0.08})
 
     -- 右：即时操作/威胁。长说明留给商店情报，战斗中别念小作文。
     local rx, rw = Game.w - 430, 392
