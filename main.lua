@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.25.57"
+local VERSION = "v2026.05.26.72"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -139,6 +139,10 @@ local Game = {
     message = "",
     messageTimer = 0,
     shake = 0,
+    hitFlash = 0,
+    lastHitSource = nil,
+    lastHitAngle = nil,
+    lastHitColor = nil,
     autoShotDone = false,
     selectedObjective = 1,
     danger = 0,
@@ -236,7 +240,7 @@ function applyConfiguredWeapons()
     for id, cfg in pairs(Balance.weaponDefs) do
         local def = weaponDefs[id]
         if def then
-            for _, key in ipairs({"name", "brand", "element", "price", "damage", "cooldown", "speed", "count", "spread", "range"}) do
+            for _, key in ipairs({"name", "brand", "element", "price", "damage", "cooldown", "speed", "count", "spread", "range", "statusChance", "statusDamage"}) do
                 if cfg[key] ~= nil then def[key] = cfg[key] end
             end
             if cfg.extra then for k, v in pairs(cfg.extra) do def[k] = v end end
@@ -285,12 +289,12 @@ function configuredWavePlans(defaults)
 end
 
 local elements = {
-    kinetic = {name = "动能", color = C.white, desc = "直接伤害"},
-    burn = {name = "灼烧", color = C.orange, desc = "持续伤害"},
-    arc = {name = "电弧", color = C.cyan, desc = "连锁闪电"},
-    corrode = {name = "腐蚀", color = C.green, desc = "削弱护甲"},
-    ice = {name = "霜冻", color = C.ice, desc = "减速冻结"},
-    void = {name = "虚空", color = C.purple, desc = "牵引异常"}
+    kinetic = {name = "动能", color = C.white, desc = "直接伤害", status = "无异常", weakness = "通用"},
+    burn = {name = "灼烧", color = C.orange, desc = "点燃持续伤害，对轻甲更狠", status = "点燃", weakness = "轻甲"},
+    arc = {name = "电击", color = C.cyan, desc = "对护盾增伤，破盾触发电爆", status = "触电", weakness = "护盾"},
+    corrode = {name = "腐蚀", color = C.green, desc = "叠层持续伤害，并让目标受到后续伤害提高", status = "衰变", weakness = "厚血敌群"},
+    ice = {name = "霜冻", color = C.ice, desc = "减速并累积冻结，冻结目标更易暴击", status = "冻结", weakness = "高速敌"},
+    void = {name = "虚空", color = C.purple, desc = "牵引并累积坍缩", status = "坍缩", weakness = "密集敌群"}
 }
 
 local brands = {
@@ -298,6 +302,9 @@ local brands = {
     swarm = {name = "蜂群", color = C.green, tag = "多弹清场"},
     molten = {name = "熔火", color = C.orange, tag = "爆燃轰击"},
     echo = {name = "回声", color = C.cyan, tag = "弹射连锁"},
+    caustic = {name = "蚀刻", color = C.green, tag = "腐蚀易伤"},
+    cryo = {name = "冷井", color = C.ice, tag = "霜冻控场"},
+    drone = {name = "母巢", color = C.green, tag = "无人机军团"},
     blackbox = {name = "黑箱", color = C.purple, tag = "异常代价"}
 }
 
@@ -338,6 +345,30 @@ weaponDefs = {
         name = "虚空球", brand = "blackbox", element = "void", price = 38,
         damage = 8, cooldown = 1.25, speed = 210, count = 1, spread = 0, range = 620, aura = 48,
         desc = "缓慢牵引并造成伤害"
+    },
+    splitter = {
+        id = "splitter", projectileSprite = "projectile_star_needle",
+        name = "裂星机炮", brand = "starforge", element = "kinetic", price = 30,
+        damage = 6, cooldown = 0.42, speed = 680, count = 3, spread = 0.24, range = 720, critBonus = 0.06,
+        desc = "多弹精准射击，适合暴击弹幕"
+    },
+    acid = {
+        id = "acid", projectileSprite = "projectile_void_orb",
+        name = "腐蚀喷针", brand = "caustic", element = "corrode", price = 34,
+        damage = 12, cooldown = 0.72, speed = 520, count = 2, spread = 0.16, range = 660, statusChance = 0.32, statusDamage = 6,
+        desc = "腐蚀附着，叠层持续伤害并施加易伤"
+    },
+    frost = {
+        id = "frost", projectileSprite = "projectile_arc_bolt",
+        name = "冷井脉冲", brand = "cryo", element = "ice", price = 32,
+        damage = 10, cooldown = 0.78, speed = 500, count = 2, spread = 0.12, range = 640, statusChance = 0.34, statusDamage = 4,
+        desc = "霜冻减速，累积后冻结"
+    },
+    drone = {
+        id = "drone", projectileSprite = "projectile_swarm_missile",
+        name = "蜂巢无人机", brand = "drone", element = "arc", price = 40,
+        damage = 5, cooldown = 0.95, speed = 540, count = 4, spread = 0.72, range = 720, statusChance = 0.24, statusDamage = 5, hiveSplit = true,
+        desc = "无人机齐射，击杀后分裂追咬"
     }
 }
 
@@ -361,7 +392,11 @@ local itemPool = {
     {name = "虹吸针管", kind = "relic", rarity = "rare", price = 30, desc = "生命偷取 +3%，暴击 -2%", apply = function(p) p.stats.lifesteal = p.stats.lifesteal + 0.03; p.stats.crit = p.stats.crit - 0.02 end},
     {name = "自动索敌芯片", kind = "relic", rarity = "epic", price = 46, desc = "电弧伤害 +18%，周期追踪", apply = function(p) p.stats.elementDamage = p.stats.elementDamage + 0.18; p.gear.autoArc = true end},
     {name = "回收协议", kind = "relic", rarity = "epic", price = 44, desc = "结算材料 +18%，拾取范围 +18", apply = function(p) p.stats.economy = p.stats.economy + 0.18; p.pickup = p.pickup + 18 end},
-    {name = "过载电容", kind = "legend", rarity = "legend", price = 70, desc = "射速 +18%，移速 +8%，护盾回复 -1", apply = function(p) p.stats.fireRate = p.stats.fireRate + 0.18; p.speed = p.speed + 20; p.shieldRegen = p.shieldRegen - 1 end}
+    {name = "过载电容", kind = "legend", rarity = "legend", price = 70, desc = "射速 +18%，移速 +8%，护盾回复 -1", apply = function(p) p.stats.fireRate = p.stats.fireRate + 0.18; p.speed = p.speed + 20; p.shieldRegen = p.shieldRegen - 1 end},
+    {name = "弱点扫描阵列", kind = "relic", rarity = "epic", price = 48, desc = "暴击 +7%，暴击击杀追加弹射", apply = function(p) p.stats.crit = p.stats.crit + 0.07; p.gear.critRicochet = true end},
+    {name = "元素催化舱", kind = "relic", rarity = "epic", price = 50, desc = "元素概率 +10%，元素伤害 +16%", apply = function(p) p.stats.elementChance = p.stats.elementChance + 0.10; p.stats.elementDamage = p.stats.elementDamage + 0.16 end},
+    {name = "反冲护盾线圈", kind = "relic", rarity = "epic", price = 46, desc = "击杀回盾，破盾脉冲，满盾增伤", apply = function(p) p.gear.killShield = true; p.gear.shieldBurst = true; p.gear.fullShieldDamage = true end},
+    {name = "无人机母巢", kind = "legend", rarity = "legend", price = 72, desc = "周期发射支援无人机弹，射速 -5%", apply = function(p) p.gear.droneSwarm = true; p.stats.fireRate = p.stats.fireRate - 0.05 end}
 }
 
 local tempItemPool = {
@@ -376,12 +411,14 @@ local tempItemPool = {
 enemyDefs = {
     drifter = {name = "漂移噪声", sprite = "enemy_drifter", defense = "flesh", hp = 18, speed = 78, damage = 9, r = 14, color = C.red, xp = 3, coin = 2, behavior = "chase"},
     splinter = {name = "裂片", sprite = "enemy_splinter", defense = "flesh", hp = 12, speed = 130, damage = 7, r = 10, color = C.orange, xp = 2, coin = 1, behavior = "charger"},
-    shell = {name = "壳层记忆", sprite = "enemy_shell", defense = "armor", hp = 44, speed = 50, damage = 13, r = 20, color = C.green, armor = 3, xp = 5, coin = 4, behavior = "guard"},
-    wisp = {name = "电弧游魂", sprite = "enemy_wisp", defense = "shield", hp = 18, shield = 26, shieldRegen = 2.2, speed = 105, damage = 8, r = 13, color = C.cyan, xp = 4, coin = 3, behavior = "shooter"},
+    shell = {name = "壳层记忆", sprite = "enemy_shell", defense = "armor", hp = 44, speed = 50, damage = 13, r = 20, color = C.red, armor = 3, xp = 5, coin = 4, behavior = "guard"},
+    wisp = {name = "电弧游魂", sprite = "enemy_wisp", defense = "shield", hp = 18, shield = 26, shieldRegen = 2.2, speed = 105, damage = 8, r = 13, color = C.purple, xp = 4, coin = 3, behavior = "shooter"},
+    bulwark = {name = "护盾卫士", sprite = "enemy_shell", defense = "shield", hp = 34, shield = 54, shieldRegen = 2.6, speed = 58, damage = 12, r = 20, color = C.purple, armor = 0, xp = 6, coin = 5, behavior = "guard"},
     elite = {name = "坏蛋精英", sprite = "enemy_elite", defense = "shield", hp = 150, shield = 90, shieldRegen = 3.0, speed = 64, damage = 18, r = 28, color = C.purple, armor = 2, xp = 16, coin = 12, elite = true, behavior = "aura"},
     treasure = {name = "宝藏信标", sprite = "pickup_coin", defense = "flesh", hp = 16, speed = 112, damage = 0, r = 16, color = C.gold, xp = 1, coin = 5, treasureCoin = 18, treasure = true, behavior = "treasure"},
     bomber = {name = "燃烧投手", sprite = "enemy_splinter", defense = "flesh", hp = 38, speed = 72, damage = 10, r = 15, color = C.orange, xp = 4, coin = 4, behavior = "bomber"},
     rammer = {name = "突击钻头", sprite = "enemy_splinter", defense = "armor", hp = 52, speed = 96, damage = 16, r = 18, color = C.red, armor = 1, xp = 6, coin = 5, behavior = "rammer"},
+    zoner = {name = "封锁织网者", sprite = "enemy_wisp", defense = "shield", hp = 42, shield = 24, shieldRegen = 1.4, speed = 68, damage = 11, r = 17, color = C.purple, armor = 0, xp = 7, coin = 6, behavior = "zoner", zoneRadius = 96, zoneDuration = 4.8, zoneCooldown = 3.5, zoneDamage = 6},
     boss = {name = "裂心机核", sprite = "boss_heartbreak", defense = "armor", hp = 1900, shield = 260, shieldRegen = 1.2, speed = 48, damage = 24, r = 46, color = C.pink, armor = 2, xp = 80, coin = 60, boss = true, behavior = "boss"}
 }
 
@@ -408,8 +445,15 @@ local function wavePlanAt(wave)
     if chapterWave == CHAPTER_SIZE then base = wavePlans[#wavePlans] end
     local plan = {}
     for k, v in pairs(base) do plan[k] = v end
+    plan.events = {}
+    for _, event in ipairs(base.events or {}) do
+        local copy = {}
+        for k, v in pairs(event) do copy[k] = v end
+        plan.events[#plan.events + 1] = copy
+    end
     plan.enemies = {}
     local hasBomber = false
+    local hasZoner = false
     for i, entry in ipairs(base.enemies or {}) do
         local id, weight = entry[1], entry[2]
         if id == "bomber" and chapterIndex >= 2 then
@@ -417,19 +461,29 @@ local function wavePlanAt(wave)
             weight = math.max(2, weight + math.floor(chapterIndex * 0.75) + (chapterWave == CHAPTER_SIZE and -1 or 1))
         elseif id == "bomber" then
             hasBomber = true
+        elseif id == "zoner" and chapterIndex >= 2 then
+            hasZoner = true
+            weight = math.max(2, weight + math.floor(chapterIndex * 0.80) + (chapterWave == CHAPTER_SIZE and 1 or 0))
+        elseif id == "zoner" then
+            hasZoner = true
         end
         plan.enemies[i] = {id, weight}
     end
     if chapterIndex >= 2 and not hasBomber then plan.enemies[#plan.enemies + 1] = {"bomber", 3 + math.floor(chapterIndex * 0.75)} end
+    if chapterIndex >= 2 and not hasZoner then plan.enemies[#plan.enemies + 1] = {"zoner", 2 + math.floor(chapterIndex * 0.85) + (chapterWave == CHAPTER_SIZE and 1 or 0)} end
     plan.duration = chapterWave == CHAPTER_SIZE and nil or SMALL_WAVE_DURATION
     plan.interval = math.max(0.42, (base.interval or 1.0) - (chapterIndex - 1) * 0.030 - (chapterWave == CHAPTER_SIZE and 0.04 or 0))
     plan.pack = (base.pack or 1) + math.floor((chapterIndex - 1) / 2) + (chapterWave == CHAPTER_SIZE and 0 or 0)
-    plan.name = chapterWave == CHAPTER_SIZE and ((CHAPTER_NAMES[chapterIndex] or "终局") .. "Boss战") or (base.name or "生存波次")
+    plan.name = chapterWave == CHAPTER_SIZE and ((CHAPTER_NAMES[chapterIndex] or "终局") .. "关底 Boss") or (base.name or "清理敌群")
+    if chapterWave ~= CHAPTER_SIZE and chapterIndex >= 2 then
+        plan.events[#plan.events + 1] = {time = 9, enemy = "zoner", side = "top", toast = "封锁织网者：战场切割"}
+    end
     if chapterWave == CHAPTER_SIZE then
         plan.boss = true
         plan.events = {
-            {time = 0.2, enemy = "boss", side = "right", toast = "关底目标：击败 Boss"}
+            {time = 0.2, enemy = "boss", side = "right", toast = "目标：打爆 Boss"}
         }
+        if chapterIndex >= 2 then plan.events[#plan.events + 1] = {time = 12, enemy = "zoner", side = "top", toast = "封锁织网者：压缩战场"} end
         if chapterIndex >= 2 then plan.events[#plan.events + 1] = {time = 16, enemy = "bomber", side = "top", toast = "燃烧投手支援入场"} end
         plan.events[#plan.events + 1] = {time = 24, enemy = "elite", side = "left", toast = "Boss护卫：左侧精英"}
     end
@@ -573,7 +627,7 @@ local characterDefs = {basePlayerDef}
 local SURVIVAL_DURATION = SMALL_WAVE_DURATION
 
 local objectiveDefs = {
-    {name = "战役模式", desc = "普通小关生存 30 秒，关底击败 Boss", mode = "survive"}
+    {name = "战役模式", desc = "普通关撑住 30 秒，关底打爆 Boss", mode = "survive"}
 }
 
 local levelRewardPool = {
@@ -589,7 +643,7 @@ local levelRewardPool = {
     {name = "回声预案", kind = "mod", rarity = "rare", family = "武器", desc = "电弧伤害 +12%", apply = function(p) p.stats.elementDamage = p.stats.elementDamage + 0.12 end},
     {name = "燃烧弹芯", kind = "item", rarity = "rare", family = "元素", desc = "元素伤害 +18%", apply = function(p) p.stats.elementDamage = p.stats.elementDamage + 0.18 end},
     {name = "电击电容", kind = "item", rarity = "rare", family = "元素", desc = "护盾破裂释放电弧，元素伤害 +10%", flag = "shieldBurst", apply = function(p) p.stats.elementDamage = p.stats.elementDamage + 0.10; p.gear.shieldBurst = true end},
-    {name = "腐蚀针剂", kind = "item", rarity = "rare", family = "元素", desc = "腐蚀叠层上限提高，元素伤害 +10%", apply = function(p) p.stats.elementDamage = p.stats.elementDamage + 0.10; p.gear.deepCorrode = true end},
+    {name = "腐蚀针剂", kind = "item", rarity = "rare", family = "元素", desc = "腐蚀叠层上限提高并强化易伤，元素伤害 +10%", apply = function(p) p.stats.elementDamage = p.stats.elementDamage + 0.10; p.gear.deepCorrode = true end},
     {name = "冰裂准星", kind = "mod", rarity = "epic", family = "元素", desc = "冻结/减速目标更容易被暴击", apply = function(p) p.gear.freezeCrit = true; p.stats.crit = p.stats.crit + 0.03 end},
     {name = "爆炸协议", kind = "mod", rarity = "epic", family = "爆炸", desc = "爆炸伤害 +22%，击杀小范围爆裂", apply = function(p) p.stats.explosiveDamage = p.stats.explosiveDamage + 0.22; p.gear.killBurst = true end},
     {name = "追踪电弧", kind = "relic", rarity = "epic", family = "元素", desc = "电弧命中后周期追踪", apply = function(p) p.gear.autoArc = true; p.stats.elementDamage = p.stats.elementDamage + 0.10 end},
@@ -598,8 +652,16 @@ local levelRewardPool = {
     {name = "回收协议", kind = "relic", rarity = "rare", family = "经济", desc = "关卡结算材料 +18%", apply = function(p) p.stats.economy = p.stats.economy + 0.18 end},
     {name = "赏金猎犬", kind = "legend", rarity = "legend", family = "经济", desc = "商店免费刷新 +1，结算材料 +12%", apply = function(p) p.stats.economy = p.stats.economy + 0.12; Game.freeRefresh = Game.freeRefresh + 1 end},
     {name = "回声无尽", kind = "legend", rarity = "legend", family = "武器", desc = "电弧周期追踪，伤害 -5%", flag = "endlessEcho", apply = function(p) p.gear.echoOverdrive = true; p.stats.damage = p.stats.damage - 0.05 end},
-    {name = "腐蚀瘟疫", kind = "legend", rarity = "legend", family = "元素", desc = "腐蚀击杀会向附近敌人扩散", apply = function(p) p.gear.corrosionSpread = true; p.stats.elementDamage = p.stats.elementDamage + 0.12 end},
-    {name = "坏心眼弹匣", kind = "legend", rarity = "legend", family = "暴击", desc = "暴击击杀触发弹射爆裂", apply = function(p) p.gear.critRicochet = true; p.stats.critDamage = p.stats.critDamage + 0.18 end}
+    {name = "腐蚀瘟疫", kind = "legend", rarity = "legend", family = "元素", desc = "腐蚀击杀会扩散层数和易伤", apply = function(p) p.gear.corrosionSpread = true; p.stats.elementDamage = p.stats.elementDamage + 0.12 end},
+    {name = "坏心眼弹匣", kind = "legend", rarity = "legend", family = "暴击", desc = "暴击击杀触发弹射爆裂", apply = function(p) p.gear.critRicochet = true; p.stats.critDamage = p.stats.critDamage + 0.18 end},
+    {name = "弹幕校准", kind = "mod", rarity = "rare", family = "弹幕暴击", desc = "弹体数量 +1，暴击率 +3%", apply = function(p) p.gear.extraProjectile = (p.gear.extraProjectile or 0) + 1; p.stats.crit = p.stats.crit + 0.03 end},
+    {name = "弱点连锁", kind = "relic", rarity = "epic", family = "弹幕暴击", desc = "暴击击杀后下一击必暴，暴伤 +14%", apply = function(p) p.gear.blink = true; p.stats.critDamage = p.stats.critDamage + 0.14 end},
+    {name = "元素过量", kind = "mod", rarity = "rare", family = "元素异常", desc = "元素概率 +8%，元素伤害 +12%", apply = function(p) p.stats.elementChance = p.stats.elementChance + 0.08; p.stats.elementDamage = p.stats.elementDamage + 0.12 end},
+    {name = "异常扩散", kind = "relic", rarity = "epic", family = "元素异常", desc = "腐蚀/点燃击杀扩散，腐蚀目标承受更多伤害", apply = function(p) p.gear.corrosionSpread = true; p.gear.burnSpread = true; p.gear.freezeCrit = true end},
+    {name = "盾反协议", kind = "relic", rarity = "epic", family = "护盾反击", desc = "破盾释放电爆，击杀回复护盾", apply = function(p) p.gear.shieldBurst = true; p.gear.killShield = true end},
+    {name = "满盾压制", kind = "mod", rarity = "rare", family = "护盾反击", desc = "满盾时伤害提高，护盾回复 +1", apply = function(p) p.gear.fullShieldDamage = true; p.shieldRegen = p.shieldRegen + 1 end},
+    {name = "无人机同步", kind = "relic", rarity = "epic", family = "召唤无人机", desc = "周期支援无人机弹，召唤物继承元素", apply = function(p) p.gear.droneSwarm = true; p.stats.elementChance = p.stats.elementChance + 0.04 end},
+    {name = "蜂群备份", kind = "legend", rarity = "legend", family = "召唤无人机", desc = "无人机击杀分裂，射速 +8%", apply = function(p) p.gear.droneSwarm = true; p.gear.droneSplit = true; p.stats.fireRate = p.stats.fireRate + 0.08 end}
 }
 
 local function selectedCharacter() return basePlayerDef end
@@ -653,8 +715,18 @@ local function rollRarity()
     return "common"
 end
 
-local function priced(base, rarity)
-    return math.max(8, math.floor(base * (rarityPower[rarity] or 1) + 0.5))
+local function shopPriceMultiplier(wave)
+    local safeWave = math.max(1, wave or (Game and Game.wave) or 1)
+    local baseStep = Balance.shop_price_wave_step or 0.012
+    local lateStart = Balance.shop_price_late_start or 8
+    local lateStep = Balance.shop_price_late_step or 0.028
+    local wavePart = 1 + math.max(0, safeWave - 1) * baseStep
+    local latePart = 1 + math.max(0, safeWave - lateStart) * lateStep
+    return wavePart * latePart
+end
+
+local function priced(base, rarity, wave)
+    return math.max(8, math.floor(base * (rarityPower[rarity] or 1) * shopPriceMultiplier(wave) + 0.5))
 end
 
 local function drawHeart(x, y, s, mode)
@@ -743,6 +815,61 @@ local function drawSprite(name, x, y, size, rotation, alpha)
     return true
 end
 
+
+function drawElementProjectileLayer(b, pulse)
+    local elemId = b.element or "kinetic"
+    local elem = elements[elemId] or elements.kinetic
+    local c = elem.color or b.color or C.white
+    love.graphics.setBlendMode("add")
+    if elemId == "burn" then
+        color(c, 0.36 + pulse * 0.18)
+        love.graphics.circle("fill", -18, 0, 8 + pulse * 4)
+        color(C.orange, 0.30)
+        love.graphics.circle("fill", -30, 0, 12 + pulse * 6)
+        love.graphics.setLineWidth(2)
+        color(c, 0.70)
+        love.graphics.arc("line", "open", 0, 0, 17 + pulse * 6, -0.75, 0.75)
+    elseif elemId == "arc" then
+        love.graphics.setLineWidth(3)
+        color(c, 0.82)
+        love.graphics.line(-24, -7, -13, 6, -3, -5, 9, 5, 22, -3)
+        color(C.white, 0.55)
+        love.graphics.setLineWidth(1)
+        love.graphics.line(-20, -4, -12, 4, -2, -4, 8, 3, 18, -2)
+        love.graphics.setLineWidth(2)
+        color(c, 0.38)
+        love.graphics.circle("line", 0, 0, 17 + pulse * 5)
+    elseif elemId == "corrode" then
+        color(c, 0.42)
+        love.graphics.circle("fill", -7, -4, 5 + pulse * 3)
+        love.graphics.circle("fill", -18, 5, 4 + pulse * 2)
+        love.graphics.circle("fill", 8, 4, 3 + pulse * 2)
+        color(c, 0.62)
+        love.graphics.setLineWidth(2)
+        love.graphics.circle("line", 0, 0, 15 + pulse * 4)
+        love.graphics.setLineWidth(1)
+    elseif elemId == "ice" then
+        color(c, 0.42)
+        love.graphics.polygon("line", 0, -18 - pulse * 4, 15 + pulse * 3, 0, 0, 18 + pulse * 4, -15 - pulse * 3, 0)
+        color(C.white, 0.42)
+        love.graphics.line(-18, 0, 18, 0)
+        love.graphics.line(0, -18, 0, 18)
+    elseif elemId == "void" then
+        color(c, 0.28 + pulse * 0.16)
+        love.graphics.circle("line", 0, 0, 24 + pulse * 8)
+        love.graphics.circle("line", 0, 0, 11 + pulse * 5)
+        color(c, 0.18)
+        love.graphics.circle("fill", 0, 0, 22 + pulse * 5)
+    else
+        color(C.gold, 0.24 + pulse * 0.10)
+        love.graphics.rectangle("fill", -30, -2, 42, 4, 2, 2)
+        color(C.white, 0.35)
+        love.graphics.line(-20, 0, 20, 0)
+    end
+    love.graphics.setLineWidth(1)
+    love.graphics.setBlendMode("alpha")
+end
+
 local function drawProjectile(b)
     local rot = math.atan2(b.vy, b.vx)
     local brand = b.brand or "starforge"
@@ -758,6 +885,7 @@ local function drawProjectile(b)
     color(b.color, 0.18 + pulse * 0.10)
     love.graphics.circle("fill", 0, 0, b.aura and (20 + pulse * 6) or (12 + pulse * 3))
     love.graphics.setBlendMode("alpha")
+    drawElementProjectileLayer(b, pulse)
 
     if brand == "blackbox" or b.aura then
         love.graphics.setLineWidth(2)
@@ -817,7 +945,8 @@ local function drawProjectile(b)
     local img = b.sprite and Game.images[b.sprite]
     if img then
         love.graphics.setBlendMode("add")
-        love.graphics.setColor(1, 1, 1, 0.70)
+        local tint = elements[b.element or "kinetic"] or elements.kinetic
+        love.graphics.setColor(tint.color[1], tint.color[2], tint.color[3], 0.78)
         local size = b.aura and 34 or (b.splash and 30 or 24)
         local scale = size / math.max(img:getWidth(), img:getHeight())
         love.graphics.draw(img, 0, 0, 0, scale, scale, img:getWidth() / 2, img:getHeight() / 2)
@@ -827,8 +956,9 @@ local function drawProjectile(b)
     love.graphics.pop()
 end
 
-local function addText(x, y, text, c)
-    Game.damageTexts[#Game.damageTexts + 1] = {x = x, y = y, text = text, color = c or C.white, life = 0.72}
+local function addText(x, y, text, c, opts)
+    opts = opts or {}
+    Game.damageTexts[#Game.damageTexts + 1] = {x = x, y = y, text = text, color = c or C.white, life = opts.life or 0.72, maxLife = opts.life or 0.72, scale = opts.scale or 1, font = opts.font}
 end
 
 local function burst(x, y, c, count, power)
@@ -961,12 +1091,12 @@ end
 function survivalPhaseName()
     local t = clamp(difficultyProgress(), 0, 1)
     local _, chapterWave = chapterInfoAt(Game.wave)
-    if chapterWave == CHAPTER_SIZE then return "关底清算" end
-    if t < 0.20 then return "侦察期" end
-    if t < 0.45 then return "扩张期" end
-    if t < 0.70 then return "压迫期" end
-    if t < 0.90 then return "淘汰期" end
-    return "终局清算"
+    if chapterWave == CHAPTER_SIZE then return "关底 Boss" end
+    if t < 0.20 then return "热身清场" end
+    if t < 0.45 then return "敌群增压" end
+    if t < 0.70 then return "火线压迫" end
+    if t < 0.90 then return "濒临失控" end
+    return "终局清场"
 end
 
 local function spawnEnemy(def, opts)
@@ -980,22 +1110,39 @@ local function spawnEnemy(def, opts)
     local scale = (opts.scale or 1) * wavePowerScale(Game.wave) * bonus.enemyHp * dangerScale * curve.hp
     local hp = def.hp * scale
     local shield = (def.shield or 0) * scale
+    if def.boss and (Game.wave or 1) <= CHAPTER_SIZE then
+        -- 第一 Boss 是教学标杆：保留三段机制，但避免新机制叠加数值曲线后变成拖沓血盾墙。
+        hp = hp * 0.72
+        shield = shield * 0.68
+    end
     Game.enemies[#Game.enemies + 1] = {
         name = def.name, x = x, y = y, r = def.r,
         hp = hp, maxHp = hp, shield = shield, maxShield = shield, defense = def.defense or (shield > 0 and "shield" or ((def.armor or 0) > 0 and "armor" or "flesh")), shieldRegen = def.shieldRegen or 0,
         speed = (def.speed + Game.wave * 0.85) * bonus.enemySpeed * curve.speed * (1 + Game.danger * 0.025),
         damage = def.damage * wavePowerScale(Game.wave) * bonus.enemyDamage * curve.damage * (1 + Game.danger * 0.06), armor = (def.armor or 0) + bonus.enemyArmor + curve.armor,
         color = def.color, xp = def.xp, coin = def.coin, treasureCoin = def.treasureCoin, sprite = def.sprite, behavior = def.behavior or "chase",
+        zoneRadius = def.zoneRadius, zoneDuration = def.zoneDuration, zoneCooldown = def.zoneCooldown, zoneDamage = def.zoneDamage,
         elite = def.elite, boss = def.boss, treasure = def.treasure,
         shootTimer = rnd() * 1.2, dashTimer = rnd() * 1.6, wanderTimer = rnd() * 1.4, wanderAngle = rnd() * TAU,
         burn = 0, slow = 0, corrosion = 0, lastHit = 0
     }
     local spawned = Game.enemies[#Game.enemies]
     if def.boss then
+        spawned.bossPhase = 1
+        spawned.bossPhaseName = "校准射击"
+        spawned.bossAttackTimer = 0.75
+        spawned.bossSpecialTimer = 2.4
+        spawned.bossWeakTimer = 0
+        spawned.damageTakenMult = 1
+        if (Game.wave or 1) <= CHAPTER_SIZE then
+            spawned.shieldRegen = (spawned.shieldRegen or 0) * 0.55
+        end
         toast("Boss 接入：" .. def.name)
         addText(Game.w / 2 - 46, 154, "Boss", C.red)
-    elseif def.elite or def.behavior == "bomber" then
-        addText(clamp(x, 80, Game.w - 80), clamp(y, 170, Game.h - 90), def.elite and "精英" or "燃烧投手", def.elite and C.purple or C.orange)
+    elseif def.elite or def.behavior == "bomber" or def.behavior == "zoner" then
+        local label = def.elite and "精英" or (def.behavior == "zoner" and "封锁" or "燃烧投手")
+        local labelColor = def.elite and C.purple or (def.behavior == "zoner" and C.purple or C.orange)
+        addText(clamp(x, 80, Game.w - 80), clamp(y, 170, Game.h - 90), label, labelColor)
     end
 end
 
@@ -1200,12 +1347,13 @@ end
 applyBuildSynergies = function()
     local p = Game.player
     if not p or not p.stats then return end
-    local arc, crit, explosive, burn, shield = 0, 0, 0, 0, p.shieldItem and 1 or 0
+    local arc, crit, explosive, burn, shield, drone = 0, 0, 0, 0, p.shieldItem and 1 or 0, 0
     for _, w in ipairs(p.weapons or {}) do
         if w.element == "arc" or w.brand == "echo" then arc = arc + 1 end
         if w.brand == "starforge" or (w.crit or 0) > 0 or (w.name or ""):find("星针") then crit = crit + 1 end
         if w.splash or w.element == "burn" or w.brand == "molten" then explosive = explosive + 1 end
         if w.element == "burn" then burn = burn + 1 end
+        if w.brand == "drone" or w.hiveSplit then drone = drone + 1 end
     end
     local moduleKeys = {}
     for _, item in ipairs(p.items or {}) do
@@ -1215,6 +1363,7 @@ applyBuildSynergies = function()
         if desc:find("暴击") or desc:find("暴伤") then crit = crit + 1 end
         if desc:find("爆") or desc:find("燃") then explosive = explosive + 1 end
         if desc:find("护盾") then shield = shield + 1 end
+        if desc:find("无人机") or desc:find("蜂群") or desc:find("召唤") then drone = drone + 1 end
     end
     p.synergies = {}
     for _, combo in ipairs(moduleCombos or {}) do
@@ -1242,6 +1391,10 @@ applyBuildSynergies = function()
     if explosive >= 2 and burn >= 1 then
         p.gear.fireSplash = true
         p.synergies[#p.synergies + 1] = "爆炸+燃烧：爆炸追加灼烧"
+    end
+    if drone >= 2 then
+        p.gear.droneSwarm = true
+        p.synergies[#p.synergies + 1] = "无人机2：周期支援齐射"
     end
 end
 
@@ -1277,20 +1430,20 @@ end
 weaponPartPools = {
     barrel = {
         {name = "长距枪管", tag = "远射", cost = 0.45, brands = {starforge = 3, echo = 2}, apply = function(w, p) w.range = w.range * (1.14 + p * 0.03); if w.speed > 0 then w.speed = w.speed * (1.08 + p * 0.02) end; w.cooldown = w.cooldown * 1.04 end},
-        {name = "分裂枪管", tag = "多弹", cost = 0.55, brands = {swarm = 4}, apply = function(w, p) if (w.count or 1) < 8 then w.count = (w.count or 1) + 1; w.damage = math.max(1, math.floor(w.damage * 0.90 + 0.5)); w.spread = (w.spread or 0) + 0.08 end end},
-        {name = "重炮管", tag = "重击", cost = 0.60, brands = {molten = 4, blackbox = 2}, apply = function(w, p) w.damage = math.floor(w.damage * (1.16 + p * 0.04) + 0.5); if w.speed > 0 then w.speed = w.speed * 0.86 end; w.cooldown = w.cooldown * 1.08 end},
-        {name = "棱镜枪管", tag = "折射", cost = 0.65, brands = {echo = 4, starforge = 2}, apply = function(w, p) w.bounce = (w.bounce or 0) + 1; w.damage = math.max(1, math.floor(w.damage * 0.94 + 0.5)) end}
+        {name = "分裂枪管", tag = "多弹", cost = 0.55, brands = {swarm = 4, drone = 4}, apply = function(w, p) if (w.count or 1) < 8 then w.count = (w.count or 1) + 1; w.damage = math.max(1, math.floor(w.damage * 0.90 + 0.5)); w.spread = (w.spread or 0) + 0.08 end end},
+        {name = "重炮管", tag = "重击", cost = 0.60, brands = {molten = 4, blackbox = 2, caustic = 3, cryo = 2}, apply = function(w, p) w.damage = math.floor(w.damage * (1.16 + p * 0.04) + 0.5); if w.speed > 0 then w.speed = w.speed * 0.86 end; w.cooldown = w.cooldown * 1.08 end},
+        {name = "棱镜枪管", tag = "折射", cost = 0.65, brands = {echo = 4, starforge = 2, cryo = 3}, apply = function(w, p) w.bounce = (w.bounce or 0) + 1; w.damage = math.max(1, math.floor(w.damage * 0.94 + 0.5)) end}
     },
     core = {
         {name = "暴击核心", tag = "暴击", cost = 0.55, brands = {starforge = 4}, apply = function(w, p) w.critBonus = (w.critBonus or 0) + 0.06 + p * 0.015; w.critDamageBonus = (w.critDamageBonus or 0) + 0.14 + p * 0.025 end},
         {name = "过载核心", tag = "过载", cost = 0.58, brands = {blackbox = 3, molten = 2}, apply = function(w, p) w.damage = math.floor(w.damage * (1.12 + p * 0.035) + 0.5); w.overloadTax = true end},
-        {name = "元素核心", tag = "元素", cost = 0.52, brands = {molten = 3, echo = 2, blackbox = 2}, apply = function(w, p) w.elementPower = (w.elementPower or 1) + 0.14 + p * 0.035; w.damage = math.max(1, math.floor(w.damage * 0.96 + 0.5)) end},
+        {name = "元素核心", tag = "元素", cost = 0.52, brands = {molten = 3, echo = 2, blackbox = 2, caustic = 3, cryo = 3}, apply = function(w, p) w.elementPower = (w.elementPower or 1) + 0.14 + p * 0.035; w.damage = math.max(1, math.floor(w.damage * 0.96 + 0.5)) end},
         {name = "稳定核心", tag = "稳定", cost = 0.42, brands = {starforge = 2, swarm = 2}, apply = function(w, p) w.spread = math.max(0, (w.spread or 0) * 0.82); w.cooldown = w.cooldown / (1.04 + p * 0.015) end}
     },
     power = {
-        {name = "速射供能", tag = "速射", cost = 0.50, brands = {swarm = 3, starforge = 2}, apply = function(w, p) w.cooldown = w.cooldown / (1.09 + p * 0.025); w.damage = math.max(1, math.floor(w.damage * 0.95 + 0.5)) end},
+        {name = "速射供能", tag = "速射", cost = 0.50, brands = {swarm = 3, starforge = 2, drone = 3}, apply = function(w, p) w.cooldown = w.cooldown / (1.09 + p * 0.025); w.damage = math.max(1, math.floor(w.damage * 0.95 + 0.5)) end},
         {name = "高压供能", tag = "高压", cost = 0.54, brands = {molten = 3, blackbox = 2}, apply = function(w, p) w.damage = math.floor(w.damage * (1.14 + p * 0.035) + 0.5); w.cooldown = w.cooldown * 1.06 end},
-        {name = "回收供能", tag = "回收", cost = 0.48, brands = {swarm = 2, echo = 2}, apply = function(w, p) w.killHaste = true; w.cooldown = w.cooldown / 1.03 end},
+        {name = "回收供能", tag = "回收", cost = 0.48, brands = {swarm = 2, echo = 2, drone = 3}, apply = function(w, p) w.killHaste = true; w.cooldown = w.cooldown / 1.03 end},
         {name = "黑箱供能", tag = "代价", cost = 0.75, brands = {blackbox = 5}, apply = function(w, p) w.damage = math.floor(w.damage * (1.20 + p * 0.04) + 0.5); w.voidSlow = true end}
     },
     calibrator = {
@@ -1303,7 +1456,7 @@ weaponPartPools = {
 
 weaponAffixRolls = {
     highDamage = {text = "高伤", cost = 0.50, brands = {molten = 3, blackbox = 2}, apply = function(w, p) w.damage = math.floor(w.damage * (1.10 + p * 0.06) + 0.5) end},
-    rapid = {text = "速射", cost = 0.48, brands = {swarm = 3, starforge = 2}, apply = function(w, p) w.cooldown = w.cooldown / (1.08 + p * 0.04) end},
+    rapid = {text = "速射", cost = 0.48, brands = {swarm = 3, starforge = 2, drone = 3}, apply = function(w, p) w.cooldown = w.cooldown / (1.08 + p * 0.04) end},
     range = {text = "远射", cost = 0.38, brands = {starforge = 3}, apply = function(w, p) w.range = w.range * (1.10 + p * 0.05) end},
     fast = {text = "高速弹", cost = 0.32, brands = {starforge = 2, swarm = 2}, apply = function(w, p) if w.speed > 0 then w.speed = w.speed * (1.12 + p * 0.05) end end},
     sixth = {text = "第六发穿透", cost = 0.70, brands = {starforge = 4}, apply = function(w, p) w.sixthPierce = true; w.shotCount = 0 end},
@@ -1327,7 +1480,11 @@ legendaryWeaponBlueprints = {
     molten = {title = "赤炉审判", desc = "爆炸留下燃烧区", apply = function(w) w.fireSplash = true; w.splash = (w.splash or 0) + 34; w.elementPower = (w.elementPower or 1) + 0.18 end},
     echo = {title = "递归切割", desc = "弹射越打越痛", apply = function(w) w.echoRamp = true; w.bounce = (w.bounce or 0) + 2; w.damage = math.max(1, math.floor(w.damage * 0.90 + 0.5)) end},
     coil = {title = "连锁审讯", desc = "连锁叠电痕并爆电", apply = function(w) w.arcMark = true; w.chain = (w.chain or 1) + 2; w.elementPower = (w.elementPower or 1) + 0.12 end},
-    void = {title = "黑箱坍缩", desc = "牵引光环周期爆裂", apply = function(w) w.voidCollapse = true; w.aura = (w.aura or 48) + 38; w.voidSlow = true; w.damage = math.floor(w.damage * 1.20 + 0.5) end}
+    void = {title = "黑箱坍缩", desc = "牵引光环周期爆裂", apply = function(w) w.voidCollapse = true; w.aura = (w.aura or 48) + 38; w.voidSlow = true; w.damage = math.floor(w.damage * 1.20 + 0.5) end},
+    splitter = {title = "星雨处刑", desc = "暴击击杀追加弹幕", apply = function(w) w.sparkSplit = true; w.critBonus = (w.critBonus or 0) + 0.08; w.count = (w.count or 1) + 1 end},
+    acid = {title = "绿潮剥皮", desc = "腐蚀叠层更高，击杀扩散易伤", apply = function(w) w.statusChance = (w.statusChance or 0.25) + 0.18; w.elementPower = (w.elementPower or 1) + 0.18; w.deepCorrodeWeapon = true end},
+    frost = {title = "绝对零度", desc = "霜冻更快冻结并碎裂", apply = function(w) w.statusChance = (w.statusChance or 0.25) + 0.20; w.freezeShatter = true; w.damage = math.floor(w.damage * 1.10 + 0.5) end},
+    drone = {title = "蜂群女王", desc = "无人机击杀分裂并电击护盾", apply = function(w) w.hiveSplit = true; w.statusChance = (w.statusChance or 0.20) + 0.16; w.count = (w.count or 1) + 2 end}
 }
 
 function weightedRollByBrand(pool, brand)
@@ -1394,6 +1551,13 @@ local function makeWeaponItem(id)
     def.cooldown = math.max(0.16, def.cooldown / randf(0.94, 1.08))
     def.range = def.range * randf(0.96, 1.08)
     if def.speed > 0 then def.speed = def.speed * randf(0.94, 1.10) end
+    if def.element ~= "kinetic" then
+        def.statusChance = clamp((def.statusChance or 0.22) + (power - 1) * 0.035, 0.12, 0.62)
+        def.statusDamage = math.max(2, math.floor((def.statusDamage or math.max(3, def.damage * 0.36)) * (0.85 + power * 0.25) + 0.5))
+    else
+        def.statusChance = def.statusChance or 0
+        def.statusDamage = def.statusDamage or 0
+    end
     local slots = {"barrel", "core", "power", "calibrator"}
     for i = 1, math.min(#slots, rarityPartCount[rarity] or 2) do applyWeaponPart(def, slots[i], power) end
     applyWeaponAffixes(def, rarity, power)
@@ -1406,8 +1570,8 @@ local function makeWeaponItem(id)
     local partText = table.concat(partTags, "、")
     def.name = (rarityLabel[rarity] or rarity) .. " " .. (def.name or base.name)
     local budgetSpend = (def.budgetUsed or 0) + ((rarityBudget[rarity] or 1) - (def.budgetLeft or 0))
-    def.price = math.max(18, math.floor((base.price or 24) * (rarityPrice[rarity] or 1) * (1 + budgetSpend * 0.08) + 0.5))
-    local descParts = {brand.name, elem.name}
+    def.price = math.max(18, math.floor((base.price or 24) * (rarityPrice[rarity] or 1) * (1 + budgetSpend * 0.08) * shopPriceMultiplier(def.level or Game.wave or 1) + 0.5))
+    local descParts = {brand.name, elem.name, elementProcText(def)}
     if partText ~= "" then descParts[#descParts + 1] = partText end
     if affixText ~= "" then descParts[#descParts + 1] = affixText end
     if def.legendaryDesc then descParts[#descParts + 1] = def.legendaryDesc end
@@ -1551,7 +1715,7 @@ local function makeTempItem()
 end
 
 local function randomWeaponShopItem()
-    local keys = {"needle", "swarm", "molten", "echo", "coil", "void"}
+    local keys = {"needle", "swarm", "molten", "echo", "coil", "void", "splitter", "acid", "frost", "drone"}
     return makeWeaponItem(keys[rnd(1, #keys)])
 end
 
@@ -1678,7 +1842,7 @@ end
 
 local function slotPrizeItem(kind)
     if kind == "weapon" then
-        local keys = {"needle", "swarm", "molten", "echo", "coil", "void"}
+        local keys = {"needle", "swarm", "molten", "echo", "coil", "void", "splitter", "acid", "frost", "drone"}
         return makeWeaponItem(keys[rnd(1, #keys)])
     elseif kind == "shield" then
         return makeShieldItem()
@@ -1776,15 +1940,15 @@ local function spinSlotMachine()
 end
 
 sideObjectiveDefs = {
-    {id = "kill", name = "猎杀指标", desc = "击杀 22 个敌人", target = 22, reward = function() Game.freeRefresh = (Game.freeRefresh or 0) + 1; return "免费刷新 +1" end},
-    {id = "treasure", name = "回收信标", desc = "击毁 1 个宝藏信标", target = 1, reward = function() addCoins(24, "objective"); return "材料 +24" end},
-    {id = "elite", name = "斩首行动", desc = "击杀 1 个精英", target = 1, reward = function() addCoins(32, "objective"); return "材料 +32" end},
-    {id = "nohit", name = "无伤窗口", desc = "连续 10 秒不受击", target = 10, reward = function() Game.player.maxShield = Game.player.maxShield + 16; Game.player.shield = math.min(Game.player.maxShield, Game.player.shield + 16); return "护盾上限 +16" end}
+    {id = "kill", name = "清掉 22 个", short = "清敌", desc = "击杀 22 个敌人", target = 22, reward = function() Game.freeRefresh = (Game.freeRefresh or 0) + 1; return "免费刷新 +1" end},
+    {id = "treasure", name = "打掉信标", short = "信标", desc = "击毁 1 个宝藏信标", target = 1, reward = function() addCoins(24, "objective"); return "材料 +24" end},
+    {id = "elite", name = "干掉精英", short = "精英", desc = "击杀 1 个精英", target = 1, reward = function() addCoins(32, "objective"); return "材料 +32" end},
+    {id = "nohit", name = "别挨打 10 秒", short = "无伤", desc = "连续 10 秒不受击", target = 10, reward = function() Game.player.maxShield = Game.player.maxShield + 16; Game.player.shield = math.min(Game.player.maxShield, Game.player.shield + 16); return "护盾上限 +16" end}
 }
 
 function rollSideObjective()
     local def = sideObjectiveDefs[rnd(1, #sideObjectiveDefs)]
-    return {id = def.id, name = def.name, desc = def.desc, target = def.target, progress = 0, done = false, paid = false, reward = def.reward, timer = 0}
+    return {id = def.id, name = def.name, short = def.short or def.name, desc = def.desc, target = def.target, progress = 0, done = false, paid = false, reward = def.reward, timer = 0}
 end
 
 function objectiveTick(dt)
@@ -1793,10 +1957,10 @@ function objectiveTick(dt)
     if obj.id == "nohit" then
         obj.timer = (obj.timer or 0) + dt
         obj.progress = math.min(obj.target, obj.timer)
-        if obj.timer >= obj.target then obj.done = true; toast("小目标完成：" .. obj.name) end
+        if obj.timer >= obj.target then obj.done = true; toast("可选目标完成：" .. obj.name) end
     elseif (obj.progress or 0) >= (obj.target or 1) then
         obj.done = true
-        toast("小目标完成：" .. obj.name)
+        toast("可选目标完成：" .. obj.name)
     end
 end
 
@@ -1806,7 +1970,7 @@ function awardSideObjective()
         obj.paid = true
         local rewardText = obj.reward() or "奖励已发放"
         if Game.waveRewards then Game.waveRewards.objective = rewardText end
-        toast("小目标奖励：" .. rewardText)
+        toast("可选奖励：" .. rewardText)
     end
 end
 
@@ -1814,7 +1978,7 @@ function addObjectiveProgress(kind, amount)
     local obj = Game.sideObjective
     if not obj or obj.done or obj.id ~= kind then return end
     obj.progress = (obj.progress or 0) + (amount or 1)
-    if obj.progress >= obj.target then obj.done = true; toast("小目标完成：" .. obj.name) end
+    if obj.progress >= obj.target then obj.done = true; toast("可选目标完成：" .. obj.name) end
 end
 
 dynamicEventPool = {
@@ -1864,7 +2028,7 @@ local function startWave()
     Game.sideObjective = rollSideObjective()
     Game.waveStartKills = Game.kills
     Game.objectiveProgress = 0
-    Game.objectiveText = plan.boss and "击败 Boss" or ("生存 " .. SURVIVAL_DURATION .. "秒")
+    Game.objectiveText = plan.boss and "打爆 Boss" or ("撑住 " .. SURVIVAL_DURATION .. " 秒")
     Game.enemies, Game.bullets, Game.pickups = {}, {}, {}
     Game.enemyShots, Game.fireZones, Game.beams = {}, {}, {}
     Game.pendingRewardNextState = nil
@@ -1890,7 +2054,7 @@ local function startWave()
     Game.tempBuffs = {}
     Game.spawnTimer = 0.25
     Game.player.shieldDelay = 0
-    toast(chapterWaveLabel(Game.wave) .. "：" .. (plan.name or "战斗") .. " / " .. affixLabel() .. " / 小目标 " .. (Game.sideObjective and Game.sideObjective.name or "无"))
+    toast(chapterWaveLabel(Game.wave) .. "：" .. (plan.name or "战斗") .. " / " .. affixLabel() .. " / 可选 " .. (Game.sideObjective and Game.sideObjective.name or "无"))
 end
 
 local function enterShop()
@@ -2018,7 +2182,7 @@ local function killEnemy(e)
     if Game.waveRewards then Game.waveRewards.kills = (Game.waveRewards.kills or 0) + 1 end
     addObjectiveProgress("kill", 1)
     if e.elite then addObjectiveProgress("elite", 1) end
-    if e.boss then Game.bossDefeated = true; toast("Boss 击破") end
+    if e.boss then Game.bossDefeated = true; toast("Boss 已打爆") end
     if e.treasure then addObjectiveProgress("treasure", 1) end
     local coinGain = math.max(1, math.floor(e.coin * bonus.coinMult + 0.5))
     addCoins(coinGain)
@@ -2049,7 +2213,69 @@ local function killEnemy(e)
     playCue(e.elite and "elite" or "pickup"); burst(e.x, e.y, e.color, e.boss and 44 or 12, e.boss and 260 or 150)
 end
 
-local function damageEnemy(e, amount, element, crit, source)
+function elementStatusChance(weapon)
+    if not weapon then return 0 end
+    if weapon.element == "kinetic" and (weapon.statusChance or 0) <= 0 then return 0 end
+    return clamp((weapon.statusChance or (weapon.element ~= "kinetic" and 0.22 or 0)) + ((Game.player and Game.player.stats and Game.player.stats.elementChance) or 0), 0, 0.85)
+end
+
+function elementStatusDamage(weapon)
+    if not weapon then return 0 end
+    if weapon.element == "kinetic" and (weapon.statusDamage or 0) <= 0 then return 0 end
+    return math.max(0, math.floor((weapon.statusDamage or math.max(1, (weapon.damage or 0) * 0.35)) * ((Game.player and Game.player.stats and Game.player.stats.elementDamage) or 1) + 0.5))
+end
+
+function elementProcText(weapon)
+    if not weapon then return "无元素附着" end
+    local elem = elements[weapon.element] or elements.kinetic
+    if weapon.element == "kinetic" and (weapon.statusChance or 0) <= 0 then return "动能直伤 · 无元素概率" end
+    return elem.name .. "触发 " .. math.floor(elementStatusChance(weapon) * 100 + 0.5) .. "% · 异常伤害 " .. elementStatusDamage(weapon) .. "/s"
+end
+
+function applyElementStatus(e, elem, statusDamage, source, chance)
+    if elem == "kinetic" then return false end
+    local p = Game.player
+    local procChance = chance
+    if procChance == nil then procChance = 1 end
+    procChance = clamp(procChance + ((p and p.stats and p.stats.elementChance) or 0), 0, 0.90)
+    if rnd() > procChance then return false end
+    local dot = math.max(1, statusDamage or 4)
+    if elem == "burn" then
+        e.burn = math.max(e.burn or 0, 3.2)
+        e.burnDamage = math.max(e.burnDamage or 0, dot)
+        addText(e.x, e.y - e.r - 12, "点燃", C.orange)
+    elseif elem == "arc" then
+        e.shock = math.max(e.shock or 0, 2.4)
+        e.shockDamage = math.max(e.shockDamage or 0, dot)
+        addText(e.x, e.y - e.r - 12, "触电", C.cyan)
+        if (e.maxShield or 0) > 0 or (e.shield or 0) > 0 then
+            for _, other in ipairs(Game.enemies or {}) do
+                if other ~= e and distance(e.x, e.y, other.x, other.y) < 118 then damageEnemy(other, dot * 0.55, "arc", false, (source or "电击") .. "跳电", 0, 0) end
+            end
+        end
+    elseif elem == "corrode" then
+        e.corrosion = math.min((p and p.gear and p.gear.deepCorrode) and 9 or 6, (e.corrosion or 0) + 1)
+        e.corrosionDot = math.max(e.corrosionDot or 0, dot * 0.62)
+        addText(e.x, e.y - e.r - 12, "腐蚀易伤", C.green)
+    elseif elem == "ice" then
+        e.slow = math.max(e.slow or 0, 2.4)
+        e.freeze = (e.freeze or 0) + 1
+        if e.freeze >= 3 then
+            e.frozen = math.max(e.frozen or 0, 1.05)
+            e.freeze = 0
+            addText(e.x, e.y - e.r - 12, "冻结", C.ice)
+        else
+            addText(e.x, e.y - e.r - 12, "霜冻", C.ice)
+        end
+    elseif elem == "void" then
+        e.voidMark = math.max(e.voidMark or 0, 2.6)
+        e.voidDamage = math.max(e.voidDamage or 0, dot)
+        addText(e.x, e.y - e.r - 12, "坍缩", C.purple)
+    end
+    return true
+end
+
+function damageEnemy(e, amount, element, crit, source, statusChance, statusDamage)
     local p = Game.player
     local elem = element or "kinetic"
     local bonus = currentAffixBonuses()
@@ -2057,23 +2283,35 @@ local function damageEnemy(e, amount, element, crit, source)
     local defenseMult = 1
     if e.shield and e.shield > 0 then
         defenseMult = elem == "arc" and 1.65 or 1
-    elseif e.defense == "armor" then
-        defenseMult = elem == "corrode" and 1.65 or 1
     elseif e.defense == "flesh" then
         defenseMult = elem == "burn" and 1.45 or 1
     end
+    if elem == "corrode" then defenseMult = defenseMult * 1.08 end
+    if (e.corrosion or 0) > 0 then defenseMult = defenseMult * (1 + math.min(8, e.corrosion or 0) * 0.055) end
     if elem ~= "kinetic" then defenseMult = defenseMult * (1 + (p.waveElementDamageBonus or 0)) end
-    if e.slow and e.slow > 0 and p.gear.freezeCrit then defenseMult = defenseMult * 1.18 end
-    local armor = math.max(0, (e.armor or 0) - (e.corrosion or 0))
+    if e.damageTakenMult and e.damageTakenMult > 1 then defenseMult = defenseMult * e.damageTakenMult end
+    if ((e.slow and e.slow > 0) or (e.frozen and e.frozen > 0)) and p.gear.freezeCrit then defenseMult = defenseMult * 1.18 end
+    if e.frozen and e.frozen > 0 and crit then defenseMult = defenseMult * 1.18 end
+    local armor = math.max(0, e.armor or 0)
     local dmg = math.max(1, amount * elemMult * defenseMult - armor)
     e.lastHit = 1.4
     e.lastCrit = crit
     e.lastElement = elem
+    local hadShield = e.shield and e.shield > 0
     if e.shield and e.shield > 0 then
         local used = math.min(e.shield, dmg)
         e.shield = e.shield - used
         dmg = dmg - used
-        if e.shield <= 0 then burst(e.x, e.y, C.cyan, 12, 160) end
+        if hadShield and e.shield <= 0 then
+            e.shield = 0
+            addText(e.x - 16, e.y - e.r - 24, "破盾", C.cyan)
+            burst(e.x, e.y, C.cyan, 24, 220)
+            if elem == "arc" then
+                for _, other in ipairs(Game.enemies or {}) do
+                    if other ~= e and distance(e.x, e.y, other.x, other.y) < 130 then damageEnemy(other, math.max(4, amount * 0.22), "arc", false, "破盾电爆", 0, 0) end
+                end
+            end
+        end
     end
     if dmg > 0 then e.hp = e.hp - dmg end
     Game.runStats.damage = (Game.runStats.damage or 0) + dmg
@@ -2081,10 +2319,8 @@ local function damageEnemy(e, amount, element, crit, source)
     Game.runStats.damageByWeapon[src] = (Game.runStats.damageByWeapon[src] or 0) + dmg
     if Game.player.stats.lifesteal > 0 and rnd() < Game.player.stats.lifesteal then Game.player.hp = math.min(Game.player.maxHp, Game.player.hp + 1) end
     addText(e.x, e.y - e.r, tostring(math.floor(dmg)) .. (crit and "!" or ""), crit and C.gold or elements[elem].color)
-    if element == "burn" then e.burn = math.max(e.burn or 0, 3.0) end
-    if element == "corrode" then e.corrosion = math.min(p.gear.deepCorrode and 8 or 5, (e.corrosion or 0) + 1) end
-    if element == "ice" then e.slow = math.max(e.slow or 0, 2.2) end
-    if element == "void" then
+    applyElementStatus(e, elem, statusDamage, src, statusChance)
+    if elem == "void" then
         for _, other in ipairs(Game.enemies) do
             local d = distance(e.x, e.y, other.x, other.y)
             if other ~= e and d < 90 then
@@ -2127,6 +2363,7 @@ local function fireProjectile(w, target, angle)
         traveled = 0, life = bulletLife, pierce = pierce, bounce = (w.bounce or 0) + (p.gear.echoOverdrive and 1 or 0),
         splash = w.splash, aura = w.aura, color = elements[elem].color, sprite = w.projectileSprite, crit = crit, target = target, source = w.name, brand = w.brand,
         sparkSplit = w.sparkSplit, echoRamp = w.echoRamp, hiveSplit = w.hiveSplit, fireSplash = w.fireSplash,
+        statusChance = w.statusChance, statusDamage = w.statusDamage,
         executeLowHp = w.executeLowHp,
         arcMark = w.arcMark, voidCollapse = w.voidCollapse, legendRefundShot = w.legendRefundShot, killHaste = w.killHaste, weaponRef = w
     }
@@ -2149,7 +2386,7 @@ local function useChainWeapon(w, target)
         local hitDamage = w.damage * (p.stats.damage + (p.waveDamageBonus or 0)) * bonus.playerDamage * lowHp * fullShield * critMult * (elem ~= "kinetic" and (w.elementPower or 1) or 1)
         if w.executeLowHp and hit.hp / math.max(1, hit.maxHp or hit.hp) < 0.35 then hitDamage = hitDamage * 1.35 end
         addBeam(fromX, fromY, hit.x, hit.y, elements[elem].color)
-        local dead = damageEnemy(hit, hitDamage, elem, crit, w.name)
+        local dead = damageEnemy(hit, hitDamage, elem, crit, w.name, w.statusChance, w.statusDamage)
         if w.arcMark then
             hit.arcMarks = (hit.arcMarks or 0) + 1
             if hit.arcMarks >= 3 then hit.arcMarks = 0; damageEnemy(hit, hitDamage * 0.42, "arc", false, w.name .. "电痕") end
@@ -2184,7 +2421,7 @@ local function updateWeapons(dt)
                     useChainWeapon(w, target)
                 else
                     local base = angleTo(p.x, p.y, target.x, target.y)
-                    local count = w.count or 1
+                    local count = (w.count or 1) + (p.gear.extraProjectile or 0)
                     for i = 1, count do
                         local offset = count == 1 and 0 or ((i - (count + 1) / 2) / math.max(1, count - 1)) * (w.spread or 0)
                         fireProjectile(w, target, base + offset)
@@ -2222,7 +2459,7 @@ local function updateBullets(dt)
             if not remove and distance(b.x, b.y, e.x, e.y) < b.r + e.r then
                 local hitDamage = b.damage
                 if b.executeLowHp and e.hp / math.max(1, e.maxHp or e.hp) < 0.35 then hitDamage = hitDamage * 1.35 end
-                local dead = damageEnemy(e, hitDamage, b.element, b.crit, b.source)
+                local dead = damageEnemy(e, hitDamage, b.element, b.crit, b.source, b.statusChance, b.statusDamage)
                 if b.arcMark then
                     e.arcMarks = (e.arcMarks or 0) + 1
                     if e.arcMarks >= 3 then e.arcMarks = 0; damageEnemy(e, hitDamage * 0.42, "arc", false, b.source .. "电痕") end
@@ -2272,7 +2509,7 @@ local function updateBullets(dt)
     end
 end
 
-local function damagePlayer(amount)
+local function damagePlayer(amount, source, sourceX, sourceY, sourceColor)
     local p = Game.player
     local skill = p.activeSkill
     if p.invuln > 0 or (skill and (skill.duration or 0) > 0) then return end
@@ -2282,8 +2519,14 @@ local function damagePlayer(amount)
     end
     p.invuln = 0.55
     p.shieldDelay = 2.4
-    playCue("hit"); Game.shake = 0.25
+    playCue("hit"); Game.shake = math.max(Game.shake or 0, 0.30)
     amount = math.max(1, amount)
+    local rawAmount = amount
+    local hitSource = source or "受击"
+    Game.hitFlash = 0.42
+    Game.lastHitSource = hitSource
+    Game.lastHitColor = sourceColor or C.red
+    if sourceX and sourceY then Game.lastHitAngle = angleTo(p.x, p.y, sourceX, sourceY) end
     local hadShield = p.shield > 0
     if p.shield > 0 then
         local used = math.min(p.shield, amount)
@@ -2291,6 +2534,10 @@ local function damagePlayer(amount)
         amount = amount - used
     end
     if amount > 0 then p.hp = p.hp - amount end
+    local hitColor = amount > 0 and C.red or C.cyan
+    Game.lastHitDamage = math.ceil(rawAmount)
+    addText(p.x - 44, p.y - p.r - 48, "-" .. tostring(math.ceil(rawAmount)) .. "  " .. hitSource, hitColor, {life = 1.05, scale = 1.28, font = Game.fonts.small})
+    burst(p.x, p.y, hitColor, amount > 0 and 18 or 12, amount > 0 and 170 or 130)
     if hadShield and p.shield <= 0 then
         addText(p.x - 34, p.y - 42, "护盾破裂", C.cyan)
         burst(p.x, p.y, C.cyan, 24, 190)
@@ -2304,14 +2551,16 @@ local function damagePlayer(amount)
     if p.hp <= 0 then Game.state = "gameover" end
 end
 
-local function fireEnemyShot(e, a)
-    Game.enemyShots[#Game.enemyShots + 1] = {x = e.x, y = e.y, vx = math.cos(a) * 250, vy = math.sin(a) * 250, r = 6, damage = e.damage * 0.75, color = e.color, life = 3.0}
+local function fireEnemyShot(e, a, speed, radius, damageMult, colorOverride, sourceLabel)
+    local spd = speed or 250
+    Game.enemyShots[#Game.enemyShots + 1] = {x = e.x, y = e.y, vx = math.cos(a) * spd, vy = math.sin(a) * spd, r = radius or 6, damage = e.damage * (damageMult or 0.75), color = colorOverride or e.color, life = 3.0, source = sourceLabel or (e.boss and "Boss弹幕" or "敌弹")}
 end
 
-function igniteFireZone(x, y, radius, duration, damage)
+function igniteFireZone(x, y, radius, duration, damage, zoneColor, coreColor, label)
     Game.fireZones = Game.fireZones or {}
-    Game.fireZones[#Game.fireZones + 1] = {x = x, y = y, r = radius or 82, life = duration or 4.6, maxLife = duration or 4.6, damage = damage or 8, tick = 0, color = C.orange}
-    burst(x, y, C.orange, 22, 220)
+    local outer = zoneColor or C.orange
+    Game.fireZones[#Game.fireZones + 1] = {x = x, y = y, r = radius or 82, life = duration or 4.6, maxLife = duration or 4.6, damage = damage or 8, tick = 0, color = outer, coreColor = coreColor or C.red, label = label or (outer == C.purple and "封锁区" or "燃烧区")}
+    burst(x, y, outer, 22, 220)
 end
 
 local function throwFireBomb(e, targetX, targetY)
@@ -2320,10 +2569,113 @@ local function throwFireBomb(e, targetX, targetY)
         kind = "firebomb", x = e.x, y = e.y,
         targetX = targetX, targetY = targetY,
         vx = (targetX - e.x) / travel, vy = (targetY - e.y) / travel,
-        r = 8, damage = e.damage * 0.65, color = C.orange, life = travel,
+        r = 8, damage = e.damage * 0.65, color = C.orange, life = travel, source = "燃烧弹",
         zoneRadius = 86, zoneDuration = 4.8
     }
     addText(e.x, e.y - e.r - 10, "燃烧弹", C.orange)
+end
+
+local function setBossPhase(e, phase)
+    if (e.bossPhase or 1) >= phase then return end
+    e.bossPhase = phase
+    if phase == 2 then
+        e.bossPhaseName = "裂隙封锁"
+        e.bossAttackTimer = 0.55
+        e.bossSpecialTimer = 0.35
+        e.shieldRegen = (e.shieldRegen or 0) * 0.45
+        addText(e.x - 54, e.y - e.r - 30, "二阶段：封锁", C.purple)
+        toast("Boss 二阶段：裂隙封锁")
+        burst(e.x, e.y, C.purple, 42, 280)
+    elseif phase == 3 then
+        e.bossPhaseName = "核心暴露"
+        e.bossAttackTimer = 0.35
+        e.bossSpecialTimer = 0.25
+        e.bossWeakTimer = 3.8
+        e.damageTakenMult = 1.42
+        addText(e.x - 58, e.y - e.r - 34, "三阶段：弱点暴露", C.gold)
+        toast("Boss 三阶段：核心暴露")
+        burst(e.x, e.y, C.gold, 56, 320)
+    end
+end
+
+local function bossFanShot(e, a, count, spread, speed, radius, damageMult, c)
+    local n = math.max(1, count or 3)
+    local step = n > 1 and (spread or 0.36) / (n - 1) or 0
+    local start = a - (step * (n - 1) / 2)
+    for k = 0, n - 1 do
+        fireEnemyShot(e, start + step * k, speed, radius, damageMult, c, e.boss and "Boss弹幕" or "敌弹")
+    end
+end
+
+local function updateBossBehavior(e, dt, a, distToPlayer)
+    local hpPct = (e.hp or 0) / math.max(1, e.maxHp or e.hp or 1)
+    if hpPct <= 0.35 then
+        setBossPhase(e, 3)
+    elseif hpPct <= 0.68 then
+        setBossPhase(e, 2)
+    end
+
+    local phase = e.bossPhase or 1
+    e.bossAttackTimer = (e.bossAttackTimer or 0) - dt
+    e.bossSpecialTimer = (e.bossSpecialTimer or 2.4) - dt
+    e.bossWeakTimer = math.max(0, (e.bossWeakTimer or 0) - dt)
+    e.damageTakenMult = e.bossWeakTimer > 0 and 1.42 or 1
+
+    e.bossWanderTimer = (e.bossWanderTimer or 0) - dt
+    if e.bossWanderTimer <= 0 then
+        local centerAngle = angleTo(e.x, e.y, Game.w / 2, Game.h / 2)
+        e.bossWanderAngle = centerAngle + randf(-0.85, 0.85)
+        e.bossWanderTimer = randf(0.85, 1.45)
+    end
+    local moveAngle = e.bossWanderAngle or a
+    local speedMult = 0.42
+
+    if phase == 1 then
+        e.bossPhaseName = "校准射击"
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, 3, 0.44, 245, 7, 0.68, C.red)
+            e.bossAttackTimer = 1.25
+        end
+    elseif phase == 2 then
+        e.bossPhaseName = "裂隙封锁"
+        speedMult = 0.48
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, 5, 0.74, 265, 7, 0.62, C.purple)
+            e.bossAttackTimer = 1.05
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            local vx, vy = Game.player.lastMoveX or 0, Game.player.lastMoveY or -1
+            if math.abs(vx) + math.abs(vy) < 0.05 then vx, vy = math.cos(a), math.sin(a) end
+            local px, py = -vy, vx
+            local side = (e.bossZoneFlip and 1 or -1)
+            e.bossZoneFlip = not e.bossZoneFlip
+            local zx = clamp(Game.player.x + vx * 118 + px * side * 94, 96, Game.w - 96)
+            local zy = clamp(Game.player.y + vy * 118 + py * side * 94, 178, Game.h - 90)
+            igniteFireZone(zx, zy, 104, 4.2, math.max(5, (e.damage or 12) * 0.45), C.purple, C.red, "裂隙封锁")
+            addText(zx - 38, zy - 118, "裂隙封锁", C.purple)
+            e.bossSpecialTimer = randf(2.9, 3.5)
+        end
+    else
+        e.bossPhaseName = e.bossWeakTimer > 0 and "核心暴露" or "失控齐射"
+        speedMult = 0.54
+        if e.bossAttackTimer <= 0 then
+            bossFanShot(e, a, 7, 1.02, 292, 7, 0.58, C.red)
+            e.bossAttackTimer = 0.92
+        end
+        if e.enteredArena and e.bossSpecialTimer <= 0 then
+            e.bossWeakTimer = 2.4
+            e.damageTakenMult = 1.42
+            addText(e.x - 44, e.y - e.r - 32, "弱点窗口", C.gold)
+            burst(e.x, e.y, C.gold, 28, 230)
+            e.bossSpecialTimer = 6.0
+        end
+    end
+
+    if distToPlayer < 190 then
+        moveAngle = angleTo(Game.player.x, Game.player.y, e.x, e.y)
+        speedMult = speedMult * 1.18
+    end
+    return moveAngle, speedMult
 end
 
 local function updateEnemyShots(dt)
@@ -2333,12 +2685,12 @@ local function updateEnemyShots(dt)
         b.life = b.life - dt
         b.x, b.y = b.x + b.vx * dt, b.y + b.vy * dt
         if b.kind == "firebomb" and b.life <= 0 then
-            igniteFireZone(b.targetX or b.x, b.targetY or b.y, b.zoneRadius, b.zoneDuration, b.damage)
+            igniteFireZone(b.targetX or b.x, b.targetY or b.y, b.zoneRadius, b.zoneDuration, b.damage, C.orange, C.red, "燃烧区")
             table.remove(Game.enemyShots, i)
         elseif distance(b.x, b.y, p.x, p.y) < b.r + p.r then
-            damagePlayer(b.damage)
+            damagePlayer(b.damage, b.source or (b.kind == "firebomb" and "燃烧弹" or "敌弹"), b.x, b.y, b.color)
             burst(b.x, b.y, b.color, 5, 80)
-            if b.kind == "firebomb" then igniteFireZone(b.x, b.y, b.zoneRadius, b.zoneDuration, b.damage) end
+            if b.kind == "firebomb" then igniteFireZone(b.x, b.y, b.zoneRadius, b.zoneDuration, b.damage, C.orange, C.red, "燃烧区") end
             table.remove(Game.enemyShots, i)
         elseif b.life <= 0 or b.x < -40 or b.x > Game.w + 40 or b.y < -40 or b.y > Game.h + 40 then
             table.remove(Game.enemyShots, i)
@@ -2353,10 +2705,29 @@ local function updateFireZones(dt)
         z.life = z.life - dt
         z.tick = (z.tick or 0) - dt
         if distance(z.x, z.y, p.x, p.y) < z.r + p.r * 0.35 and z.tick <= 0 then
-            damagePlayer(z.damage or 6)
+            damagePlayer(z.damage or 6, z.label or "危险区域", z.x, z.y, z.color)
             z.tick = 0.45
         end
         if z.life <= 0 then table.remove(Game.fireZones, i) end
+    end
+end
+
+function updateDroneSwarm(dt)
+    local p = Game.player
+    if not (p.gear and p.gear.droneSwarm) then return end
+    p.droneTimer = (p.droneTimer or 0) - dt
+    if p.droneTimer > 0 then return end
+    p.droneTimer = p.gear.droneSplit and 0.82 or 1.08
+    local target = nearestEnemy(p.x, p.y, 680)
+    if not target then return end
+    for i = -1, 1 do
+        local a = angleTo(p.x, p.y, target.x, target.y) + i * 0.18
+        Game.bullets[#Game.bullets + 1] = {
+            x = p.x + i * 12, y = p.y - 18, vx = math.cos(a) * 560, vy = math.sin(a) * 560,
+            r = 4, damage = 6 * p.stats.damage, element = p.waveElement or "arc", range = 720,
+            traveled = 0, life = 2.4, pierce = 0, bounce = 0, color = elements[p.waveElement or "arc"].color, sprite = "projectile_swarm_missile", crit = false, target = target, source = "支援无人机", brand = "drone",
+            hiveSplit = p.gear.droneSplit, statusChance = 0.22, statusDamage = 4
+        }
     end
 end
 
@@ -2401,10 +2772,23 @@ local function updateEnemies(dt)
         if e._voidTick then e._voidTick = e._voidTick - dt end
         if e.burn and e.burn > 0 then
             e.burn = e.burn - dt
-            e.hp = e.hp - 5 * dt
+            e.hp = e.hp - (e.burnDamage or 5) * dt
         end
+        if e.shock and e.shock > 0 then
+            e.shock = e.shock - dt
+            e.hp = e.hp - (e.shockDamage or 4) * dt
+        end
+        if e.corrosionDot and e.corrosionDot > 0 then e.hp = e.hp - e.corrosionDot * dt end
         if e.slow and e.slow > 0 then e.slow = e.slow - dt end
-        local spd = e.speed * ((e.slow and e.slow > 0) and 0.58 or 1)
+        if e.frozen and e.frozen > 0 then e.frozen = e.frozen - dt end
+        if e.voidMark and e.voidMark > 0 then
+            e.voidMark = e.voidMark - dt
+            if e.voidMark <= 0 then
+                damageEnemy(e, e.voidDamage or 8, "void", false, "虚空坍缩", 0, 0)
+                burst(e.x, e.y, C.purple, 18, 170)
+            end
+        end
+        local spd = e.speed * ((e.frozen and e.frozen > 0) and 0.08 or (((e.slow and e.slow > 0) and 0.58 or 1)))
         local a = angleTo(e.x, e.y, p.x, p.y)
         local distToPlayer = distance(e.x, e.y, p.x, p.y)
         local moveAngle = a
@@ -2430,6 +2814,24 @@ local function updateEnemies(dt)
             end
             moveAngle = randomWanderAngle(e, dt, 0.65, 1.35, a, 0.48)
             spd = spd * (e.enteredArena and 0.56 or 0.98)
+        elseif behavior == "zoner" then
+            e.zoneTimer = (e.zoneTimer or randf(0.8, 1.6)) - dt
+            if e.enteredArena and distToPlayer < 720 and e.zoneTimer <= 0 then
+                local mx, my = p.lastMoveX or 0, p.lastMoveY or -1
+                if math.abs(mx) + math.abs(my) < 0.05 then mx, my = math.cos(a), math.sin(a) end
+                local px, py = -my, mx
+                e.zoneFlip = not e.zoneFlip
+                local side = e.zoneFlip and 1 or -1
+                local lead = randf(72, 132)
+                local offset = side * randf(56, 104)
+                local zx = clamp(p.x + mx * lead + px * offset, 88, Game.w - 88)
+                local zy = clamp(p.y + my * lead + py * offset, 172, Game.h - 88)
+                igniteFireZone(zx, zy, e.zoneRadius or 96, e.zoneDuration or 4.8, e.zoneDamage or math.max(4, (e.damage or 8) * 0.55), C.purple, C.red, "封锁区")
+                addText(zx - 34, zy - (e.zoneRadius or 96) - 14, "封锁区", C.purple)
+                e.zoneTimer = randf((e.zoneCooldown or 3.5) * 0.85, (e.zoneCooldown or 3.5) * 1.18)
+            end
+            moveAngle = randomWanderAngle(e, dt, 0.70, 1.45, a, 0.58)
+            spd = spd * (e.enteredArena and 0.50 or 0.96)
         elseif behavior == "charger" then
             e.dashTimer = (e.dashTimer or 0) - dt
             if e.dashTimer <= 0 and distToPlayer < 360 then
@@ -2476,20 +2878,16 @@ local function updateEnemies(dt)
             spd = spd * 0.78
             e.armor = math.max(e.armor or 0, 3 + math.floor(Game.wave / 3))
         elseif behavior == "aura" and distToPlayer < 135 then
-            damagePlayer(e.damage * 0.22)
+            damagePlayer(e.damage * 0.22, "燃烧光环", e.x, e.y, e.color)
         elseif behavior == "boss" then
-            e.shootTimer = (e.shootTimer or 0) - dt
-            if e.shootTimer <= 0 then
-                for k = -1, 1 do fireEnemyShot(e, a + k * 0.22) end
-                e.shootTimer = 1.25
-            end
+            moveAngle, spd = updateBossBehavior(e, dt, a, distToPlayer)
         end
         if not e.enteredArena then spd = spd * (e.boss and 3.4 or (e.elite and 2.5 or 1.7)) end
         e.x = e.x + math.cos(moveAngle) * spd * dt
         e.y = e.y + math.sin(moveAngle) * spd * dt
         markAndClampEnemyArena(e)
         if distance(e.x, e.y, p.x, p.y) < e.r + p.r then
-            if (e.damage or 0) > 0 then damagePlayer(e.damage * ((e.behavior == "rammer" and e.chargeState == "dash") and 1.45 or 1)) end
+            if (e.damage or 0) > 0 then damagePlayer(e.damage * ((e.behavior == "rammer" and e.chargeState == "dash") and 1.45 or 1), (e.behavior == "rammer" and e.chargeState == "dash") and "冲锋撞击" or "敌人碰撞", e.x, e.y, e.color) end
             if e.behavior == "rammer" and e.chargeState == "dash" then e.chargeState = "recover"; e.chargeTimer = 0.72; e.chargeCooldown = 1.4 end
             e.x = e.x - math.cos(a) * 18
             e.y = e.y - math.sin(a) * 18
@@ -2602,13 +3000,13 @@ local function completeWave(reason)
     if Game.state == "clearing" then return end
     Game.clearTransition = {reason = reason or "波次完成", timer = 0, pulse = 0.06}
     Game.state = "clearing"
-    Game.objectiveText = "目标达成 · 清场中"
+    Game.objectiveText = "目标完成 · 清场中"
     Game.enemyShots, Game.bullets, Game.fireZones = {}, {}, {}
     Game.spawnTimer = 999
     Game.shake = math.max(Game.shake or 0, 0.36)
     playCue("elite")
     burst(Game.player.x, Game.player.y, C.cyan, 22, 210)
-    toast("目标达成：清场")
+    toast("目标完成：清场")
 end
 
 local function updateWaveClear(dt)
@@ -2616,7 +3014,7 @@ local function updateWaveClear(dt)
     if not t then finalizeWaveReward("波次完成"); return end
     t.timer = (t.timer or 0) + dt
     t.pulse = (t.pulse or 0) - dt
-    Game.objectiveText = "目标达成 · 清场中"
+    Game.objectiveText = "目标完成 · 清场中"
     if t.pulse <= 0 then
         t.pulse = #Game.enemies > 8 and 0.035 or 0.065
         local e = table.remove(Game.enemies)
@@ -2668,29 +3066,31 @@ local function updatePlaying(dt)
     updatePlayer(dt)
     updateWeapons(dt)
     updateAutoArc(dt)
+    updateDroneSwarm(dt)
     updateBullets(dt)
     updateEnemyShots(dt)
     updateFireZones(dt)
     updateEnemies(dt)
 
     local obj = Game.sideObjective
-    local extra = obj and (" · " .. obj.name .. " " .. math.floor(obj.progress or 0) .. "/" .. obj.target) or ""
+    local extra = obj and (" · 可选 " .. obj.name .. " " .. math.floor(obj.progress or 0) .. "/" .. obj.target) or ""
     if plan.boss then
         local boss
         for _, e in ipairs(Game.enemies or {}) do if e.boss then boss = e; break end end
         if boss then
             local pct = math.max(0, math.ceil((boss.hp / math.max(1, boss.maxHp or boss.hp)) * 100))
-            Game.objectiveText = "击败 Boss · " .. pct .. "%" .. extra
+            local phase = boss.bossPhaseName and (" · " .. boss.bossPhaseName) or ""
+            Game.objectiveText = "打爆 Boss" .. phase .. " · " .. pct .. "%" .. extra
         else
-            Game.objectiveText = (Game.bossDefeated and "Boss 已击破" or "击败 Boss") .. extra
+            Game.objectiveText = (Game.bossDefeated and "Boss 已打爆" or "打爆 Boss") .. extra
         end
         if Game.bossDefeated and Game.state == "playing" then completeWave("Boss击破") end
     else
         local remain = math.max(0, math.ceil(Game.waveTime))
-        Game.objectiveText = "生存 " .. math.floor(remain / 60) .. ":" .. string.format("%02d", remain % 60) .. extra
+        Game.objectiveText = "撑住 " .. math.floor(remain / 60) .. ":" .. string.format("%02d", remain % 60) .. extra
         if Game.waveTime <= 0 and Game.state == "playing" then
             Game.waveTime = 0
-            completeWave(Game.wave >= Game.maxWave and "生存完成" or "波次完成")
+            completeWave(Game.wave >= Game.maxWave and "通关完成" or "敌群清完")
         end
     end
 end
@@ -2744,7 +3144,7 @@ function love.load()
     love.graphics.setDefaultFilter("nearest", "nearest")
     love.math.setRandomSeed(os.time())
     Game.w, Game.h = VIRTUAL_W, VIRTUAL_H
-    Game.fonts = {tiny = uiFont(19), subtitle = uiFont(22), small = uiFont(24), normal = uiFont(31), big = uiFont(50), title = uiFont(84)}
+    Game.fonts = {tiny = uiFont(19), subtitle = uiFont(22), small = uiFont(24), normal = uiFont(31), timer = uiFont(44), big = uiFont(50), title = uiFont(84)}
     loadImages()
     Game.sounds = {
         pickup = loadSound("assets/sfx/ui_select.ogg", 880, 0.06, 0.18),
@@ -2990,6 +3390,7 @@ function love.update(dt)
         if t.life <= 0 then table.remove(Game.damageTexts, i) end
     end
     Game.messageTimer = math.max(0, Game.messageTimer - dt)
+    Game.hitFlash = math.max(0, (Game.hitFlash or 0) - dt)
     Game.shake = math.max(0, Game.shake - dt)
     Game.shopRollTimer = math.max(0, (Game.shopRollTimer or 0) - dt)
     if Game.state == "shop" and (Game.shopTab or "shop") == "shop" then
@@ -3084,6 +3485,38 @@ function love.update(dt)
             love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-shop.png")
             love.event.quit()
         end
+    elseif os.getenv("LOVE_AUTOELEMENTSHOT") == "1" and not Game.autoElementDone then
+        if Game.state == "menu" then resetRun() end
+        if Game.state == "playing" and not Game.autoElementStarted then
+            Game.autoElementStarted = true
+            Game.enemies = {}
+            Game.bullets = {}
+            local samples = {
+                {id = "kinetic", x = Game.player.x - 420, y = Game.player.y - 180, vx = 620, vy = 0, sprite = "projectile_star_needle", brand = "starforge"},
+                {id = "burn", x = Game.player.x - 420, y = Game.player.y - 110, vx = 540, vy = 0, sprite = "projectile_molten_orb", brand = "molten", splash = 58},
+                {id = "arc", x = Game.player.x - 420, y = Game.player.y - 40, vx = 580, vy = 0, sprite = "projectile_arc_bolt", brand = "echo"},
+                {id = "corrode", x = Game.player.x - 420, y = Game.player.y + 30, vx = 530, vy = 0, sprite = "projectile_void_orb", brand = "caustic"},
+                {id = "ice", x = Game.player.x - 420, y = Game.player.y + 100, vx = 520, vy = 0, sprite = "projectile_arc_bolt", brand = "cryo"},
+                {id = "void", x = Game.player.x - 420, y = Game.player.y + 170, vx = 420, vy = 0, sprite = "projectile_void_orb", brand = "blackbox", aura = 44}
+            }
+            for _, sample in ipairs(samples) do
+                local elem = elements[sample.id] or elements.kinetic
+                Game.bullets[#Game.bullets + 1] = {
+                    x = sample.x, y = sample.y, vx = sample.vx, vy = sample.vy,
+                    r = sample.aura and 6 or 4, damage = 10, element = sample.id, range = 1000,
+                    traveled = 0, life = 3.0, pierce = 9, bounce = 0, splash = sample.splash, aura = sample.aura,
+                    color = elem.color, sprite = sample.sprite, crit = sample.id == "kinetic", source = elem.name .. "测试弹", brand = sample.brand,
+                    statusChance = sample.id ~= "kinetic" and 0.35 or 0, statusDamage = sample.id ~= "kinetic" and 6 or 0
+                }
+                addText(sample.x + 18, sample.y - 28, elem.name, elem.color)
+            end
+        end
+        Game.autoElementClock = (Game.autoElementClock or 0) + dt
+        if Game.autoElementClock > 0.55 then
+            Game.autoElementDone = true
+            love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-elements.png")
+            love.event.quit()
+        end
     elseif os.getenv("LOVE_AUTOBEAMSHOT") == "1" and not Game.autoBeamDone then
         if Game.state == "menu" then resetRun() end
         if Game.state == "playing" and not Game.autoBeamStarted then
@@ -3129,6 +3562,49 @@ function love.update(dt)
             love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-firezone.png")
             love.event.quit()
         end
+    elseif os.getenv("LOVE_AUTOFACTIONSHOT") == "1" and not Game.autoFactionDone then
+        if Game.state == "menu" then resetRun() end
+        if Game.state == "playing" and not Game.autoFactionStarted then
+            Game.autoFactionStarted = true
+            Game.enemies = {}
+            local samples = {
+                {def = enemyDefs.drifter, x = Game.player.x - 320, y = Game.player.y - 110},
+                {def = enemyDefs.splinter, x = Game.player.x - 210, y = Game.player.y + 92},
+                {def = enemyDefs.shell, x = Game.player.x + 210, y = Game.player.y + 96},
+                {def = enemyDefs.wisp, x = Game.player.x + 310, y = Game.player.y - 105},
+                {def = enemyDefs.bulwark, x = Game.player.x + 90, y = Game.player.y - 155},
+                {def = enemyDefs.treasure, x = Game.player.x - 80, y = Game.player.y + 165},
+            }
+            for _, sample in ipairs(samples) do
+                local def = sample.def
+                local hp, shield = def.hp, def.shield or 0
+                Game.enemies[#Game.enemies + 1] = {name = def.name, x = sample.x, y = sample.y, r = def.r, hp = hp, maxHp = hp, shield = shield, maxShield = shield, defense = def.defense, shieldRegen = 0, speed = 0, damage = def.damage or 0, armor = def.armor or 0, color = def.color, xp = def.xp, coin = def.coin, treasureCoin = def.treasureCoin, sprite = def.sprite, behavior = def.behavior, elite = def.elite, treasure = def.treasure, enteredArena = true}
+                addText(sample.x - 28, sample.y - def.r - 36, def.treasure and "掉落/中立" or "敌方", def.treasure and C.gold or def.color, {life = 2.0, scale = 1.05})
+            end
+        end
+        Game.autoFactionClock = (Game.autoFactionClock or 0) + dt
+        if Game.autoFactionClock > 0.45 then
+            Game.autoFactionDone = true
+            love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-factions.png")
+            love.event.quit()
+        end
+    elseif os.getenv("LOVE_AUTOHITSHOT") == "1" and not Game.autoHitDone then
+        if Game.state == "menu" then resetRun() end
+        if Game.state == "playing" and not Game.autoHitApplied then
+            Game.autoHitApplied = true
+            Game.enemies = {}
+            local p = Game.player
+            p.invuln = 0
+            local def = enemyDefs.rammer
+            Game.enemies[#Game.enemies + 1] = {name = def.name, x = p.x + 270, y = p.y - 50, r = def.r, hp = def.hp, maxHp = def.hp, shield = 0, maxShield = 0, defense = def.defense, shieldRegen = 0, speed = def.speed, damage = def.damage, armor = def.armor or 0, color = def.color, xp = def.xp, coin = def.coin, sprite = def.sprite, behavior = def.behavior, enteredArena = true, chargeState = "dash", chargeTimer = 0.42, chargeAngle = angleTo(p.x + 270, p.y - 50, p.x, p.y), chargeWarnLength = 440}
+            damagePlayer(18, "冲锋撞击", p.x + 270, p.y - 50, C.red)
+        end
+        Game.autoHitClock = (Game.autoHitClock or 0) + dt
+        if Game.autoHitClock > 0.18 then
+            Game.autoHitDone = true
+            love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-hit.png")
+            love.event.quit()
+        end
     elseif os.getenv("LOVE_AUTOSHOT") == "1" and not Game.autoShotDone then
         if Game.state == "menu" then
             resetRun()
@@ -3138,7 +3614,8 @@ function love.update(dt)
                 startWave()
             end
         end
-        if Game.time > 2.0 then
+        local shotDelay = tonumber(os.getenv("LOVE_AUTOSHOT_DELAY")) or 2.0
+        if Game.time > shotDelay then
             Game.autoShotDone = true
             love.graphics.captureScreenshot(os.getenv("LOVE_AUTOSHOT_PATH") or "heartcore-prototype.png")
             love.event.quit()
@@ -3158,9 +3635,9 @@ local function drawBackground()
         love.graphics.draw(bg, (Game.w - dw) / 2, (Game.h - dh) / 2, 0, scale, scale)
 
         -- Keep the generated map atmospheric but below gameplay objects.
-        love.graphics.setColor(0.015, 0.018, 0.040, 0.30)
+        love.graphics.setColor(0.010, 0.012, 0.030, 0.42)
         love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
-        love.graphics.setColor(0.02, 0.04, 0.08, 0.18)
+        love.graphics.setColor(0.02, 0.04, 0.08, 0.12)
         love.graphics.rectangle("fill", Game.w * 0.18, Game.h * 0.18, Game.w * 0.64, Game.h * 0.64, 28, 28)
     else
         for i = 0, 18 do
@@ -3239,6 +3716,18 @@ local function drawBarCapsule(label, value, x, y, w, h, pct, accent, opts)
     local labelW = opts.labelW or 58
     local valueW = opts.valueW or 84
     local barH = opts.barH or 11
+    if opts.centerValue then
+        local barX, barY = x + 72, y + h - barH - 8
+        local barW = w - 92
+        bar(barX, barY, barW, barH, pct, accent, {0.02, 0.024, 0.05})
+        love.graphics.setFont(labelFont)
+        color(opts.labelColor or C.muted, opts.labelAlpha or 0.78)
+        love.graphics.printf(label, x + 14, y + 8, labelW, "left")
+        love.graphics.setFont(valueFont)
+        color(opts.valueColor or C.white)
+        love.graphics.printf(value, x + 10, y + math.floor((h - valueFont:getHeight()) / 2) - 1, w - 20, "center")
+        return
+    end
     love.graphics.setFont(labelFont)
     color(opts.labelColor or C.muted)
     love.graphics.printf(label, x + 12, y + math.floor((h - labelFont:getHeight()) / 2), labelW, "left")
@@ -3257,7 +3746,7 @@ local function drawHud()
     local hpPct = clamp(p.hp / math.max(1, p.maxHp), 0, 1)
     local shieldPct = clamp(p.shield / math.max(1, p.maxShield), 0, 1)
     local dangerPulse = 0.5 + 0.5 * math.sin((love.timer.getTime() or 0) * 8.0)
-    local hudY, hudH = 14, 124
+    local hudY, hudH = 14, 138
     panel(18, hudY, Game.w - 36, hudH)
     color(C.white, 0.035)
     love.graphics.rectangle("fill", 26, hudY + 8, Game.w - 52, hudH - 16, 16, 16)
@@ -3265,73 +3754,95 @@ local function drawHud()
     -- 左：生存状态必须比材料/击杀更抢眼。原型可以乱，战斗 HUD 不能乱。
     local lx = 36
     local hpColor = hpPct < 0.35 and C.red or C.pink
-    drawBarCapsule("生命", math.ceil(p.hp) .. "/" .. p.maxHp, lx, hudY + 12, 370, 40, hpPct, hpColor, {valueFont = Game.fonts.small, valueW = 104, barH = 13})
-    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 60, 370, 34, shieldPct, C.cyan, {valueFont = Game.fonts.tiny, valueW = 104, barH = 11})
+    drawBarCapsule("生命", math.ceil(p.hp) .. "/" .. p.maxHp, lx, hudY + 10, 370, 58, hpPct, hpColor, {centerValue = true, valueFont = Game.fonts.big, labelW = 54, barH = 8, bgAlpha = 0.72, borderAlpha = 0.58})
+    drawBarCapsule("护盾", math.ceil(p.shield) .. "/" .. p.maxShield, lx, hudY + 76, 370, 42, shieldPct, C.cyan, {centerValue = true, valueFont = Game.fonts.normal, labelW = 54, barH = 6, bgAlpha = 0.50, borderAlpha = 0.30, labelAlpha = 0.62})
     if hpPct < 0.35 then
         color(C.red, 0.16 + dangerPulse * 0.18)
-        love.graphics.rectangle("line", lx - 4, hudY + 8, 378, 48, 12, 12)
+        love.graphics.rectangle("line", lx - 4, hudY + 6, 378, 62, 12, 12)
         love.graphics.setFont(Game.fonts.tiny)
         color(C.red, 0.90)
-        love.graphics.printf("核心受损", lx + 258, hudY + 24, 96, "right")
+        love.graphics.printf("核心受损", lx + 258, hudY + 30, 96, "right")
     end
-    drawTwoLineCapsule("材料", "◆" .. tostring(Game.coins), lx + 392, hudY + 12, 132, 44, C.gold, {bgAlpha = 0.34, borderAlpha = 0.30, valueFont = Game.fonts.small})
-    drawCapsule("击杀 " .. Game.kills, lx + 392, hudY + 64, 132, 28, {font = Game.fonts.tiny, fg = C.white, border = C.white, align = "center", padX = 14, bgAlpha = 0.22, borderAlpha = 0.14})
+    drawCapsule("◆ " .. tostring(Game.coins), lx + 392, hudY + 22, 104, 28, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, align = "center", padX = 8, bgAlpha = 0.18, borderAlpha = 0.14})
+    drawCapsule("☠ " .. tostring(Game.kills), lx + 392, hudY + 62, 104, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.white, align = "center", padX = 8, bgAlpha = 0.10, borderAlpha = 0.06})
 
-    -- 中：主任务。只保留一个主读数；章节、危险和小目标退到辅助胶囊，别和倒计时抢戏。
+    -- 中：主任务。只保留一个主读数；章节、敌情和可选目标退到辅助胶囊，别和倒计时抢戏。
     local plan = currentWavePlan()
     local bossMode = plan.boss == true
     local midX = Game.w / 2
-    local timerW, timerH = 170, 78
-    local timerX, timerY = midX - timerW / 2, hudY + 10
-    color(C.white, 0.10)
-    love.graphics.rectangle("fill", timerX, timerY, timerW, timerH, 18, 18)
-    color(C.cyan, 0.46)
-    love.graphics.setLineWidth(2)
-    love.graphics.rectangle("line", timerX + 0.5, timerY + 0.5, timerW - 1, timerH - 1, 18, 18)
-    love.graphics.setLineWidth(1)
-    love.graphics.setFont(Game.fonts.tiny)
-    color(C.muted)
-    love.graphics.printf(bossMode and "主目标" or "倒计时", timerX, timerY + 8, timerW, "center")
-    love.graphics.setFont(Game.fonts.big)
-    color(C.white)
-    local mainTargetText = bossMode and "BOSS" or string.format("%02d", math.max(0, math.ceil(Game.waveTime)))
-    love.graphics.printf(mainTargetText, timerX, timerY + 24, timerW, "center")
+    local timerFont = Game.fonts.big or Game.fonts.timer
+    local mainTargetText = bossMode and "打爆" or ("撑住 " .. string.format("%02d", math.max(0, math.ceil(Game.waveTime))))
+    love.graphics.setFont(timerFont)
+    local textW, textH = timerFont:getWidth(mainTargetText), timerFont:getHeight()
+    local timerW = math.max(bossMode and 148 or 236, textW + 68)
+    local timerH = math.max(76, textH + 18)
+    local timerX, timerY = midX - timerW / 2, hudY + 48
+    local timerCx, timerCy = timerX + timerW / 2, timerY + timerH / 2
+    local now = love.timer.getTime() or 0
+    if Game.hudTimerText ~= mainTargetText then
+        Game.hudTimerText = mainTargetText
+        Game.hudTimerPulseAt = now
+    end
+    local pulse = clamp(1 - (now - (Game.hudTimerPulseAt or now)) / 0.26, 0, 1)
+    local scale = 1 + pulse * (bossMode and 0.025 or 0.055)
+    local framePulse = 0.50 + 0.50 * math.sin(now * 7.0)
 
-    local leftInfoX, sideW = midX - 284, 170
-    drawCapsule(chapterWaveLabel(Game.wave), leftInfoX, hudY + 20, sideW, 28, {fg = C.gold, border = C.gold, borderAlpha = 0.16})
-    drawCapsule(plan.name or "生存波次", leftInfoX, hudY + 58, sideW, 26, {font = Game.fonts.tiny, fg = C.white, border = C.gold, bgAlpha = 0.24, borderAlpha = 0.14})
-    local rightInfoX = midX + 114
-    local sideObjective = Game.sideObjective and (Game.sideObjective.name .. " " .. math.floor(Game.sideObjective.progress or 0) .. "/" .. Game.sideObjective.target) or "小目标 无"
-    drawCapsule(bossMode and (Game.bossDefeated and "Boss 已击破" or "击破 Boss") or sideObjective, rightInfoX, hudY + 20, sideW, 28, {fg = C.cyan, border = C.cyan, borderAlpha = 0.16})
-    drawCapsule("危险 " .. Game.danger .. " · " .. survivalPhaseName(), rightInfoX, hudY + 58, sideW, 26, {font = Game.fonts.tiny, fg = C.white, border = C.cyan, bgAlpha = 0.24, borderAlpha = 0.14})
+    love.graphics.setBlendMode("add")
+    color(C.cyan, 0.10 + pulse * 0.10)
+    love.graphics.rectangle("fill", timerX - 12, timerY - 10, timerW + 24, timerH + 20, 19, 19)
+    love.graphics.setBlendMode("alpha")
+    color(C.white, 0.18 + pulse * 0.08)
+    love.graphics.rectangle("fill", timerX, timerY, timerW, timerH, 15, 15)
+    color(C.cyan, 0.78 + pulse * 0.18 + framePulse * 0.04)
+    love.graphics.setLineWidth(3)
+    love.graphics.rectangle("line", timerX + 0.5, timerY + 0.5, timerW - 1, timerH - 1, 15, 15)
+    love.graphics.setLineWidth(1)
+    drawCapsule("目标", timerX + 34, timerY - 24, timerW - 68, 22, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.34, borderAlpha = 0.10, align = "center", radius = 8, padX = 8})
+
+    color(C.white, 0.88 + pulse * 0.12)
+    love.graphics.push()
+    love.graphics.translate(timerCx, timerCy)
+    love.graphics.scale(scale, scale)
+    love.graphics.print(mainTargetText, -textW / 2, -textH / 2)
+    love.graphics.pop()
+
+    local leftInfoX, sideW = midX - 304, 154
+    drawCapsule(chapterWaveLabel(Game.wave), leftInfoX, hudY + 24, sideW, 26, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, borderAlpha = 0.12, bgAlpha = 0.18})
+    drawCapsule(plan.name or "清理敌群", leftInfoX, hudY + 62, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.gold, bgAlpha = 0.12, borderAlpha = 0.08})
+    local rightInfoX = midX + 150
+    local obj = Game.sideObjective
+    local sideObjective = obj and ("可选 " .. (obj.short or obj.name) .. " " .. math.floor(obj.progress or 0) .. "/" .. obj.target) or "可选 无"
+    drawCapsule(bossMode and (Game.bossDefeated and "Boss 已打爆" or "打爆 Boss") or sideObjective, rightInfoX, hudY + 24, sideW, 26, {font = Game.fonts.tiny, fg = C.cyan, border = C.cyan, borderAlpha = 0.12, bgAlpha = 0.16})
+    drawCapsule("危 " .. Game.danger .. " · " .. survivalPhaseName(), rightInfoX, hudY + 62, sideW, 24, {font = Game.fonts.tiny, fg = C.muted, border = C.cyan, bgAlpha = 0.12, borderAlpha = 0.08})
 
     -- 右：即时操作/威胁。长说明留给商店情报，战斗中别念小作文。
     local rx, rw = Game.w - 430, 392
     local skill = p.activeSkill or {}
-    local skillText = "空格 " .. (skill.name or "主动技能")
-    local skillFg = C.cyan
+    local skillText = "空格 冲刺"
+    local skillFg = C.muted
     if (skill.duration or 0) > 0 then
-        skillText = "空格 冲刺中 " .. string.format("%.1f", skill.duration) .. "s"
+        skillText = "空格 冲刺 " .. string.format("%.1f", skill.duration) .. "s"
         skillFg = C.gold
     elseif (skill.cd or 0) > 0 then
-        skillText = "空格 冷却 " .. string.format("%.1f", skill.cd) .. "s"
+        skillText = "空格 CD " .. string.format("%.1f", skill.cd) .. "s"
         skillFg = C.muted
     end
-    drawCapsule(skillText, rx, hudY + 14, rw, 32, {font = Game.fonts.tiny, fg = skillFg, border = skillFg, bgAlpha = 0.34, borderAlpha = 0.26, align = "left", padX = 14})
-    drawCapsule("威胁：" .. waveThreatSummary(Game.wave), rx, hudY + 56, rw, 30, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, bgAlpha = 0.30, borderAlpha = 0.20, align = "left", padX = 14})
+    drawCapsule(skillText, rx, hudY + 18, rw, 28, {font = Game.fonts.tiny, fg = skillFg, border = skillFg, bgAlpha = 0.08, borderAlpha = 0.04, align = "left", padX = 14})
+    drawCapsule("敌 " .. waveThreatSummary(Game.wave), rx, hudY + 58, rw, 30, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, bgAlpha = 0.22, borderAlpha = 0.18, align = "left", padX = 14})
 
     local boss = nil
     for _, e in ipairs(Game.enemies or {}) do if e.boss then boss = e; break end end
     if boss then
-        local bossW = 560
+        local bossW = 640
         local bossX = Game.w / 2 - bossW / 2
-        local bossY = hudY + hudH + 10
-        drawCapsule("Boss状态 · " .. (boss.name or "关底目标"), bossX, bossY - 26, bossW, 22, {font = Game.fonts.tiny, fg = C.gold, border = C.gold, bgAlpha = 0.18, borderAlpha = 0.12, align = "center"})
+        local bossY = hudY + hudH + 82
+        local phaseLabel = boss.bossPhaseName and (" · " .. boss.bossPhaseName) or ""
+        drawCapsule("Boss状态 · " .. (boss.name or "关底目标") .. phaseLabel, bossX, bossY - 26, bossW, 22, {font = Game.fonts.tiny, fg = (boss.bossWeakTimer or 0) > 0 and C.gold or C.gold, border = (boss.bossWeakTimer or 0) > 0 and C.gold or C.gold, bgAlpha = 0.18, borderAlpha = 0.12, align = "center"})
         if (boss.maxShield or 0) > 0 then
-            drawBarCapsule("Boss护盾", math.ceil(math.max(0, boss.shield or 0)) .. "/" .. math.ceil(boss.maxShield or 0), bossX, bossY, bossW, 24, math.max(0, boss.shield or 0) / math.max(1, boss.maxShield or 1), C.cyan)
-            drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), bossX, bossY + 30, bossW, 24, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
+            drawBarCapsule("Boss护盾", math.ceil(math.max(0, boss.shield or 0)) .. "/" .. math.ceil(boss.maxShield or 0), bossX, bossY, bossW, 30, math.max(0, boss.shield or 0) / math.max(1, boss.maxShield or 1), C.purple, {labelW = 98, valueW = 150, valueFont = Game.fonts.tiny, barH = 8, bgAlpha = 0.50, borderAlpha = 0.26})
+            drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), bossX, bossY + 36, bossW, 32, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red, {labelW = 98, valueW = 170, valueFont = Game.fonts.tiny, barH = 9, bgAlpha = 0.58, borderAlpha = 0.36})
         else
-            drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), bossX, bossY, bossW, 26, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red)
+            drawBarCapsule("Boss生命", math.ceil(boss.hp) .. "/" .. math.ceil(boss.maxHp or boss.hp), bossX, bossY, bossW, 34, boss.hp / math.max(1, boss.maxHp or boss.hp), C.red, {labelW = 98, valueW = 170, valueFont = Game.fonts.tiny, barH = 9, bgAlpha = 0.58, borderAlpha = 0.36})
         end
     else
         drawCapsule("敌群 " .. #Game.enemies, rx, hudY + 96, rw, 22, {font = Game.fonts.tiny, fg = C.muted, border = C.white, bgAlpha = 0.18, borderAlpha = 0.12, align = "left", padX = 14})
@@ -3342,32 +3853,75 @@ local function drawCombatWarningOverlay()
     if Game.state ~= "playing" then return end
     local p = Game.player
     local hpPct = clamp(p.hp / math.max(1, p.maxHp), 0, 1)
-    if hpPct >= 0.35 then return end
     local t = love.timer.getTime() or 0
     local pulse = 0.45 + 0.55 * math.sin(t * 8.0)
-    love.graphics.setBlendMode("add")
-    color(C.red, 0.08 + pulse * 0.08)
-    love.graphics.rectangle("fill", 0, 0, Game.w, 38)
-    love.graphics.rectangle("fill", 0, Game.h - 38, Game.w, 38)
-    love.graphics.rectangle("fill", 0, 0, 38, Game.h)
-    love.graphics.rectangle("fill", Game.w - 38, 0, 38, Game.h)
-    love.graphics.setBlendMode("alpha")
-    love.graphics.setFont(Game.fonts.small)
-    color(C.red, 0.72 + pulse * 0.18)
-    love.graphics.printf("警告：核心生命过低", 0, 142, Game.w, "center")
+    local hitFlash = clamp((Game.hitFlash or 0) / 0.42, 0, 1)
+    if hitFlash > 0 then
+        local hitColor = Game.lastHitColor or C.red
+        love.graphics.setBlendMode("add")
+        color(hitColor, 0.10 + hitFlash * 0.18)
+        love.graphics.rectangle("fill", 0, 0, Game.w, 46)
+        love.graphics.rectangle("fill", 0, Game.h - 46, Game.w, 46)
+        love.graphics.rectangle("fill", 0, 0, 46, Game.h)
+        love.graphics.rectangle("fill", Game.w - 46, 0, 46, Game.h)
+        if Game.lastHitAngle then
+            love.graphics.push()
+            love.graphics.translate(p.x, p.y)
+            love.graphics.rotate(Game.lastHitAngle)
+            color(hitColor, 0.28 + hitFlash * 0.34)
+            love.graphics.polygon("fill", 48, 0, 8, -24, 8, 24)
+            color(hitColor, 0.74 + hitFlash * 0.22)
+            love.graphics.setLineWidth(7)
+            love.graphics.line(52, 0, 128, 0)
+            love.graphics.setLineWidth(1)
+            love.graphics.pop()
+        end
+        love.graphics.setBlendMode("alpha")
+        if Game.lastHitSource then
+            local cardW, cardH = 360, 44
+            local cardX, cardY = Game.w / 2 - cardW / 2, 146
+            color(C.bgA, 0.78)
+            love.graphics.rectangle("fill", cardX, cardY, cardW, cardH, 12, 12)
+            color(hitColor, 0.72 + hitFlash * 0.18)
+            love.graphics.setLineWidth(2)
+            love.graphics.rectangle("line", cardX + 0.5, cardY + 0.5, cardW - 1, cardH - 1, 12, 12)
+            love.graphics.setLineWidth(1)
+            love.graphics.setFont(Game.fonts.small)
+            color(C.white, 0.94)
+            local dmg = Game.lastHitDamage and (" -" .. tostring(Game.lastHitDamage)) or ""
+            love.graphics.printf("受击：" .. Game.lastHitSource .. dmg, cardX + 12, cardY + 12, cardW - 24, "center")
+        end
+    end
+    if hpPct < 0.35 then
+        love.graphics.setBlendMode("add")
+        color(C.red, 0.08 + pulse * 0.08)
+        love.graphics.rectangle("fill", 0, 0, Game.w, 38)
+        love.graphics.rectangle("fill", 0, Game.h - 38, Game.w, 38)
+        love.graphics.rectangle("fill", 0, 0, 38, Game.h)
+        love.graphics.rectangle("fill", Game.w - 38, 0, 38, Game.h)
+        love.graphics.setBlendMode("alpha")
+        love.graphics.setFont(Game.fonts.small)
+        color(C.red, 0.72 + pulse * 0.18)
+        love.graphics.printf("警告：核心生命过低", 0, hitFlash > 0 and 168 or 142, Game.w, "center")
+    end
 end
 
 local function drawWorld()
     for _, z in ipairs(Game.fireZones or {}) do
         local pct = clamp(z.life / math.max(0.1, z.maxLife or z.life), 0, 1)
         love.graphics.setBlendMode("add")
-        color(C.orange, 0.10 + pct * 0.18)
+        local outer, core = z.color or C.orange, z.coreColor or C.red
+        color(outer, 0.10 + pct * 0.18)
         love.graphics.circle("fill", z.x, z.y, z.r)
-        color(C.red, 0.12 + pct * 0.12)
+        color(core, 0.12 + pct * 0.12)
         love.graphics.circle("fill", z.x, z.y, z.r * 0.68)
         love.graphics.setBlendMode("alpha")
-        color(C.orange, 0.42)
+        color(outer, 0.48)
+        love.graphics.setLineWidth(2)
         love.graphics.circle("line", z.x, z.y, z.r)
+        color(core, 0.34)
+        love.graphics.circle("line", z.x, z.y, z.r * 0.68)
+        love.graphics.setLineWidth(1)
     end
     for _, beam in ipairs(Game.beams or {}) do
         local a = clamp((beam.life or 0) / math.max(0.01, beam.max or 0.16), 0, 1)
@@ -3385,12 +3939,18 @@ local function drawWorld()
         drawProjectile(b)
     end
     for _, b in ipairs(Game.enemyShots) do
+        local hostile = b.kind == "firebomb" and C.orange or C.red
+        local pulse = 0.50 + 0.50 * math.sin((love.timer.getTime() or 0) * 12 + b.x * 0.02)
         love.graphics.setBlendMode("add")
-        color(b.color or C.red, b.kind == "firebomb" and 0.48 or 0.36)
-        love.graphics.circle("fill", b.x, b.y, b.r * (b.kind == "firebomb" and 3.0 or 2.2))
+        color(hostile, b.kind == "firebomb" and (0.32 + pulse * 0.18) or (0.26 + pulse * 0.16))
+        love.graphics.circle("fill", b.x, b.y, b.r * (b.kind == "firebomb" and 3.8 or 3.0))
+        color(hostile, 0.58 + pulse * 0.24)
+        love.graphics.circle("line", b.x, b.y, b.r * (b.kind == "firebomb" and 2.4 or 2.0))
         love.graphics.setBlendMode("alpha")
-        color(b.color or C.red, 0.95)
-        love.graphics.circle("fill", b.x, b.y, b.r)
+        color(hostile, 0.96)
+        love.graphics.circle("fill", b.x, b.y, b.r * 1.08)
+        love.graphics.setColor(1, 0.96, 0.82, 0.82)
+        love.graphics.circle("fill", b.x, b.y, math.max(2.0, b.r * 0.42))
     end
 
     local p = Game.player
@@ -3435,37 +3995,40 @@ local function drawWorld()
             love.graphics.polygon("fill", e.x - math.cos(a) * 88 - math.sin(a) * 18, e.y - math.sin(a) * 88 + math.cos(a) * 18, e.x - math.cos(a) * 88 + math.sin(a) * 18, e.y - math.sin(a) * 88 - math.cos(a) * 18, e.x, e.y)
             love.graphics.setBlendMode("alpha")
         end
-        love.graphics.setColor(0, 0, 0, 0.34)
-        love.graphics.ellipse("fill", e.x, e.y + e.r * 1.35, e.r * 2.2, e.r * 0.52)
+        local hostile = e.treasure and C.gold or (e.boss and C.red or (e.elite and C.orange or C.red))
+        local enemyPulse = 0.50 + 0.50 * math.sin((love.timer.getTime() or 0) * (e.boss and 5.0 or 6.5) + e.x * 0.01)
+        love.graphics.setColor(0, 0, 0, 0.42)
+        love.graphics.ellipse("fill", e.x, e.y + e.r * 1.42, e.r * 2.55, e.r * 0.62)
         if e.treasure then
             local pulse = 0.55 + 0.45 * math.sin((love.timer.getTime() or 0) * 5)
             love.graphics.setBlendMode("add")
-            color(C.gold, 0.20 + pulse * 0.16)
-            love.graphics.circle("fill", e.x, e.y, e.r * 2.8)
-            color(C.white, 0.70)
-            love.graphics.circle("line", e.x, e.y, e.r * 1.9)
+            color(C.gold, 0.24 + pulse * 0.18)
+            love.graphics.circle("fill", e.x, e.y, e.r * 3.1)
+            color(C.white, 0.78)
+            love.graphics.circle("line", e.x, e.y, e.r * 2.05)
             love.graphics.setBlendMode("alpha")
             love.graphics.setFont(Game.fonts.tiny)
             color(C.gold)
             love.graphics.printf("宝", e.x - 16, e.y - e.r - 26, 32, "center")
         end
         love.graphics.setBlendMode("add")
-        love.graphics.setColor(e.color[1], e.color[2], e.color[3], e.boss and 0.30 or 0.24)
-        love.graphics.circle("fill", e.x, e.y, e.r * 2.35)
+        color(hostile, e.boss and (0.34 + enemyPulse * 0.12) or (0.20 + enemyPulse * 0.08))
+        love.graphics.circle("fill", e.x, e.y, e.r * (e.boss and 3.0 or 2.55))
+        color(hostile, e.boss and 0.82 or (e.elite and 0.72 or 0.58))
+        love.graphics.setLineWidth(e.boss and 5 or (e.elite and 4 or 3))
+        love.graphics.circle("line", e.x, e.y, e.r * (e.boss and 2.38 or 2.14))
         love.graphics.setBlendMode("alpha")
+        love.graphics.setColor(0.02, 0.012, 0.018, 0.92)
         love.graphics.setLineWidth(e.boss and 3 or 2)
-        love.graphics.setColor(0.02, 0.025, 0.045, 0.88)
-        love.graphics.circle("line", e.x, e.y, e.r * 1.90)
-        love.graphics.setColor(e.color[1], e.color[2], e.color[3], 0.80)
-        love.graphics.circle("line", e.x, e.y, e.r * 1.62)
+        love.graphics.circle("line", e.x, e.y, e.r * 1.86)
+        color(hostile, e.boss and 0.98 or 0.86)
+        love.graphics.circle("line", e.x, e.y, e.r * 1.58)
+        color(C.white, e.boss and 0.76 or (e.elite and 0.54 or 0.34))
+        love.graphics.setLineWidth(e.boss and 3 or 2)
+        love.graphics.circle("line", e.x, e.y, e.r * (e.boss and 2.66 or 2.34))
         love.graphics.setLineWidth(1)
-        -- UX：敌人必须从背景里“站出来”，否则玩家不是战死，是被背景谋杀。
-        color(C.white, e.boss and 0.72 or (e.elite and 0.56 or 0.30))
-        love.graphics.setLineWidth(e.boss and 5 or (e.elite and 4 or 2))
-        love.graphics.circle("line", e.x, e.y, e.r * (e.boss and 2.25 or 2.05))
-        love.graphics.setLineWidth(1)
-        if e.boss or e.elite or e.behavior == "shooter" or e.behavior == "bomber" or e.behavior == "rammer" then
-            local tag = e.boss and "BOSS" or (e.elite and "精英" or (e.behavior == "bomber" and "火力" or (e.behavior == "rammer" and "冲锋" or "远程")))
+        if e.boss or e.elite or e.behavior == "shooter" or e.behavior == "bomber" or e.behavior == "rammer" or e.behavior == "zoner" then
+            local tag = e.boss and "BOSS" or (e.elite and "精英" or (e.behavior == "zoner" and "封锁" or (e.behavior == "bomber" and "火力" or (e.behavior == "rammer" and "冲锋" or "远程"))))
             local tagW = e.boss and 74 or 52
             local tagX = clamp(e.x - tagW / 2, 46, Game.w - tagW - 46)
             local tagY = clamp(e.y - e.r - 34, 156, Game.h - 96)
@@ -3486,11 +4049,53 @@ local function drawWorld()
                 love.graphics.circle("fill", e.x, e.y, e.r)
             end
         end
-        if e.hp < e.maxHp then
+        if not e.treasure then
+            love.graphics.setBlendMode("add")
+            color(hostile, 0.16 + enemyPulse * 0.10)
+            love.graphics.circle("fill", e.x, e.y + e.r * 0.08, e.r * (e.boss and 2.95 or 2.42))
+            color(e.color or hostile, 0.30 + enemyPulse * 0.14)
+            love.graphics.setLineWidth(e.boss and 5 or 3)
+            love.graphics.circle("line", e.x, e.y, e.r * (e.boss and 3.12 or 2.78))
+            color(hostile, 0.48)
+            love.graphics.circle("fill", e.x - e.r * 0.72, e.y - e.r * 0.78, math.max(6, e.r * 0.28))
+            love.graphics.setLineWidth(1)
+            love.graphics.setBlendMode("alpha")
+        end
+        if (e.shield or 0) > 0 and (e.maxShield or 0) > 0 then
+            local shieldPulse = 0.45 + 0.55 * math.sin((love.timer.getTime() or 0) * 7 + e.x * 0.01)
+            love.graphics.setBlendMode("add")
+            color(C.purple, 0.18 + shieldPulse * 0.14)
+            love.graphics.setLineWidth(2)
+            love.graphics.circle("line", e.x, e.y, e.r * 2.82)
+            love.graphics.setLineWidth(1)
+            love.graphics.setBlendMode("alpha")
+        end
+        if e.boss and (e.bossWeakTimer or 0) > 0 then
+            local weakPulse = 0.50 + 0.50 * math.sin((love.timer.getTime() or 0) * 11)
+            love.graphics.setBlendMode("add")
+            color(C.gold, 0.24 + weakPulse * 0.20)
+            love.graphics.circle("fill", e.x, e.y, e.r * 2.15)
+            color(C.white, 0.46 + weakPulse * 0.22)
+            love.graphics.setLineWidth(3)
+            love.graphics.circle("line", e.x, e.y, e.r * 1.34)
+            love.graphics.setLineWidth(1)
+            love.graphics.setBlendMode("alpha")
+        end
+        if (e.burn and e.burn > 0) or (e.shock and e.shock > 0) or (e.corrosion and e.corrosion > 0) or (e.slow and e.slow > 0) or (e.voidMark and e.voidMark > 0) then
+            local statusColor = (e.burn and e.burn > 0 and C.orange) or (e.shock and e.shock > 0 and C.cyan) or (e.corrosion and e.corrosion > 0 and C.green) or (e.slow and e.slow > 0 and C.ice) or C.purple
+            love.graphics.setBlendMode("add")
+            color(statusColor, 0.18)
+            love.graphics.circle("fill", e.x, e.y, e.r * 2.25)
+            love.graphics.setBlendMode("alpha")
+        end
+        if e.hp < e.maxHp or ((e.shield or 0) < (e.maxShield or 0) and (e.maxShield or 0) > 0) then
             local bw = e.boss and e.r * 3.0 or e.r * 2.55
             local bh = e.boss and 8 or 6
             local barX = clamp(e.x - bw / 2, 46, Game.w - bw - 46)
             local barY = clamp(e.y - e.r - 16, 178, Game.h - 82)
+            if (e.maxShield or 0) > 0 then
+                bar(barX, barY - bh - 2, bw, math.max(4, bh - 1), (e.shield or 0) / math.max(1, e.maxShield), C.purple)
+            end
             bar(barX, barY, bw, bh, e.hp / e.maxHp, C.red)
         end
     end
@@ -3514,12 +4119,31 @@ local function drawWorld()
             love.graphics.circle("line", p.x, p.y, p.r + 26 + pulse * 8)
             love.graphics.setBlendMode("alpha")
         end
-        if not drawSprite("player_heartcore", p.x, p.y, 96, 0, 1) then
+        local playerPulse = 0.50 + 0.50 * math.sin((love.timer.getTime() or 0) * 4.6)
+        love.graphics.setBlendMode("add")
+        color(C.cyan, 0.18 + playerPulse * 0.08)
+        love.graphics.circle("fill", p.x, p.y, p.r + 34)
+        color(C.cyan, 0.68 + playerPulse * 0.18)
+        love.graphics.setLineWidth(3)
+        love.graphics.circle("line", p.x, p.y, p.r + 22)
+        color(C.cyan, 0.58)
+        love.graphics.setLineWidth(2)
+        love.graphics.line(p.x - p.r - 26, p.y, p.x - p.r - 10, p.y)
+        love.graphics.line(p.x + p.r + 10, p.y, p.x + p.r + 26, p.y)
+        love.graphics.line(p.x, p.y - p.r - 26, p.x, p.y - p.r - 10)
+        love.graphics.line(p.x, p.y + p.r + 10, p.x, p.y + p.r + 26)
+        love.graphics.setLineWidth(1)
+        love.graphics.setBlendMode("alpha")
+        love.graphics.setColor(0, 0, 0, 0.34)
+        love.graphics.ellipse("fill", p.x, p.y + p.r + 14, p.r * 2.25, p.r * 0.58)
+        if not drawSprite("player_heartcore", p.x, p.y, 100, 0, 1) then
             color(C.pink)
             drawHeart(p.x, p.y + 2, 0.78)
         end
-        color(C.cyan, 0.58)
+        color(C.cyan, 0.86)
+        love.graphics.setLineWidth(2)
         love.graphics.circle("line", p.x, p.y, p.r + 14)
+        love.graphics.setLineWidth(1)
         local barW, barH = 72, 5
         local barX = p.x - barW / 2
         local barY = p.y - p.r - 42
@@ -3544,28 +4168,40 @@ local function drawWorld()
     end
 
     for _, q in ipairs(Game.particles) do color(q.color, clamp(q.life / q.max, 0, 1)); love.graphics.circle("fill", q.x, q.y, q.r) end
-    for _, t in ipairs(Game.damageTexts) do color(t.color, clamp(t.life / 0.72, 0, 1)); love.graphics.setFont(Game.fonts.tiny); love.graphics.print(t.text, t.x, t.y) end
+    for _, t in ipairs(Game.damageTexts) do
+        local alpha = clamp(t.life / math.max(0.01, t.maxLife or 0.72), 0, 1)
+        local font = t.font or Game.fonts.tiny
+        love.graphics.setFont(font)
+        love.graphics.push()
+        love.graphics.translate(t.x, t.y)
+        love.graphics.scale(t.scale or 1, t.scale or 1)
+        color(C.bgA, 0.58 * alpha)
+        love.graphics.print(t.text, 1, 1)
+        color(t.color, alpha)
+        love.graphics.print(t.text, 0, 0)
+        love.graphics.pop()
+    end
 end
 
-local function hitRect(px, py, x, y, w, h)
+function hitRect(px, py, x, y, w, h)
     return px >= x and px <= x + w and py >= y and py <= y + h
 end
 
-local function uiButton(text, x, y, w, h, bg, fg, font)
+function uiButton(text, x, y, w, h, bg, fg, font)
     local c = bg or C.cyan
     local strong = font == Game.fonts.normal
     local pulse = strong and (0.5 + 0.5 * math.sin((love.timer.getTime() or 0) * 3.4)) or 0
-    color(c, strong and (0.30 + pulse * 0.10) or 0.20)
+    color(c, strong and (0.48 + pulse * 0.16) or 0.18)
     love.graphics.rectangle("fill", x, y, w, h, 14, 14)
     if strong then
-        color(c, 0.15 + pulse * 0.12)
+        color(C.gold, 0.22 + pulse * 0.16)
         love.graphics.rectangle("fill", x - 16, y - 16, w + 32, h + 32, 22, 22)
-        color(C.gold, 0.10 + pulse * 0.10)
+        color(C.gold, 0.34 + pulse * 0.18)
         love.graphics.setLineWidth(3)
         love.graphics.rectangle("line", x - 18, y - 18, w + 36, h + 36, 24, 24)
         love.graphics.setLineWidth(1)
     end
-    color(c, strong and (0.86 + pulse * 0.14) or 0.74)
+    color(strong and C.gold or c, strong and (0.96 + pulse * 0.04) or 0.74)
     love.graphics.setLineWidth(strong and 3 or 2)
     love.graphics.rectangle("line", x, y, w, h, 14, 14)
     if strong then
@@ -3585,7 +4221,7 @@ local function uiButton(text, x, y, w, h, bg, fg, font)
     love.graphics.printf(text, x, y + math.floor((h - (font or Game.fonts.small):getHeight()) / 2) + 1, w, "center")
 end
 
-local function drawMenu()
+function drawMenu()
     local w, h = Game.w, Game.h
     local t = love.timer.getTime() or 0
 
@@ -3654,7 +4290,7 @@ local function drawMenu()
     love.graphics.rectangle("line", introX + 0.5, introY + 0.5, introW - 1, introH - 1, 12, 12)
     love.graphics.setFont(Game.fonts.tiny)
     color(C.white, 0.94)
-    love.graphics.printf("撑住倒计时，收集材料，把一台白板机体养成怪物。", introX + 20, introY + 9, introW - 40, "center")
+    love.graphics.printf("撑住倒计时，收材料，把白板机体养成怪物。", introX + 20, introY + 9, introW - 40, "center")
 
     local heroX, heroY = w / 2, h / 2
     local cx, cy = heroX, heroY
@@ -3716,10 +4352,10 @@ local function drawMenu()
     -- 首页不再提供模式切换，只保留战役模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("目标：第一大关养成；第二大关起线性变难，关底淘汰。", deckX + 28, deckY + 96, 500, "left")
+    love.graphics.printf("目标：普通关撑住，关底打爆 Boss；越往后越凶。", deckX + 28, deckY + 96, 500, "left")
 end
 
-local function drawSettlementCard(title, value, x, y, w, h, accent, detail)
+function drawSettlementCard(title, value, x, y, w, h, accent, detail)
     panel(x, y, w, h)
     love.graphics.setFont(Game.fonts.tiny)
     color(accent or C.cyan)
@@ -3734,47 +4370,47 @@ local function drawSettlementCard(title, value, x, y, w, h, accent, detail)
     end
 end
 
-local function drawLevelUp()
-    love.graphics.setColor(0, 0, 0, 0.62)
+function drawLevelUp()
+    love.graphics.setColor(0, 0, 0, 0.78)
     love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
     panel(Game.w / 2 - 660, 110, 1320, 640)
 
     love.graphics.setFont(Game.fonts.big)
     color(C.gold)
-    love.graphics.printf("关卡完成", Game.w / 2 - 620, 142, 1240, "center")
+    love.graphics.printf("关卡完成", Game.w / 2 - 620, 134, 1240, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
-    love.graphics.printf("选择一个成长奖励，然后进入补给商店。数字该归位，别挤成一坨废铁账单。", Game.w / 2 - 620, 188, 1240, "center")
+    love.graphics.printf("选择一个成长奖励，然后进入补给商店。", Game.w / 2 - 620, 206, 1240, "center")
 
     local wr = Game.waveRewards or {}
-    local cardY, cardH = 232, 112
+    local cardY, cardH = 252, 104
     local cardW, gap = 278, 22
     local sx = Game.w / 2 - (cardW * 4 + gap * 3) / 2
     drawSettlementCard("本关", chapterWaveLabel(wr.wave or Game.wave), sx, cardY, cardW, cardH, C.gold, wr.reason or "波次完成")
     drawSettlementCard("收益", "+" .. tostring(wr.coins or 0) .. " 材料", sx + (cardW + gap), cardY, cardW, cardH, C.cyan, "通关奖励 +" .. tostring(wr.clear or 0))
     drawSettlementCard("击杀", tostring(wr.kills or 0), sx + (cardW + gap) * 2, cardY, cardW, cardH, C.red, "当前危险 " .. tostring(Game.danger or 0))
-    drawSettlementCard("小目标", wr.objective and ("+" .. wr.objective) or "未完成", sx + (cardW + gap) * 3, cardY, cardW, cardH, wr.objective and C.gold or C.muted, Game.sideObjective and Game.sideObjective.name or "本关目标")
+    drawSettlementCard("可选目标", wr.objective and ("+" .. wr.objective) or "未完成", sx + (cardW + gap) * 3, cardY, cardW, cardH, wr.objective and C.gold or C.muted, Game.sideObjective and Game.sideObjective.name or "本关可选")
 
     local damageRows = {}
     for name, dmg in pairs(Game.runStats.damageByWeapon or {}) do damageRows[#damageRows + 1] = {name = name, damage = dmg} end
     table.sort(damageRows, function(a, b) return a.damage > b.damage end)
     local dmgText = {}
     for i = 1, math.min(4, #damageRows) do dmgText[#dmgText + 1] = damageRows[i].name .. " " .. math.floor(damageRows[i].damage) end
-    panel(Game.w / 2 - 570, 364, 1140, 54)
+    panel(Game.w / 2 - 570, 374, 1140, 50)
     love.graphics.setFont(Game.fonts.tiny)
     color(C.cyan)
-    love.graphics.printf("武器伤害", Game.w / 2 - 548, 376, 120, "left")
+    love.graphics.printf("武器伤害", Game.w / 2 - 548, 386, 120, "left")
     color(C.white)
-    love.graphics.printf(#dmgText > 0 and table.concat(dmgText, "   /   ") or "暂无", Game.w / 2 - 420, 376, 950, "left")
+    love.graphics.printf(#dmgText > 0 and table.concat(dmgText, "   /   ") or "暂无", Game.w / 2 - 420, 386, 950, "left")
 
     love.graphics.setFont(Game.fonts.normal)
     color(C.gold)
-    love.graphics.printf("选择奖励", Game.w / 2 - 560, 446, 1120, "center")
-    local w, h, rewardGap = 330, 210, 34
+    love.graphics.printf("选择奖励", Game.w / 2 - 560, 444, 1120, "center")
+    local w, h, rewardGap = 330, 206, 34
     local rewardX = Game.w / 2 - (w * 3 + rewardGap * 2) / 2
     local mx, my = mousePosition()
     for i, r in ipairs(Game.levelChoices) do
-        local x, y = rewardX + (i - 1) * (w + rewardGap), 486
+        local x, y = rewardX + (i - 1) * (w + rewardGap), 484
         local hover = hitRect(mx, my, x, y, w, h)
         local lift = hover and -6 or 0
         local yy = y + lift
@@ -3793,38 +4429,38 @@ local function drawLevelUp()
         color(C.white)
         love.graphics.printf(r.name, x + 16, yy + 56, w - 32, "center")
         love.graphics.setFont(Game.fonts.tiny)
-        color(hover and C.white or C.cyan)
-        local rewardDesc = tostring(r.desc or "")
-        love.graphics.printf(rewardDesc, x + 28, yy + 112, w - 56, "center")
+        color(hover and C.white or C.muted)
+        local rewardDesc = compactDesc(tostring(r.desc or ""), 34)
+        love.graphics.printf(rewardDesc, x + 30, yy + 108, w - 60, "center")
         local chooseText = hover and "点击后立即选择" or "点击选择"
-        drawCapsule(chooseText, x + 58, yy + h - 38, w - 116, 26, {font = Game.fonts.tiny, fg = hover and C.gold or C.muted, border = hover and C.gold or C.white, bgAlpha = hover and 0.26 or 0.14, borderAlpha = hover and 0.28 or 0.10})
+        drawCapsule(chooseText, x + 50, yy + h - 44, w - 100, 34, {font = Game.fonts.tiny, fg = C.bgA, border = hover and C.gold or C.cyan, bg = hover and C.gold or C.cyan, bgAlpha = hover and 0.94 or 0.92, borderAlpha = hover and 1.00 or 0.98})
     end
 end
 
-local function statText(label, value)
+function statText(label, value)
     return label .. " " .. value
 end
 
-local function pct(v)
+function pct(v)
     return string.format("%d%%", math.floor(v * 100 + 0.5))
 end
 
-local function modText(text)
+function modText(text)
     return text
 end
 
-local function textInBox(text, x, y, w, h, font, c, align)
+function textInBox(text, x, y, w, h, font, c, align)
     font = font or Game.fonts.tiny
     love.graphics.setFont(font)
     color(c or C.white)
     love.graphics.printf(tostring(text or ""), x, y + math.floor((h - font:getHeight()) / 2), w, align or "center")
 end
 
-local function centeredText(text, x, y, w, h, font, c, align)
+function centeredText(text, x, y, w, h, font, c, align)
     textInBox(text, x, y, w, h, font, c, align or "center")
 end
 
-local function tagPill(text, x, y, bg, fg, maxW, primary)
+function tagPill(text, x, y, bg, fg, maxW, primary)
     local font = Game.fonts.tiny
     local tw = math.max(primary and 54 or 46, font:getWidth(text) + (primary and 24 or 18))
     if maxW then tw = math.min(tw, maxW) end
@@ -3837,7 +4473,7 @@ local function tagPill(text, x, y, bg, fg, maxW, primary)
     return tw
 end
 
-local function drawTagRow(tags, x, y, maxW)
+function drawTagRow(tags, x, y, maxW)
     local cursor = x
     for i, tag in ipairs(tags) do
         if i > 3 then break end
@@ -3851,7 +4487,7 @@ local function drawTagRow(tags, x, y, maxW)
     return cursor - x
 end
 
-local function shopItemAccent(item)
+function shopItemAccent(item)
     if item.kind == "weapon" then return C.orange end
     if item.kind == "shield" then return C.cyan end
     if item.kind == "temp" then return C.purple end
@@ -3859,7 +4495,7 @@ local function shopItemAccent(item)
     return rarityColor[item.rarity or "common"] or C.white
 end
 
-local function drawKindIcon(kind, x, y, accent)
+function drawKindIcon(kind, x, y, accent)
     color(accent, 0.18)
     love.graphics.circle("fill", x, y, 12, 18)
     color(accent, 0.82)
@@ -3881,7 +4517,7 @@ local function drawKindIcon(kind, x, y, accent)
     love.graphics.setLineWidth(1)
 end
 
-local function compactDesc(text, maxLen)
+function compactDesc(text, maxLen)
     local s = modText(text or "")
     s = s:gsub("下一波", "下波"):gsub("本局永久生效", "永久"):gsub("材料", "材")
     s = s:gsub("护盾回复", "回盾"):gsub("暴击伤害", "暴伤"):gsub("元素伤害", "元素")
@@ -3903,7 +4539,7 @@ local function compactDesc(text, maxLen)
     return s
 end
 
-local function drawMetalCard(x, y, w, h, accent, hover, locked, rare)
+function drawMetalCard(x, y, w, h, accent, hover, locked, rare)
     local lift = hover and -6 or 0
     y = y + lift
     love.graphics.setColor(0, 0, 0, hover and 0.54 or 0.38)
@@ -3940,9 +4576,9 @@ local function drawMetalCard(x, y, w, h, accent, hover, locked, rare)
     return y
 end
 
-local Tooltip = {}
+Tooltip = {}
 
-local function wrappedLineCount(font, text, width)
+function wrappedLineCount(font, text, width)
     local _, wrapped = font:getWrap(tostring(text or ""), width)
     return math.max(1, #wrapped)
 end
@@ -3954,7 +4590,7 @@ function Tooltip.measure(tip, width)
     local innerW = width - 32
     local height = 18 + wrappedLineCount(fontTitle, title, innerW) * 20 + 8
     for _, entry in ipairs(lines) do
-        local text = type(entry) == "table" and entry.text or entry
+        local text = type(entry) == "table" and (entry.text or entry.plainText) or entry
         local gap = type(entry) == "table" and entry.gap or 0
         height = height + gap + wrappedLineCount(fontBody, text, innerW) * 19
     end
@@ -4002,17 +4638,21 @@ function Tooltip.draw(tip, mx, my)
 
     love.graphics.setFont(fontBody)
     for i, entry in ipairs(lines) do
-        local text = type(entry) == "table" and entry.text or entry
+        local text = type(entry) == "table" and (entry.text or entry.plainText) or entry
         local lineColor = type(entry) == "table" and entry.color or (i == 1 and C.white or C.muted)
         local gap = type(entry) == "table" and entry.gap or 0
         cy = cy + gap
-        color(lineColor)
-        love.graphics.printf(tostring(text or ""), innerX, cy, innerW, "left")
+        if type(entry) == "table" and entry.segments then
+            love.graphics.printf(entry.segments, innerX, cy, innerW, "left")
+        else
+            color(lineColor)
+            love.graphics.printf(tostring(text or ""), innerX, cy, innerW, "left")
+        end
         cy = cy + wrappedLineCount(fontBody, text, innerW) * 19
     end
 end
 
-local function drawTooltip(tip)
+function drawTooltip(tip)
     if not tip then return end
     local mx, my = mousePosition()
     Tooltip.draw(tip, mx, my)
@@ -4021,23 +4661,40 @@ end
 local weaponCompareValue
 local compareColor
 
-local function diffText(delta, suffix)
+function diffText(delta, suffix)
     if math.abs(delta) < 0.001 then return "（±0" .. (suffix or "") .. "）" end
     local sign = delta > 0 and "+" or ""
     return "（" .. sign .. delta .. (suffix or "") .. "）"
 end
 
-local function weaponHasProjectile(weapon)
+function weaponHasProjectile(weapon)
     return (weapon.speed or 0) > 0 and not ((weapon.chain or 0) > 0 and (weapon.speed or 0) == 0)
 end
 
-local function weaponDeliveryText(weapon)
+function weaponDeliveryText(weapon)
     if weaponHasProjectile(weapon) then return "飞行弹体" end
     if (weapon.chain or 0) > 0 then return "连锁光束 · 无弹体" end
     return "即时命中 · 无弹体"
 end
 
-local function weaponTooltip(weapon, titlePrefix, compareWeapon)
+function elementRichLine(prefix, weapon, suffix)
+    local elem = elements[(weapon and weapon.element) or "kinetic"] or elements.kinetic
+    local text = prefix .. elem.name .. (suffix or "")
+    return {plainText = text, segments = {C.muted, prefix, elem.color, elem.name, C.muted, suffix or ""}, color = elem.color}
+end
+
+function elementProcRichLine(prefix, weapon)
+    local elem = elements[(weapon and weapon.element) or "kinetic"] or elements.kinetic
+    local proc = elementProcText(weapon)
+    local name = elem.name
+    local rest = proc
+    local startAt, endAt = proc:find(name, 1, true)
+    if startAt == 1 then rest = proc:sub(endAt + 1) end
+    local text = prefix .. proc
+    return {plainText = text, segments = {C.muted, prefix, elem.color, name, elem.color, rest}, color = elem.color}
+end
+
+function weaponTooltip(weapon, titlePrefix, compareWeapon)
     local p = Game.player
     local brand = brands[weapon.brand]
     local elem = elements[weapon.element] or elements.kinetic
@@ -4050,7 +4707,8 @@ local function weaponTooltip(weapon, titlePrefix, compareWeapon)
     end
     local lines = {
         {text = "品牌：" .. (brand and brand.name or "武器") .. " · " .. (brand and brand.tag or "影响武器基础风格。"), color = brand and brand.color or C.white},
-        {text = "元素：" .. elem.name .. " · " .. elem.desc, color = elem.color},
+        elementRichLine("元素：", weapon, " · " .. elem.desc),
+        elementProcRichLine("元素效果：", weapon),
         {text = "命中方式：" .. weaponDeliveryText(weapon), color = C.white},
         attr("单发伤害", v.damage, "damage", true, nil, 6),
         attr("弹体数量", v.count, "count", true),
@@ -4104,7 +4762,7 @@ compareColor = function(delta, higherBetter)
     return good and C.green or C.red
 end
 
-local function weaponComparisonLines(current, candidate)
+function weaponComparisonLines(current, candidate)
     local a, b = weaponCompareValue(current), weaponCompareValue(candidate)
     local function line(label, old, new, delta, higherBetter, suffix)
         local sign = delta > 0 and "+" or ""
@@ -4122,7 +4780,7 @@ local function weaponComparisonLines(current, candidate)
     }
 end
 
-local function waveThreatProfile(wave)
+function waveThreatProfile(wave)
     local plan = wavePlanAt(wave or Game.wave)
     local profile = {shield = 0, armor = 0, ranged = 0, fire = 0, charge = 0, elite = 0, boss = plan.boss and 1 or 0}
     for _, entry in ipairs(plan.enemies or {}) do
@@ -4141,19 +4799,18 @@ local function waveThreatProfile(wave)
     return profile
 end
 
-local function itemRecommendationReason(item)
+function itemRecommendationReason(item)
     if not item then return nil end
     local profile = waveThreatProfile(Game.wave)
     local desc = item.desc or ""
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         if profile.shield >= 20 and def.element == "arc" then return "下一波护盾目标偏多，电弧武器更有效。" end
-        if profile.armor >= 18 and def.element == "corrode" then return "下一波装甲目标偏多，腐蚀武器更有效。" end
         if profile.fire >= 3 and (def.range or 0) >= 760 then return "下一波有区域封锁，远射程更安全。" end
         if profile.boss > 0 and (def.damage or 0) * (def.count or 1) >= 20 then return "Boss/精英压力高，需要更强单轮输出。" end
     end
     if profile.shield >= 20 and (desc:find("护盾") or desc:find("电弧")) then return "下一波护盾敌人多，优先补电弧/护盾能力。" end
-    if profile.armor >= 18 and desc:find("腐蚀") then return "下一波装甲敌人多，腐蚀武器更有效。" end
+    if (profile.boss > 0 or profile.elite > 0) and desc:find("腐蚀") then return "下一波厚血目标多，腐蚀易伤更适合滚雪球。" end
     if profile.fire >= 3 and (item.kind == "temp" or desc:find("移速") or desc:find("护盾")) then return "下一波有燃烧投手，临时生存/机动补强更稳。" end
     if profile.boss > 0 and (desc:find("伤害") or desc:find("暴击") or desc:find("射速")) then return "Boss 波需要更高持续输出。" end
     if desc:find("电弧") or desc:find("弹射") then return "可推进电弧/弹射组合效果。" end
@@ -4166,15 +4823,15 @@ waveThreatSummary = function(wave)
     local parts = {}
     if profile.boss > 0 then parts[#parts + 1] = "Boss" end
     if profile.elite > 0 then parts[#parts + 1] = "精英" end
-    if profile.fire >= 3 then parts[#parts + 1] = "燃烧区" end
-    if profile.charge >= 6 then parts[#parts + 1] = "冲锋威胁" end
-    if profile.ranged >= 18 then parts[#parts + 1] = "远程压制" end
-    if profile.shield >= 20 then parts[#parts + 1] = "护盾敌群" end
-    if profile.armor >= 18 then parts[#parts + 1] = "装甲敌群" end
-    return #parts > 0 and table.concat(parts, " / ") or "常规混合敌群"
+    if profile.fire >= 3 then parts[#parts + 1] = "火" end
+    if profile.charge >= 6 then parts[#parts + 1] = "冲" end
+    if profile.ranged >= 18 then parts[#parts + 1] = "远" end
+    if profile.shield >= 20 then parts[#parts + 1] = "盾" end
+    if profile.armor >= 18 then parts[#parts + 1] = "厚" end
+    return #parts > 0 and table.concat(parts, " / ") or "常规"
 end
 
-local function moduleComboHintForItem(item)
+function moduleComboHintForItem(item)
     if not item or not isPermanentModule(item) then return nil end
     local key = mergeKeyForItem(item)
     local present = {}
@@ -4198,7 +4855,7 @@ local function moduleComboHintForItem(item)
     return partial
 end
 
-local function moduleSlotTooltip(item)
+function moduleSlotTooltip(item)
     if not item then return nil end
     local lines = {
         "价格：◆ " .. (item.price or 0),
@@ -4209,7 +4866,7 @@ local function moduleSlotTooltip(item)
     return {title = item.name or "未知模块", lines = lines}
 end
 
-local function itemTooltip(item)
+function itemTooltip(item)
     if not item then return nil end
     local kindText = kindLabel[item.kind] or item.kind or "模块"
     local kindDesc = ({
@@ -4241,7 +4898,7 @@ local function itemTooltip(item)
     return {title = "商品：" .. (item.name or "未知模块"), lines = lines}
 end
 
-local function drawShopCard(item, i, x, y, w, h)
+function drawShopCard(item, i, x, y, w, h)
     local mx, my = mousePosition()
     local hover = Game.state == "shop" and (Game.shopTab or "shop") == "shop" and hitRect(mx, my, x, y, w, h)
     if not item then
@@ -4281,10 +4938,12 @@ local function drawShopCard(item, i, x, y, w, h)
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local brand = brands[def.brand]
+        local elem = elements[def.element] or elements.kinetic
         cardTags = {
             {text = rarityText, color = rc, primary = true},
             {text = kindText, color = C.white},
-            {text = brand and brand.name or "武器", color = C.white}
+            {text = brand and brand.name or "武器", color = C.white},
+            {text = elem.name, color = elem.color}
         }
     else
         local focus = item.mergeKey and ((item.mergeKey:gsub("_core", "")):gsub("_", " ")) or itemLevelText(item)
@@ -4315,6 +4974,10 @@ local function drawShopCard(item, i, x, y, w, h)
     local statusText = affordable and "状态：可购买" or ("状态：缺材料 " .. missing)
     color(affordable and C.green or C.red, affordable and 0.92 or 0.88)
     love.graphics.printf(statusText, x + 18, y + 88, w - 36, "left")
+    local reason = itemRecommendationReason(item)
+    if reason then
+        drawCapsule("推荐", x + w - 74, y + 84, 56, 24, {font = Game.fonts.tiny, fg = C.bgA, border = C.gold, bg = C.gold, bgAlpha = affordable and 0.88 or 0.42, borderAlpha = 0.88, padX = 6})
+    end
 
     local buyY = y + h - 36
     local displayY, displayH = y + 120, math.max(42, buyY - y - 130)
@@ -4324,30 +4987,42 @@ local function drawShopCard(item, i, x, y, w, h)
     love.graphics.rectangle("line", x + 18.5, displayY + 0.5, w - 37, displayH - 1, 12, 12)
 
     love.graphics.setFont(Game.fonts.tiny)
+    local recommendReason = itemRecommendationReason(item)
+    if recommendReason then
+        color(C.gold, 0.92)
+        love.graphics.printf("建议：" .. compactDesc(recommendReason, 28), x + 34, displayY + 8, w - 68, "left")
+    end
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
+        local elem = elements[def.element] or elements.kinetic
         local rows = {
             {"伤害", tostring(def.damage)},
             {"弹体", tostring(def.count or 1)},
             {"总伤", tostring((def.damage or 0) * (def.count or 1))},
             {"射程", tostring(math.floor(def.range or 0))},
             {weaponHasProjectile(def) and "弹速" or "命中", weaponHasProjectile(def) and tostring(math.floor(def.speed or 0)) or weaponDeliveryText(def)},
-            {"弹射", tostring(def.bounce or 0)}
+            {"元素概率", math.floor(elementStatusChance(def) * 100 + 0.5) .. "% · " .. elem.name},
+            {"元素伤害", elementStatusDamage(def) .. "/s"}
         }
         for ri, row in ipairs(rows) do
-            local ry = displayY + 10 + (ri - 1) * 18
+            local ry = displayY + (recommendReason and 30 or 10) + (ri - 1) * 18
             if ry + 16 < displayY + displayH then
-                textInBox(row[1] .. "  " .. row[2], x + 34, ry, w - 68, 16, Game.fonts.tiny, ri == 1 and C.white or C.muted, "left")
+                if row[1] == "元素概率" or row[1] == "元素伤害" then
+                    textInBox(row[1], x + 34, ry, 62, 16, Game.fonts.tiny, C.muted, "left")
+                    textInBox(row[2], x + 100, ry, w - 134, 16, Game.fonts.tiny, elem.color, "left")
+                else
+                    textInBox(row[1] .. "  " .. row[2], x + 34, ry, w - 68, 16, Game.fonts.tiny, ri == 1 and C.white or C.muted, "left")
+                end
             end
         end
     else
         local effectMode = item.kind == "temp" and "下一波生效" or "永久生效"
-        textInBox(effectMode .. " · " .. kindText, x + 34, displayY + 10, w - 68, 18, Game.fonts.tiny, C.white, "left")
+        textInBox(effectMode .. " · " .. kindText, x + 34, displayY + (recommendReason and 30 or 10), w - 68, 18, Game.fonts.tiny, C.white, "left")
         love.graphics.setFont(Game.fonts.tiny)
         local descText = modText(item.desc or "无说明")
         local effectColor = descText:find("%-") and C.red or (descText:find("%+") and C.green or C.muted)
         color(effectColor)
-        love.graphics.printf(descText, x + 34, displayY + 36, w - 68, "left")
+        love.graphics.printf(descText, x + 34, displayY + (recommendReason and 56 or 36), w - 68, "left")
     end
     local buyColor = affordable and C.green or C.red
     local buyBgAlpha = affordable and (hover and 0.34 or 0.18) or 0.10
@@ -4378,7 +5053,7 @@ local function drawShopCard(item, i, x, y, w, h)
     return nil
 end
 
-local function drawBuildPanel(x, y, w, h)
+function drawBuildPanel(x, y, w, h)
     local p = Game.player
     panel(x, y, w, h)
     love.graphics.setFont(Game.fonts.small)
@@ -4416,7 +5091,7 @@ end
 
 local sellWeapon, sellShield, sellItem
 
-local function drawCompactBuildPanel(x, y, w, h, opts)
+function drawCompactBuildPanel(x, y, w, h, opts)
     local p = Game.player
     opts = opts or {}
     local showSell = opts.showSell ~= false
@@ -4593,7 +5268,7 @@ local function drawCompactBuildPanel(x, y, w, h, opts)
     return nil
 end
 
-local function handleBuildPanelClick(px, py, x, y, w, h)
+function handleBuildPanelClick(px, py, x, y, w, h)
     local p = Game.player
     local slotW = (w - 44) / 2
     local slotGap = 12
@@ -4632,14 +5307,61 @@ local function handleBuildPanelClick(px, py, x, y, w, h)
     return false
 end
 
-local function defenseText(def)
+function defenseText(def)
     if def.defense == "armor" then return "护甲" end
     if def.defense == "shield" then return "护盾" end
     if def.defense == "flesh" then return "轻甲" end
     return "普通"
 end
 
-local function drawAffixInfoPill(affix, label, x, y, w, h, mx, my)
+
+function affixDecisionHints(wave)
+    local reward, penalty, protocol = affixesAt(wave or Game.wave)
+    local profile = waveThreatProfile(wave or Game.wave)
+    local buy, counter, avoid = {}, {}, {}
+    local function add(list, text)
+        if text and text ~= "" then list[#list + 1] = text end
+    end
+    for _, affix in ipairs({reward, penalty, protocol}) do
+        if affix then
+            if affix.coinMult and affix.coinMult > 1 then add(buy, "经济/回收：趁材料加成滚雪球") end
+            if affix.playerDamage and affix.playerDamage > 1 then add(buy, "高射速/多弹：吃伤害加成") end
+            if affix.critBonus and affix.critBonus > 0 then add(buy, "暴击流：直接吃暴击词缀") end
+            if affix.elementDamage and affix.elementDamage > 1 then add(buy, "元素武器：电/火/腐蚀/冰优先") end
+            if affix.shieldRegenMult and affix.shieldRegenMult > 1 then add(buy, "护盾反击：回盾更快") end
+            if affix.shieldRegenMult and affix.shieldRegenMult < 1 then add(avoid, "少押回盾：补生命/机动") end
+            if affix.enemyHp and affix.enemyHp > 1 then add(counter, "厚血：腐蚀/暴击/爆发") end
+            if affix.enemyArmor and affix.enemyArmor > 0 then add(counter, "护甲：高伤/腐蚀，别刮痧") end
+            if affix.enemySpeed and affix.enemySpeed > 1 then add(counter, "高速：冰冻/位移/护盾") end
+            if affix.enemyDamage and affix.enemyDamage > 1 then add(counter, "高伤：生命/护盾优先") end
+            if affix.extraPack and affix.extraPack > 0 then add(counter, "敌群：AOE/弹射/无人机") end
+            if affix.intervalMult and affix.intervalMult < 1 then add(counter, "密集刷怪：清场效率优先") end
+        end
+    end
+    if profile.shield >= 20 then add(counter, "护盾多：电弧/持续输出") end
+    if profile.fire >= 3 then add(counter, "封锁：远射程/机动/临时盾") end
+    if profile.charge >= 6 then add(counter, "冲锋：减速/冰冻/容错") end
+    if profile.ranged >= 18 then add(counter, "远程：射程/弹速/护盾") end
+    if profile.boss > 0 or profile.elite > 0 then add(counter, "Boss：爆发/腐蚀/暴击") end
+    if #buy == 0 then add(buy, "补当前流派核心，少乱买") end
+    if #counter == 0 then add(counter, "常规：伤害/射速/生存") end
+    if #avoid == 0 then add(avoid, "别逆词缀买；缺清场别贪单体") end
+    return buy, counter, avoid
+end
+
+function drawDecisionLine(label, text, x, y, w, accent)
+    love.graphics.setFont(Game.fonts.tiny)
+    color(accent, 0.14)
+    love.graphics.rectangle("fill", x, y, w, 30, 9, 9)
+    color(accent, 0.66)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, 29, 9, 9)
+    color(accent)
+    love.graphics.printf(label, x + 10, y + 8, 52, "left")
+    color(C.white, 0.90)
+    love.graphics.printf(text, x + 66, y + 8, w - 78, "left")
+end
+
+function drawAffixInfoPill(affix, label, x, y, w, h, mx, my)
     local accent = affix.kind == "penalty" and C.red or C.green
     color(accent, 0.16)
     love.graphics.rectangle("fill", x, y, w, h, 10, 10)
@@ -4657,7 +5379,7 @@ local function drawAffixInfoPill(affix, label, x, y, w, h, mx, my)
     end
 end
 
-local function drawNextWavePanel(x, y, w, h)
+function drawNextWavePanel(x, y, w, h)
     local mx, my = mousePosition()
     local tip = nil
     local plan = wavePlanAt(Game.wave)
@@ -4667,30 +5389,37 @@ local function drawNextWavePanel(x, y, w, h)
     color(C.white)
     love.graphics.printf("下一波情报", x + 24, y + 18, w - 48, "left")
     color(C.gold)
-    love.graphics.printf(chapterWaveLabel(Game.wave) .. " · " .. (plan.name or "生存波次"), x + 24, y + 54, w - 48, "left")
+    love.graphics.printf(chapterWaveLabel(Game.wave) .. " · " .. (plan.name or "清理敌群"), x + 24, y + 54, w - 48, "left")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
-    love.graphics.printf("10 大关 30 小关 · 每 3 小关击败 Boss · 主要威胁：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
+    love.graphics.printf("10 大关 30 小关 · 每 3 小关打爆 Boss · 主要敌情：" .. waveThreatSummary(Game.wave), x + 24, y + 84, w - 48, "left")
 
+    local buyHints, counterHints, avoidHints = affixDecisionHints(Game.wave)
+    drawDecisionLine("买", buyHints[1], x + 24, y + 112, w - 48, C.green)
+    drawDecisionLine("克制", counterHints[1], x + 24, y + 148, w - 48, C.gold)
+    drawDecisionLine("避坑", avoidHints[1], x + 24, y + 184, w - 48, C.red)
+
+    local affixY = 222
     if penalty and not reward and not protocol then
-        tip = drawAffixInfoPill(penalty, "大关词缀", x + 24, y + 122, w - 48, 66, mx, my) or tip
+        tip = drawAffixInfoPill(penalty, "大关词缀", x + 24, y + affixY, w - 48, 54, mx, my) or tip
     else
         local pillW = (w - 62) / 2
-        if protocol then tip = drawAffixInfoPill(protocol, "协议", x + 24, y + 122, pillW, 58, mx, my) or tip end
-        if reward then tip = drawAffixInfoPill(reward, "奖励", x + 38 + pillW, y + 122, pillW, 58, mx, my) or tip end
-        if penalty then tip = drawAffixInfoPill(penalty, "惩罚", x + 24, y + 188, w - 48, 52, mx, my) or tip end
+        if protocol then tip = drawAffixInfoPill(protocol, "协议", x + 24, y + affixY, pillW, 50, mx, my) or tip end
+        if reward then tip = drawAffixInfoPill(reward, "奖励", x + 38 + pillW, y + affixY, pillW, 50, mx, my) or tip end
+        if penalty then tip = drawAffixInfoPill(penalty, "惩罚", x + 24, y + affixY + 56, w - 48, 46, mx, my) or tip end
     end
 
     love.graphics.setFont(Game.fonts.tiny)
     color(C.white)
-    love.graphics.printf("敌人构成", x + 24, y + 258, w - 48, "left")
-    local rowY = y + 286
+    local enemyTitleY = y + 330
+    love.graphics.printf("敌人构成", x + 24, enemyTitleY, w - 48, "left")
+    local rowY = enemyTitleY + 28
     local total = 0
     for _, entry in ipairs(plan.enemies or {}) do total = total + (entry[2] or 0) end
     for i, entry in ipairs(plan.enemies or {}) do
         local key, weight = entry[1], entry[2]
         local def = enemyDefs[key]
-        if def and i <= 6 then
+        if def and i <= 5 then
             local chance = total > 0 and math.floor(weight / total * 100 + 0.5) or weight
             color(def.color, 0.07)
             love.graphics.rectangle("fill", x + 24, rowY, w - 48, 22, 7, 7)
@@ -4717,7 +5446,7 @@ local function drawNextWavePanel(x, y, w, h)
     return tip
 end
 
-local function drawSlotMachinePanel(x, y, w, h)
+function drawSlotMachinePanel(x, y, w, h)
     panel(x, y, w, h)
     love.graphics.setFont(Game.fonts.tiny)
     color(C.white)
@@ -4751,7 +5480,7 @@ local function drawSlotMachinePanel(x, y, w, h)
     uiButton(label, x + w - 94, by, 80, 34, unlocked and C.gold or C.white, C.white, Game.fonts.tiny)
 end
 
-local function drawSlotTabContent(x, y, w, h)
+function drawSlotTabContent(x, y, w, h)
     panel(x, y, w, h)
     local milestone = slotMilestone()
     local unlocked = slotUnlocked()
@@ -4795,21 +5524,22 @@ local function drawSlotTabContent(x, y, w, h)
     uiButton(label, x + w / 2 - buttonW / 2, y + h - 96, buttonW, buttonH, unlocked and C.gold or C.white, C.white, Game.fonts.normal)
 end
 
-local function drawVersion()
+function drawVersion()
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted, 0.72)
     love.graphics.printf(VERSION, 0, Game.h - 28, Game.w - 30, "right")
 end
 
-local shopTabs = {
+shopTabs = {
     {id = "shop", label = "商店"},
     {id = "intel", label = "下一波情报"},
-    {id = "slot", label = "补给转轮"}
+    {id = "slot", label = "补给转轮"},
+    {id = "codex", label = "图鉴"}
 }
 
-local function drawShopTabs(x, y)
+function drawShopTabs(x, y)
     local active = Game.shopTab or "shop"
-    local tabW, tabH, gap = 168, 44, 12
+    local tabW, tabH, gap = 148, 44, 12
     for i, tab in ipairs(shopTabs) do
         local tx = x + (i - 1) * (tabW + gap)
         local isActive = active == tab.id
@@ -4821,16 +5551,16 @@ local function drawShopTabs(x, y)
     end
 end
 
-local function shopTabHit(x, y)
+function shopTabHit(x, y)
     local startX, startY = 40, 38
-    local tabW, tabH, gap = 168, 44, 12
+    local tabW, tabH, gap = 148, 44, 12
     for i, tab in ipairs(shopTabs) do
         local tx = startX + (i - 1) * (tabW + gap)
         if hitRect(x, y, tx, startY, tabW, tabH) then return tab.id end
     end
 end
 
-local function drawBuildTabContent(x, y, w, h)
+function drawBuildTabContent(x, y, w, h)
     local p = Game.player
     panel(x, y, w, h)
     love.graphics.setFont(Game.fonts.normal)
@@ -4876,17 +5606,90 @@ local function drawBuildTabContent(x, y, w, h)
         love.graphics.printf(weapon.name, wx + 14, wy + 10, cardW - 28, "left")
         love.graphics.setFont(Game.fonts.tiny)
         color(brand and brand.color or C.gold)
-        love.graphics.printf((brand and brand.name or "武器") .. " · " .. elem.name, wx + 14, wy + 36, cardW - 28, "left")
+        local brandText = (brand and brand.name or "武器") .. " · "
+        love.graphics.printf(brandText, wx + 14, wy + 36, cardW - 28, "left")
+        color(elem.color)
+        love.graphics.printf(elem.name, wx + 14 + Game.fonts.tiny:getWidth(brandText), wy + 36, cardW - 28, "left")
         color(C.muted)
         local actualDamage = math.floor((weapon.damage or 0) * (p.stats.damage or 1) + 0.5)
         local detail = "伤害 " .. actualDamage .. "×" .. (weapon.count or 1) .. "  冷却 " .. string.format("%.2f", weapon.cooldown or 0) .. "s  范围 " .. math.floor(weapon.range or 0)
-        local extra = "穿透 " .. (weapon.pierce or 0) .. "  弹射 " .. (weapon.bounce or 0) .. "  弹速 " .. math.floor(weapon.speed or 0)
+        local extra = "触发 " .. math.floor(elementStatusChance(weapon) * 100 + 0.5) .. "%  异常伤害 " .. elementStatusDamage(weapon) .. "/s"
         love.graphics.printf(detail, wx + 14, wy + 56, cardW - 28, "left")
+        color(elem.color)
         love.graphics.printf(extra, wx + 14, wy + 72, cardW - 28, "left")
     end
 end
 
-local function drawShop()
+
+archetypeCodex = {
+    {name = "弹幕暴击", color = C.gold, desc = "多弹体、高暴击、击杀后追加弹射。弱点是前期单发偏低，吃暴击和站位。", keys = {"裂星机炮", "星针", "弱点扫描阵列", "弹幕校准"}},
+    {name = "元素异常", color = C.orange, desc = "靠灼烧、电击、腐蚀易伤、霜冻和虚空异常处理不同目标。弱点是需要概率和元素伤害支撑。", keys = {"熔火炮", "腐蚀喷针", "冷井脉冲", "元素催化舱"}},
+    {name = "护盾反击", color = C.cyan, desc = "把护盾当输出资源：满盾增伤、破盾电爆、击杀回盾。弱点是破盾窗口危险。", keys = {"电弧线圈", "反冲护盾线圈", "护盾回流", "满盾压制"}},
+    {name = "召唤无人机", color = C.green, desc = "周期支援无人机弹、蜂群分裂、远距离自动压制。弱点是成型慢，占模块槽。", keys = {"蜂巢无人机", "无人机母巢", "无人机同步", "蜂群备份"}}
+}
+
+function drawCodexPanel(x, y, w, h)
+    panel(x, y, w, h)
+    love.graphics.setFont(Game.fonts.normal)
+    color(C.white)
+    love.graphics.printf("图鉴 / 流派与元素", x + 24, y + 20, w - 48, "left")
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf("参考土豆兄弟：先看流派方向，再看武器、模块、元素和敌人克制。图鉴不消费材料。", x + 24, y + 54, w - 48, "left")
+
+    local colW, gap = (w - 72) / 2, 24
+    local cardH = 118
+    for i, a in ipairs(archetypeCodex) do
+        local col = (i - 1) % 2
+        local row = math.floor((i - 1) / 2)
+        local cx, cy = x + 24 + col * (colW + gap), y + 92 + row * (cardH + 18)
+        color(a.color, 0.11)
+        love.graphics.rectangle("fill", cx, cy, colW, cardH, 14, 14)
+        color(a.color, 0.52)
+        love.graphics.rectangle("line", cx + 0.5, cy + 0.5, colW - 1, cardH - 1, 14, 14)
+        love.graphics.setFont(Game.fonts.small)
+        color(a.color)
+        love.graphics.printf(a.name, cx + 16, cy + 12, colW - 32, "left")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.white)
+        love.graphics.printf(a.desc, cx + 16, cy + 42, colW - 32, "left")
+        color(C.muted)
+        love.graphics.printf("关键：" .. table.concat(a.keys, " / "), cx + 16, cy + 88, colW - 32, "left")
+    end
+
+    local sectionY = y + 92 + 2 * (cardH + 18) + 18
+    color(C.gold)
+    love.graphics.setFont(Game.fonts.small)
+    love.graphics.printf("元素效果", x + 24, sectionY, w - 48, "left")
+    local ex, ey = x + 24, sectionY + 34
+    local ew = (w - 72) / 3
+    local idx = 0
+    for _, id in ipairs({"burn", "arc", "corrode", "ice", "void", "kinetic"}) do
+        local elem = elements[id]
+        idx = idx + 1
+        local cx = ex + ((idx - 1) % 3) * (ew + 12)
+        local cy = ey + math.floor((idx - 1) / 3) * 66
+        color(elem.color, 0.12)
+        love.graphics.rectangle("fill", cx, cy, ew, 52, 12, 12)
+        color(elem.color, 0.44)
+        love.graphics.rectangle("line", cx + 0.5, cy + 0.5, ew - 1, 51, 12, 12)
+        love.graphics.setFont(Game.fonts.tiny)
+        color(elem.color)
+        love.graphics.printf(elem.name .. " · " .. (elem.status or "效果"), cx + 12, cy + 8, ew - 24, "left")
+        color(C.muted)
+        love.graphics.printf(elem.desc, cx + 12, cy + 28, ew - 24, "left")
+    end
+
+    local enemyY = ey + 142
+    color(C.red)
+    love.graphics.setFont(Game.fonts.small)
+    love.graphics.printf("敌人防御", x + 24, enemyY, w - 48, "left")
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf("护盾敌人显示蓝色护盾条和外圈；电击对护盾增伤并可破盾电爆。腐蚀改为叠层易伤/持续伤害，轻甲敌更怕灼烧。", x + 24, enemyY + 34, w - 48, "left")
+end
+
+function drawShop()
     panel(18, 18, Game.w - 36, Game.h - 36)
     local clearedWave = math.max(1, Game.wave - 1)
     local marginX = 40
@@ -4921,6 +5724,8 @@ local function drawShop()
         tip = drawNextWavePanel(marginX, contentY, Game.w - marginX * 2, contentH)
     elseif active == "slot" then
         drawSlotTabContent(marginX, contentY, Game.w - marginX * 2, contentH)
+    elseif active == "codex" then
+        drawCodexPanel(marginX, contentY, Game.w - marginX * 2, contentH)
     else
         local gap = 28
         local sideW = 430
@@ -4965,7 +5770,7 @@ local function drawShop()
     drawTooltip(tip)
 end
 
-local function drawPauseOverlay()
+function drawPauseOverlay()
     love.graphics.setColor(0, 0, 0, 0.58)
     love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
     local x, y, w, h = Game.w / 2 - 510, Game.h / 2 - 345, 1020, 690
@@ -4989,7 +5794,7 @@ local function drawPauseOverlay()
     drawTooltip(tip)
 end
 
-local function drawEnd(title, subtitle, c)
+function drawEnd(title, subtitle, c)
     love.graphics.setColor(0, 0, 0, 0.56)
     love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
     panel(Game.w / 2 - 300, 205, 600, 260)
@@ -5008,7 +5813,7 @@ local function drawEnd(title, subtitle, c)
     love.graphics.printf("回车回到选择界面 / Esc 退出", Game.w / 2 - 300, 425, 600, "center")
 end
 
-local function drawClearTransitionOverlay()
+function drawClearTransitionOverlay()
     if Game.state ~= "clearing" then return end
     local t = Game.clearTransition or {timer = 0}
     local alpha = clamp(0.22 + math.sin((t.timer or 0) * 18) * 0.08, 0.12, 0.34)
@@ -5018,7 +5823,7 @@ local function drawClearTransitionOverlay()
     love.graphics.setBlendMode("alpha")
     love.graphics.setFont(Game.fonts.big)
     color(C.white, 0.92)
-    love.graphics.printf("目标达成 · 敌群毁灭", 0, 168, Game.w, "center")
+    love.graphics.printf("目标完成 · 敌群清空", 0, 168, Game.w, "center")
 end
 
 function love.draw()
@@ -5076,7 +5881,7 @@ function buySlot(i)
     Game.locked[i] = false
 end
 
-local function sellValue(item, fallback)
+function sellValue(item, fallback)
     return math.max(1, math.floor(((item and item.price) or fallback or 12) * 0.45 + 0.5))
 end
 
@@ -5155,11 +5960,11 @@ function handlePointer(x, y)
         if hitRect(x, y, diffX + diffW - 172, diffY + 60, 154, 34) then Game.danger = math.min(6, Game.danger + 1); return true end
         if hitRect(x, y, Game.w / 2 - 140, deckY + 30, 280, 62) then resetRun(); return true end
     elseif Game.state == "levelup" then
-        local w, h, gap = 330, 190, 34
+        local w, h, gap = 330, 206, 34
         local sx = Game.w / 2 - (w * 3 + gap * 2) / 2
         for i = 1, 3 do
             local cx = sx + (i - 1) * (w + gap)
-            if hitRect(x, y, cx, 500, w, h) then chooseLevelReward(i); return true end
+            if hitRect(x, y, cx, 484, w, h) then chooseLevelReward(i); return true end
         end
     elseif Game.state == "shop" then
         local marginX = 40
@@ -5273,6 +6078,7 @@ function love.keypressed(key)
         if key == "4" then buySlot(4) end
         if key == "5" then buySlot(5) end
         if key == "6" then buySlot(6) end
+        if key == "tab" then Game.shopTab = Game.shopTab == "codex" and "shop" or "codex"; return end
         if key == "e" then recycleWeapon() end
         if key == "u" then upgradeItemSlots() end
         if key == "s" then spinSlotMachine(); return end
