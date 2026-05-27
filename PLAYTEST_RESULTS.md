@@ -3,6 +3,88 @@
 > 本轮是半自动基线记录：用现有 LÖVE 自动截图采集 wave 1/3/6/9/12 的战斗与商店状态，并结合当前配置计算压力/经济快照。它不是完整人工通关结论，不能替代后续真实游玩测试。
 
 
+## 2026-05-27 11:31 CST · v2026.05.27.81 早中期自然构筑回归
+
+### 范围
+
+- 当前工作树 v81：普通关 Boss 模板循环修复、自动记录字段增强、自然购物策略修正、早中期 Boss/火区压力小幅收敛。
+- 自然构筑：target wave 6 / 9 / 12。
+- 测试构筑：`balanced` 直跑 wave 12。
+- 记录文件：
+  - `tmp/natural20/playtest-v81-natural-target6-run2.md`
+  - `tmp/natural20/playtest-v81-natural-target9-run3.md`
+  - `tmp/natural20/playtest-v81-natural-target12-run3.md`
+  - `tmp/natural20/playtest-v81-balanced-wave12-direct.md`
+
+### 结果摘要
+
+| 记录 | 结果 | 关键观察 |
+| --- | --- | --- |
+| natural target wave 6 | 抵达 wave 6 后商店 | 第二章 Boss 可击破，自动购买记录正常。 |
+| natural target wave 9 | 抵达 wave 9 后商店 | 修复普通关误刷 Boss 后，第三章 Boss 可击破。 |
+| natural target wave 12 | 死亡于 wave 10 | wave9 `终焉播报机` 已击破；新断点为第四章普通关燃烧区，最后受击 `燃烧区 -16`。 |
+| balanced wave 12 direct | 抵达 wave 12 后商店 | 强测试构筑仍可击破 wave12 Boss，主链路未断。 |
+
+### 结论
+
+- v81 已把早中期自然构筑断点从 wave6-9 明显向后推：至少单轮 target wave 6 / 9 可通过。
+- 之前 wave7 异常 Boss 死亡来自模板循环 bug，不是玩家正常波次设计。
+- 当前不能声明 target wave12 已稳定；第四章普通关火区/危险增长是下一轮 P0。
+- 本轮仍是自动记录，不替代人工手感测试。
+
+
+## 2026-05-27 08:39 CST · v2026.05.26.80+WIP 自然构筑 wave 9/12 复核
+
+### 范围
+
+- 使用当前工作树（含未提交 Boss 教学区/第二章坡度 WIP）继续跑自动化。
+- 自然构筑：target wave 9 ×3、target wave 12 ×3。
+- 测试构筑：`balanced` 直跑 wave 9 / 12 / 15。
+- 记录文件：
+  - `tmp/natural20/playtest-v80q-natural-target9-run1.md`
+  - `tmp/natural20/playtest-v80q-natural-target9-run2.md`
+  - `tmp/natural20/playtest-v80q-natural-target9-run3.md`
+  - `tmp/natural20/playtest-v80q-natural-target12-run1.md`
+  - `tmp/natural20/playtest-v80q-natural-target12-run2.md`
+  - `tmp/natural20/playtest-v80q-natural-target12-run3.md`
+  - `tmp/natural20/playtest-v80q-balanced-wave9-direct.md`
+  - `tmp/natural20/playtest-v80q-balanced-wave12-direct.md`
+  - `tmp/natural20/playtest-v80q-balanced-wave15-direct.md`
+
+### 自然构筑结果摘要
+
+| 目标 | Run | 最终结果 | 关键观察 |
+| --- | --- | --- | --- |
+| wave 9 | 1 | 死亡于 wave 6 | 白噪狙击塔；最后受击 Boss 弹幕 -18。 |
+| wave 9 | 2 | 超时于 wave 7 | 冷井裁决体剩 55%。 |
+| wave 9 | 3 | 超时于 wave 9 | 白噪狙击塔剩 84%。 |
+| wave 12 | 1 | 超时于 wave 6 | 铁幕壁垒剩 61%。 |
+| wave 12 | 2 | 超时于 wave 6 | 重启终端剩 16%。 |
+| wave 12 | 3 | 超时于 wave 9 | 零度列车剩 100%。 |
+
+### balanced 直跑结果摘要
+
+| Wave | Boss | 结果 |
+| --- | --- | --- |
+| 9 | 蚀刻孢群 | Boss 击破，抵达 wave 9 后商店。 |
+| 12 | 重启终端 | Boss 击破，抵达 wave 12 后商店。 |
+| 15 | 天灾反应堆 | 180 秒模拟超时，Boss 剩 30%。 |
+
+### 结论
+
+- 当前 WIP 已明显缓解第一 Boss 教学断点；失败重心转移到 wave 6-9 的第二/第三章 Boss。
+- 自然构筑 6 轮没有抵达目标后商店，主要不是早期即死，而是 Boss 耐久、护盾恢复、召唤/区域/狙击机制与自然购买输出成长不匹配。
+- balanced wave 9 / 12 直跑通过，说明 Boss 基础链路和中期强构筑可用；问题更偏自然商店策略、推荐/购买权重、第二章 Boss 耐久/护盾/伤害，以及自动驾驶索敌/拖时。
+- balanced wave 15 仍超时，提示后续高波 Boss 耐久/阶段节奏还需要单独做上限复核。
+
+### 建议优化方向
+
+1. P0：先收敛第二章 Boss 的自然构筑通关窗口，重点是白噪狙击塔、铁幕壁垒、重启终端、冷井裁决体、零度列车。
+2. P0：检查自然商店自动购买策略/推荐权重，避免材料很多但输出联动不足；当前多轮材料充足却伤害不够。
+3. P1：为自动记录增加 Boss 击破耗时/剩余百分比字段，减少靠超时文本反推。
+4. P1：后续再做 wave 15+ Boss 耐久/阶段节奏上限，不要和早中期自然构筑问题混在一起改。
+
+
 ## 2026-05-26 23:14 CST · v2026.05.26.80 Boss 教学阀与第二章坡度回归
 
 ### 范围
