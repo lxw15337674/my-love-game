@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.27.81"
+local VERSION = "v2026.05.31.83"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -110,6 +110,9 @@ local ACTIVE_SKILL_SPEED_MULT = 2.1
 local CHAPTER_SIZE = Balance.chapter_size or 3
 local CHAPTER_NAMES = Balance.chapterNames or {"铁幕", "赤炉", "断链", "黑箱", "天灾", "归零", "深井", "白噪", "终焉", "重启"}
 local SMALL_WAVE_DURATION = Balance.small_wave_duration or 30
+local SMALL_WAVE_DURATION_MIN = Balance.small_wave_duration_min or 25
+local SMALL_WAVE_DURATION_MAX = Balance.small_wave_duration_max or 70
+local SMALL_WAVE_DURATION_STEP = Balance.small_wave_duration_step or 5
 local CAMPAIGN_WAVES = CHAPTER_SIZE * #CHAPTER_NAMES
 local AVERAGE_RUN_TARGET_WAVE = Balance.average_run_target_wave or 30
 ITEM_SLOT_BASE = Balance.item_slot_base or 6
@@ -118,7 +121,7 @@ ITEM_SLOT_MAX = Balance.item_slot_max or 12
 local Game = {
     w = VIRTUAL_W,
     h = VIRTUAL_H,
-    state = "menu", -- menu, playing, clearing, paused, levelup, shop, gameover, victory
+    state = "menu", -- menu, playing, event_choice, route_choice, clearing, paused, levelup, shop, gameover, victory
     time = 0,
     wave = 1,
     waveTime = SMALL_WAVE_DURATION,
@@ -163,6 +166,10 @@ local Game = {
     sideObjective = nil,
     dynamicEvents = {},
     dynamicEventIndex = 1,
+    routeChoices = {},
+    eventChoices = {},
+    routeMods = {},
+    nextRouteMods = nil,
     blackBoxUsed = false,
     waveRewards = nil,
     enemyShots = {},
@@ -422,7 +429,18 @@ enemyDefs = {
     treasure = {name = "宝藏信标", sprite = "pickup_coin", defense = "flesh", hp = 16, speed = 112, damage = 0, r = 16, color = C.gold, xp = 1, coin = 5, treasureCoin = 18, treasure = true, behavior = "treasure"},
     bomber = {name = "燃烧投手", sprite = "enemy_splinter", defense = "flesh", hp = 38, speed = 72, damage = 10, r = 15, color = C.orange, xp = 4, coin = 4, behavior = "bomber"},
     rammer = {name = "突击钻头", sprite = "enemy_splinter", defense = "armor", hp = 52, speed = 96, damage = 16, r = 18, color = C.red, armor = 1, xp = 6, coin = 5, behavior = "rammer"},
-    zoner = {name = "封锁织网者", sprite = "enemy_wisp", defense = "shield", hp = 42, shield = 24, shieldRegen = 1.4, speed = 68, damage = 11, r = 17, color = C.blue, armor = 0, xp = 7, coin = 6, behavior = "zoner", zoneRadius = 96, zoneDuration = 4.8, zoneCooldown = 3.5, zoneDamage = 6}
+    zoner = {name = "封锁织网者", sprite = "enemy_wisp", defense = "shield", hp = 42, shield = 24, shieldRegen = 1.4, speed = 68, damage = 11, r = 17, color = C.blue, armor = 0, xp = 7, coin = 6, behavior = "zoner", zoneRadius = 96, zoneDuration = 4.8, zoneCooldown = 3.5, zoneDamage = 6},
+    flame_pusher = {name = "火线推进者", sprite = "enemy_splinter", defense = "flesh", hp = 40, speed = 82, damage = 11, r = 16, color = C.orange, armor = 0, xp = 5, coin = 4, behavior = "fireline", zoneRadius = 64, zoneDuration = 2.7, zoneCooldown = 2.2, zoneDamage = 5},
+    rail_charger = {name = "磁轨冲锋兵", sprite = "enemy_splinter", defense = "armor", hp = 58, speed = 92, damage = 17, r = 18, color = C.cyan, armor = 1, xp = 7, coin = 5, behavior = "rail_charger"},
+    rift_zoner = {name = "裂隙封锁者", sprite = "enemy_wisp", defense = "shield", hp = 46, shield = 28, shieldRegen = 1.2, speed = 72, damage = 10, r = 17, color = C.purple, armor = 0, xp = 7, coin = 6, behavior = "rift_zoner", zoneRadius = 68, zoneDuration = 3.2, zoneCooldown = 3.1, zoneDamage = 5},
+    shield_amp = {name = "护盾放大器", sprite = "enemy_wisp", defense = "shield", hp = 32, shield = 42, shieldRegen = 2.8, speed = 64, damage = 8, r = 18, color = C.blue, armor = 0, xp = 8, coin = 6, behavior = "shield_amp"},
+    armor_hauler = {name = "装甲搬运机", sprite = "enemy_shell", defense = "armor", hp = 72, speed = 42, damage = 14, r = 22, color = C.green, armor = 5, xp = 7, coin = 6, behavior = "armor_hauler"},
+    cryo_jammer = {name = "冰霜干扰机", sprite = "enemy_wisp", defense = "shield", hp = 36, shield = 24, shieldRegen = 1.0, speed = 70, damage = 7, r = 17, color = C.ice, armor = 0, xp = 7, coin = 6, behavior = "cryo_jammer"},
+    repair_drone = {name = "维修无人机", sprite = "enemy_wisp", defense = "flesh", hp = 30, speed = 118, damage = 6, r = 14, color = C.gold, armor = 0, xp = 8, coin = 7, behavior = "repair_drone"},
+    beacon_summoner = {name = "信标召唤师", sprite = "enemy_wisp", defense = "shield", hp = 44, shield = 20, shieldRegen = 0.8, speed = 60, damage = 8, r = 18, color = C.purple, armor = 0, xp = 9, coin = 7, behavior = "beacon_summoner"},
+    element_elite = {name = "元素精英", sprite = "enemy_elite", defense = "shield", hp = 120, shield = 70, shieldRegen = 2.0, speed = 68, damage = 16, r = 25, color = C.cyan, armor = 1, xp = 14, coin = 10, elite = true, behavior = "element_elite"},
+    dual_guard = {name = "双抗精英", sprite = "enemy_shell", defense = "shield", hp = 118, shield = 96, shieldRegen = 1.8, speed = 48, damage = 17, r = 25, color = C.white, armor = 4, xp = 15, coin = 11, elite = true, behavior = "dual_guard"},
+    berserker = {name = "狂暴残血怪", sprite = "enemy_splinter", defense = "flesh", hp = 46, speed = 96, damage = 13, r = 16, color = C.red, armor = 0, xp = 6, coin = 5, behavior = "berserker"}
 }
 
 bossDefs = {
@@ -452,6 +470,12 @@ bossPool = {"boss_heartbreak", "boss_forge", "boss_bulwark", "boss_hive", "boss_
 enemyDefs.boss = bossDefs.boss_heartbreak
 
 applyConfiguredEnemies()
+
+local function smallWaveDurationAt(wave)
+    local safeWave = math.max(1, wave or 1)
+    local chapterIndex = math.floor((safeWave - 1) / CHAPTER_SIZE) + 1
+    return math.min(SMALL_WAVE_DURATION_MAX, SMALL_WAVE_DURATION_MIN + (chapterIndex - 1) * SMALL_WAVE_DURATION_STEP)
+end
 
 local wavePlans = configuredWavePlans({
     {name = "裂片试探", interval = 1.10, pack = 1, sides = {"left", "right"}, enemies = {{"splinter", 70}, {"drifter", 30}}},
@@ -506,8 +530,19 @@ local function wavePlanAt(wave)
         plan.enemies[#plan.enemies + 1] = {"bomber", bomberWeight}
     end
     if chapterIndex >= 2 and not hasZoner then plan.enemies[#plan.enemies + 1] = {"zoner", 2 + math.floor(chapterIndex * 0.85) + (chapterWave == CHAPTER_SIZE and 1 or 0)} end
-    plan.duration = chapterWave == CHAPTER_SIZE and nil or SMALL_WAVE_DURATION
-    plan.interval = math.max(0.42, (base.interval or 1.0) - (chapterIndex - 1) * 0.030 - (chapterWave == CHAPTER_SIZE and 0.04 or 0))
+    local function addEnemyWeight(id, weight)
+        plan.enemies[#plan.enemies + 1] = {id, math.max(1, math.floor(weight or 1))}
+    end
+    if chapterWave ~= CHAPTER_SIZE then
+        if chapterIndex >= 1 and chapterWave >= 2 then addEnemyWeight("flame_pusher", 1 + chapterIndex * 0.45) end
+        if chapterIndex >= 2 then addEnemyWeight("shield_amp", 2); addEnemyWeight("armor_hauler", 2); addEnemyWeight("rail_charger", 2 + chapterIndex * 0.35) end
+        if chapterIndex >= 3 then addEnemyWeight("cryo_jammer", 2); addEnemyWeight("repair_drone", 1 + chapterIndex * 0.25); addEnemyWeight("beacon_summoner", 1 + chapterIndex * 0.25) end
+        if chapterIndex >= 4 then addEnemyWeight("rift_zoner", 2 + chapterIndex * 0.30); addEnemyWeight("element_elite", 1 + chapterIndex * 0.18); addEnemyWeight("berserker", 2 + chapterIndex * 0.25) end
+        if chapterIndex >= 5 then addEnemyWeight("dual_guard", 1 + chapterIndex * 0.16) end
+        if routeAppliesToCurrentChapter and routeAppliesToCurrentChapter() and Game.routeMods and Game.routeMods.event == "element" then addEnemyWeight("element_elite", 3); addEnemyWeight("cryo_jammer", 2) end
+    end
+    plan.duration = chapterWave == CHAPTER_SIZE and nil or smallWaveDurationAt(safeWave)
+    plan.interval = math.max(0.46, (base.interval or 1.0) - (chapterIndex - 1) * 0.020 - (chapterWave == CHAPTER_SIZE and 0.04 or 0))
     plan.pack = (base.pack or 1) + math.floor((chapterIndex - 1) / 2) + (chapterWave == CHAPTER_SIZE and 0 or 0)
     plan.name = chapterWave == CHAPTER_SIZE and ((CHAPTER_NAMES[chapterIndex] or "终局") .. "关底 Boss") or (base.name or "清理敌群")
     if chapterWave ~= CHAPTER_SIZE and chapterIndex >= 4 then
@@ -637,6 +672,13 @@ local function currentAffixBonuses()
             bonus.intervalMult = bonus.intervalMult * (affix.intervalMult or 1)
             bonus.elementDamage = bonus.elementDamage * (affix.elementDamage or 1)
         end
+    end
+    if routeAppliesToCurrentChapter and routeAppliesToCurrentChapter() then
+        local route = Game.routeMods or {}
+        bonus.coinMult = bonus.coinMult * (route.coin or 1)
+        bonus.enemyHp = bonus.enemyHp * (route.enemyHp or 1)
+        bonus.extraPack = bonus.extraPack + (route.extraPack or 0)
+        bonus.intervalMult = bonus.intervalMult * (route.interval or 1)
     end
     return bonus
 end
@@ -1113,8 +1155,13 @@ function stampItemLevel(item)
     return item
 end
 
+function currentSurvivalDuration()
+    local plan = currentWavePlan and currentWavePlan()
+    return (plan and plan.duration) or smallWaveDurationAt(Game.wave or 1) or SURVIVAL_DURATION
+end
+
 function survivalProgress()
-    return clamp((Game.waveElapsed or 0) / math.max(1, SURVIVAL_DURATION), 0, 1)
+    return clamp((Game.waveElapsed or 0) / math.max(1, currentSurvivalDuration()), 0, 1)
 end
 
 function runProgress()
@@ -1224,7 +1271,7 @@ local function spawnEnemy(def, opts)
         name = def.name, x = x, y = y, r = def.r,
         hp = hp, maxHp = hp, shield = shield, maxShield = shield, defense = def.defense or (shield > 0 and "shield" or ((def.armor or 0) > 0 and "armor" or "flesh")), shieldRegen = shieldRegen,
         speed = speed,
-        damage = damage, armor = armor,
+        damage = damage, baseDamage = damage, armor = armor,
         color = def.color, xp = def.xp, coin = def.coin, treasureCoin = def.treasureCoin, sprite = def.sprite, behavior = def.behavior or "chase",
         zoneRadius = def.zoneRadius, zoneDuration = def.zoneDuration, zoneCooldown = def.zoneCooldown, zoneDamage = def.zoneDamage,
         elite = def.elite, boss = def.boss, bossPattern = def.bossPattern, phaseLabels = def.phaseLabels, bossRole = def.bossRole, treasure = def.treasure,
@@ -1232,6 +1279,14 @@ local function spawnEnemy(def, opts)
         burn = 0, slow = 0, corrosion = 0, lastHit = 0
     }
     local spawned = Game.enemies[#Game.enemies]
+    if def.behavior == "element_elite" then
+        local elems = {"burn", "arc", "corrode", "ice", "void"}
+        local elem = elems[rnd(1, #elems)]
+        spawned.elementKind = elem
+        spawned.color = (elements[elem] and elements[elem].color) or spawned.color
+        spawned.lastElement = elem
+    end
+    if def.behavior == "dual_guard" then spawned.damageTakenMult = 0.92 end
     if def.boss then
         local left, top, right, bottom = enemyArenaBounds(spawned)
         spawned.x = clamp(spawned.x, left, right)
@@ -1256,10 +1311,14 @@ local function spawnEnemy(def, opts)
         end
         toast("Boss 接入：" .. def.name)
         addText(Game.w / 2 - 46, 154, "Boss", C.red)
-    elseif def.elite or def.behavior == "bomber" or def.behavior == "zoner" then
-        local label = def.elite and "精英" or (def.behavior == "zoner" and "封锁" or "燃烧投手")
-        local labelColor = def.elite and C.purple or (def.behavior == "zoner" and C.purple or C.orange)
-        addText(clamp(x, 80, Game.w - 80), clamp(y, 170, Game.h - 90), label, labelColor)
+    else
+        local specialLabels = {
+            bomber = {"燃烧投手", C.orange}, zoner = {"封锁", C.purple}, rift_zoner = {"裂隙", C.purple}, fireline = {"火线", C.orange},
+            shield_amp = {"护盾放大", C.blue}, repair_drone = {"维修", C.gold}, beacon_summoner = {"召唤", C.purple},
+            cryo_jammer = {"冰霜干扰", C.ice}, rail_charger = {"磁轨", C.cyan}, armor_hauler = {"装甲", C.green}, berserker = {"狂暴", C.red}, dual_guard = {"双抗", C.white}
+        }
+        local labelInfo = def.elite and {"精英", C.purple} or specialLabels[def.behavior]
+        if labelInfo then addText(clamp(x, 80, Game.w - 80), clamp(y, 170, Game.h - 90), labelInfo[1], labelInfo[2]) end
     end
 end
 
@@ -1904,7 +1963,9 @@ end
 
 local function clearRewardForWave(wave)
     local safeWave = math.max(1, wave or 1)
-    return (Balance.clear_reward_base or 12) + math.floor(safeWave * (Balance.clear_reward_wave_step or 1.5)) + Game.danger * (Balance.clear_reward_danger_step or 2)
+    local reward = (Balance.clear_reward_base or 12) + math.floor(safeWave * (Balance.clear_reward_wave_step or 1.5)) + Game.danger * (Balance.clear_reward_danger_step or 2)
+    if routeAppliesToCurrentChapter and routeAppliesToCurrentChapter() then reward = reward * ((Game.routeMods and Game.routeMods.coin) or 1) end
+    return math.max(1, math.floor(reward + 0.5))
 end
 
 local function shopBudgetHint()
@@ -2107,39 +2168,28 @@ function addObjectiveProgress(kind, amount)
 end
 
 dynamicEventPool = {
-    {id = "ambush", name = "侧翼伏击", time = 8, run = function()
-        local side = ({"left", "right", "top", "bottom"})[rnd(1, 4)]
-        for _ = 1, 6 + Game.danger do spawnEnemy(enemyDefs.splinter, {side = side, scale = 1.05}) end
-        toast("随机事件：" .. side .. " 侧伏击")
-    end},
-    {id = "treasure", name = "宝藏空投", time = 16, run = function()
-        spawnEnemy(enemyDefs.treasure, {side = "top", scale = 1.10})
-        for _ = 1, 3 do spawnEnemy(enemyDefs.drifter, {side = "top", scale = 1.05}) end
-        toast("随机事件：宝藏信标带护卫出现")
-    end},
-    {id = "elite", name = "精英改造", time = 24, run = function()
-        local side = ({"left", "right", "bottom"})[rnd(1, 3)]
-        spawnEnemy(enemyDefs.elite, {side = side, scale = 0.92 + Game.danger * 0.03})
-        toast("随机事件：改造精英接入")
-    end}
+    {id = "ambush", name = "侧翼伏击", run = function() beginEventChoice("侧翼伏击") end},
+    {id = "treasure", name = "宝藏空投", run = function() beginEventChoice("宝藏空投") end},
+    {id = "shield_convoy", name = "护盾车队", run = function() beginEventChoice("护盾车队") end},
+    {id = "repair_team", name = "维修小队", run = function() beginEventChoice("维修小队") end},
+    {id = "rift_cut", name = "裂隙切场", run = function() beginEventChoice("裂隙切场") end},
+    {id = "beacon_drop", name = "召唤信标", run = function() beginEventChoice("召唤信标") end},
+    {id = "element_surge", name = "元素涌动", run = function() beginEventChoice("元素涌动") end},
+    {id = "cryo_front", name = "寒潮前线", run = function() beginEventChoice("寒潮前线") end},
+    {id = "rage_pack", name = "狂暴残群", run = function() beginEventChoice("狂暴残群") end}
 }
 
-function rollDynamicEvents()
-    local used, events = {}, {}
-    for _ = 1, math.min(3, #dynamicEventPool) do
-        local ev = dynamicEventPool[rnd(1, #dynamicEventPool)]
-        for _ = 1, 8 do
-            if not used[ev.id] then break end
-            ev = dynamicEventPool[rnd(1, #dynamicEventPool)]
-        end
-        used[ev.id] = true
-        events[#events + 1] = ev
-    end
-    table.sort(events, function(a, b) return a.time < b.time end)
-    return events
+function rollDynamicEvents(duration)
+    if not dynamicEventPool or #dynamicEventPool == 0 then return {} end
+    local ev = dynamicEventPool[rnd(1, #dynamicEventPool)]
+    local event = {}
+    for k, v in pairs(ev) do event[k] = v end
+    local d = duration or currentSurvivalDuration()
+    event.time = math.max(6, d * randf(0.46, 0.56))
+    return {event}
 end
 
-local function startWave()
+startWave = function()
     local plan = currentWavePlan()
     if plan.boss then
         Game.waveBossId = rollBossIdForWave(Game.wave)
@@ -2152,16 +2202,17 @@ local function startWave()
     Game.player.x, Game.player.y = Game.w / 2, Game.h / 2
     Game.player.lastMoveX, Game.player.lastMoveY = 0, -1
     Game.state = "playing"
-    Game.waveTime = plan.boss and 0 or SURVIVAL_DURATION
+    local waveDuration = plan.duration or smallWaveDurationAt(Game.wave)
+    Game.waveTime = plan.boss and 0 or waveDuration
     Game.waveElapsed = 0
     Game.waveEventIndex = 1
     Game.bossDefeated = false
-    Game.dynamicEvents = plan.boss and {} or rollDynamicEvents()
+    Game.dynamicEvents = plan.boss and {} or rollDynamicEvents(waveDuration)
     Game.dynamicEventIndex = 1
     Game.sideObjective = rollSideObjective()
     Game.waveStartKills = Game.kills
     Game.objectiveProgress = 0
-    Game.objectiveText = plan.boss and "打爆 Boss" or ("撑住 " .. SURVIVAL_DURATION .. " 秒")
+    Game.objectiveText = plan.boss and "打爆 Boss" or ("撑住 " .. waveDuration .. " 秒")
     Game.enemies, Game.bullets, Game.pickups = {}, {}, {}
     Game.enemyShots, Game.fireZones, Game.beams = {}, {}, {}
     Game.pendingRewardNextState = nil
@@ -2170,11 +2221,12 @@ local function startWave()
     if plan.boss then
         local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
         local earlyBoss = chapterIndex <= 3
-        local minHp = (p.maxHp or p.hp or 1) * (earlyBoss and 0.85 or 0.62)
-        local minShield = (p.maxShield or p.shield or 0) * (earlyBoss and 1.00 or 0.75)
+        local intelPrep = routeAppliesToCurrentChapter and routeAppliesToCurrentChapter() and Game.routeMods and Game.routeMods.bossPrep
+        local minHp = (p.maxHp or p.hp or 1) * (intelPrep and 0.82 or (earlyBoss and 0.85 or 0.62))
+        local minShield = (p.maxShield or p.shield or 0) * (intelPrep and 1.00 or (earlyBoss and 1.00 or 0.75))
         if (p.hp or 0) < minHp then p.hp = minHp end
         if (p.shield or 0) < minShield then p.shield = minShield end
-        toast(earlyBoss and "Boss 前整备：教学保护" or "Boss 前整备：护盾补给")
+        toast(intelPrep and "Boss 情报整备：补给到位" or (earlyBoss and "Boss 前整备：教学保护" or "Boss 前整备：护盾补给"))
     end
     p.waveDamageBonus = 0
     p.waveFireRateBonus = 0
@@ -2196,7 +2248,8 @@ local function startWave()
     Game.tempBuffs = {}
     Game.spawnTimer = 0.25
     Game.player.shieldDelay = 0
-    toast(chapterWaveLabel(Game.wave) .. "：" .. (plan.name or "战斗") .. " / " .. affixLabel() .. " / 可选 " .. (Game.sideObjective and Game.sideObjective.name or "无"))
+    local durationText = plan.boss and "Boss战" or (tostring(waveDuration) .. "秒")
+    toast(chapterWaveLabel(Game.wave) .. "：" .. (plan.name or "战斗") .. " / " .. durationText .. " / " .. affixLabel() .. " / 可选 " .. (Game.sideObjective and Game.sideObjective.name or "无"))
 end
 
 local function enterShop()
@@ -2205,6 +2258,82 @@ local function enterShop()
     Game.shopRefresh = 0
     rollShop(true)
     toast("商店开启：认真构筑")
+end
+
+local routeChoiceDefs = {
+    {id = "safe", name = "稳定航线", desc = "下一章敌群压力降低，通关奖励略少。", risk = "奖励 -10%", mods = {enemyHp = 0.94, interval = 1.06, coin = 0.90}},
+    {id = "danger", name = "高危航线", desc = "下一章敌群更密，通关奖励提高。", risk = "敌群 +1，奖励 +25%", mods = {extraPack = 1, interval = 0.94, coin = 1.25}},
+    {id = "element", name = "元素航线", desc = "下一章元素敌与元素奖励更常见。", risk = "元素精英更容易出现", mods = {event = "element", elementReward = 0.18}},
+    {id = "merchant", name = "商队航线", desc = "立刻获得材料和免费刷新，但下一章敌人稍硬。", risk = "敌人生命 +8%", mods = {coinNow = 45, freeRefresh = 1, enemyHp = 1.08}},
+    {id = "bossIntel", name = "Boss 情报航线", desc = "下一章 Boss 前整备更好，普通关奖励略低。", risk = "普通清场奖励 -8%", mods = {bossPrep = 1, coin = 0.92}}
+}
+
+local function pickDistinct(defs, count)
+    local pool, picked = {}, {}
+    for _, def in ipairs(defs or {}) do pool[#pool + 1] = def end
+    while #picked < math.min(count or 3, #pool) do
+        local idx = rnd(1, #pool)
+        picked[#picked + 1] = table.remove(pool, idx)
+    end
+    return picked
+end
+
+function routeAppliesToCurrentChapter()
+    local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
+    return Game.routeMods and Game.routeMods.chapter == chapterIndex
+end
+
+local function chooseRoute(index)
+    local choice = Game.routeChoices and Game.routeChoices[index]
+    if not choice then return false end
+    local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
+    local mods = {}
+    for k, v in pairs(choice.mods or {}) do mods[k] = v end
+    mods.id, mods.name, mods.chapter = choice.id, choice.name, chapterIndex
+    Game.routeMods = mods
+    Game.routeChoices = {}
+    if mods.coinNow then addCoins(mods.coinNow, "route") end
+    if mods.freeRefresh then Game.freeRefresh = (Game.freeRefresh or 0) + mods.freeRefresh end
+    toast("路线选择：" .. choice.name)
+    enterShop()
+    return true
+end
+
+local eventChoiceDefs = {
+    {id = "blackbox", name = "黑箱交易", desc = "立刻获得材料。", risk = "本章危险 +1", apply = function() addCoins(36 + Game.wave * 2, "event"); Game.danger = math.min(9, (Game.danger or 0) + 1) end},
+    {id = "supply", name = "破损补给仓", desc = "获得免费刷新和护盾修复。", risk = "同时引来伏击", apply = function() Game.freeRefresh = (Game.freeRefresh or 0) + 1; Game.player.shield = math.min(Game.player.maxShield, Game.player.shield + 35); for _ = 1, 3 do spawnEnemy(enemyDefs.splinter, {side = pickSpawnSide(currentWavePlan()), scale = 0.86}) end end},
+    {id = "rare", name = "异常商人", desc = "获得一笔材料并刷新商店。", risk = "本章敌人稍硬", apply = function() addCoins(28 + Game.wave, "event"); Game.routeMods = Game.routeMods or {}; Game.routeMods.chapter = select(4, chapterInfoAt(Game.wave)); Game.routeMods.enemyHp = math.max(Game.routeMods.enemyHp or 1, 1.06) end},
+    {id = "beacon", name = "失控信标", desc = "摧毁信标可拿高奖励。", risk = "它会持续召唤护卫", apply = function() spawnEnemy(enemyDefs.beacon_summoner, {side = "top", scale = 1.05}); spawnEnemy(enemyDefs.treasure, {side = "top", scale = 1.0}) end},
+    {id = "element", name = "元素风暴", desc = "本波元素伤害提高。", risk = "元素精英入场", apply = function() Game.player.waveElementChance = (Game.player.waveElementChance or 0) + 0.22; Game.player.waveElementDamageBonus = (Game.player.waveElementDamageBonus or 0) + 0.18; spawnEnemy(enemyDefs.element_elite, {side = pickSpawnSide(currentWavePlan()), scale = 0.86}) end},
+    {id = "overclock", name = "临时超频", desc = "本波射速提高。", risk = "护盾回复暂时下降", apply = function() Game.player.waveFireRateBonus = (Game.player.waveFireRateBonus or 0) + 0.22; Game.player.waveShieldRegenMult = (Game.player.waveShieldRegenMult or 0) - 0.25 end}
+}
+
+function beginEventChoice(eventName)
+    Game.eventChoices = pickDistinct(eventChoiceDefs, 3)
+    Game.eventChoiceTitle = eventName or "中段事件"
+    Game.state = "event_choice"
+    toast("中段选择事件：选择风险与回报")
+end
+
+local function chooseEvent(index)
+    local choice = Game.eventChoices and Game.eventChoices[index]
+    if not choice then return false end
+    if choice.apply then choice.apply() end
+    Game.eventChoices = {}
+    Game.state = "playing"
+    toast("事件选择：" .. choice.name)
+    return true
+end
+
+local function choiceIndexAt(x, y, count)
+    local n = count or 3
+    local w, h, gap = 430, 230, 34
+    local sx = Game.w / 2 - (w * n + gap * (n - 1)) / 2
+    local sy = Game.h / 2 - h / 2 + 38
+    for i = 1, n do
+        if hitRect(x, y, sx + (i - 1) * (w + gap), sy, w, h) then return i end
+    end
+    return nil
 end
 
 local function resetRun()
@@ -2237,6 +2366,10 @@ local function resetRun()
     Game.clearTransition = nil
     Game.bossDefeated = false
     Game.blackBoxUsed = false
+    Game.routeChoices = {}
+    Game.eventChoices = {}
+    Game.routeMods = {}
+    Game.nextRouteMods = nil
     Game.runStats = {damage = 0, damageByWeapon = {}, coinsEarned = 0, highestWave = 1, rerolls = 0}
     if os.getenv("LOVE_AUTOPLAY_START_WAVE") then
         Game.wave = clamp(tonumber(os.getenv("LOVE_AUTOPLAY_START_WAVE")) or Game.wave, 1, Game.maxWave)
@@ -2270,6 +2403,7 @@ local function resetRun()
     Game.tempBuffs = {}
     Game.shop, Game.locked = {}, {}
     addWeapon(weaponDefs[ch.weapon or "needle"])
+    if rebuildPlayerBuildStats then rebuildPlayerBuildStats() end
     if autoplayApplyTestBuild then autoplayApplyTestBuild() end
     rollShop(false)
     startWave()
@@ -2299,6 +2433,8 @@ local function chooseLevelReward(i)
     Game.pendingRewardNextState = nil
     if nextState == "victory" then
         Game.state = "victory"
+    elseif nextState == "route" then
+        beginRouteChoice()
     else
         enterShop()
     end
@@ -2671,6 +2807,7 @@ local function damagePlayer(amount, source, sourceX, sourceY, sourceColor)
     p.invuln = 0.55
     p.shieldDelay = 2.4
     playCue("hit"); Game.shake = math.max(Game.shake or 0, 0.30)
+    if p.gear and p.gear.highRiskCore then amount = amount * 1.12 end
     amount = math.max(1, amount)
     local rawAmount = amount
     local hitSource = source or "受击"
@@ -3052,22 +3189,26 @@ local function updateBossBehavior(e, dt, a, distToPlayer)
     end
     return moveAngle, speedMult
 end
-local function updateEnemyShots(dt)
+local function fireZoneDamageForChapter(baseDamage)
+    local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
+    local fireRamp = clamp(0.12 + chapterIndex * 0.05, 0.24, 1.00)
+    return (baseDamage or 0) * fireRamp
+end
+
+function updateEnemyShots(dt)
     local p = Game.player
     for i = #Game.enemyShots, 1, -1 do
         local b = Game.enemyShots[i]
         b.life = b.life - dt
         b.x, b.y = b.x + b.vx * dt, b.y + b.vy * dt
         if b.kind == "firebomb" and b.life <= 0 then
-            igniteFireZone(b.targetX or b.x, b.targetY or b.y, b.zoneRadius, b.zoneDuration, b.damage, C.orange, C.red, "燃烧区")
+            igniteFireZone(b.targetX or b.x, b.targetY or b.y, b.zoneRadius, b.zoneDuration, fireZoneDamageForChapter(b.damage), C.orange, C.red, "燃烧区")
             table.remove(Game.enemyShots, i)
         elseif distance(b.x, b.y, p.x, p.y) < b.r + p.r then
             damagePlayer(b.damage, b.source or (b.kind == "firebomb" and "燃烧弹" or "敌弹"), b.x, b.y, b.color)
             burst(b.x, b.y, b.color, 5, 80)
             if b.kind == "firebomb" then
-                local _, _, _, chapterIndex = chapterInfoAt(Game.wave)
-                local fireRamp = clamp(0.12 + chapterIndex * 0.05, 0.24, 1.00)
-                igniteFireZone(b.x, b.y, b.zoneRadius, b.zoneDuration, b.damage * fireRamp, C.orange, C.red, "燃烧区")
+                igniteFireZone(b.x, b.y, b.zoneRadius, b.zoneDuration, fireZoneDamageForChapter(b.damage), C.orange, C.red, "燃烧区")
             end
             table.remove(Game.enemyShots, i)
         elseif b.life <= 0 or b.x < -40 or b.x > Game.w + 40 or b.y < -40 or b.y > Game.h + 40 then
@@ -3192,7 +3333,15 @@ local function updateEnemies(dt)
             end
             moveAngle = randomWanderAngle(e, dt, 0.65, 1.35, a, 0.48)
             spd = spd * (e.enteredArena and 0.56 or 0.98)
-        elseif behavior == "zoner" then
+        elseif behavior == "fireline" then
+            e.zoneTimer = (e.zoneTimer or randf(0.8, 1.4)) - dt
+            if e.enteredArena and e.zoneTimer <= 0 then
+                igniteFireZone(e.x, e.y, e.zoneRadius or 64, e.zoneDuration or 2.7, fireZoneDamageForChapter(e.zoneDamage or math.max(3, (e.damage or 8) * 0.42)), C.orange, C.red, "火线")
+                e.zoneTimer = randf((e.zoneCooldown or 2.2) * 0.85, (e.zoneCooldown or 2.2) * 1.15)
+            end
+            moveAngle = randomWanderAngle(e, dt, 0.45, 0.95, a, 0.64)
+            spd = spd * (e.enteredArena and 0.86 or 1.12)
+        elseif behavior == "zoner" or behavior == "rift_zoner" then
             e.zoneTimer = (e.zoneTimer or randf(0.8, 1.6)) - dt
             if e.enteredArena and distToPlayer < 720 and e.zoneTimer <= 0 then
                 local mx, my = p.lastMoveX or 0, p.lastMoveY or -1
@@ -3200,16 +3349,87 @@ local function updateEnemies(dt)
                 local px, py = -my, mx
                 e.zoneFlip = not e.zoneFlip
                 local side = e.zoneFlip and 1 or -1
-                local lead = randf(72, 132)
-                local offset = side * randf(56, 104)
+                local isRift = behavior == "rift_zoner"
+                local lead = isRift and randf(42, 86) or randf(72, 132)
+                local offset = side * (isRift and randf(28, 68) or randf(56, 104))
                 local zx = clamp(p.x + mx * lead + px * offset, 88, Game.w - 88)
                 local zy = clamp(p.y + my * lead + py * offset, 172, Game.h - 88)
-                igniteFireZone(zx, zy, e.zoneRadius or 96, e.zoneDuration or 4.8, e.zoneDamage or math.max(4, (e.damage or 8) * 0.55), C.purple, C.red, "封锁区")
-                addText(zx - 34, zy - (e.zoneRadius or 96) - 14, "封锁区", C.purple)
+                local label = isRift and "裂隙" or "封锁区"
+                igniteFireZone(zx, zy, e.zoneRadius or (isRift and 68 or 96), e.zoneDuration or (isRift and 3.2 or 4.8), e.zoneDamage or math.max(4, (e.damage or 8) * 0.55), C.purple, isRift and C.blue or C.red, label)
+                addText(zx - 34, zy - (e.zoneRadius or 96) - 14, label, C.purple)
                 e.zoneTimer = randf((e.zoneCooldown or 3.5) * 0.85, (e.zoneCooldown or 3.5) * 1.18)
             end
-            moveAngle = randomWanderAngle(e, dt, 0.70, 1.45, a, 0.58)
-            spd = spd * (e.enteredArena and 0.50 or 0.96)
+            moveAngle = randomWanderAngle(e, dt, 0.70, 1.45, a, behavior == "rift_zoner" and 0.50 or 0.58)
+            spd = spd * (e.enteredArena and (behavior == "rift_zoner" and 0.56 or 0.50) or 0.96)
+        elseif behavior == "shield_amp" then
+            e.ampTimer = (e.ampTimer or 0.6) - dt
+            if e.enteredArena and e.ampTimer <= 0 then
+                for _, other in ipairs(Game.enemies or {}) do
+                    if other ~= e and not other.boss and distance(e.x, e.y, other.x, other.y) < 190 then
+                        other.maxShield = math.max(other.maxShield or 0, 18 + Game.wave * 1.6)
+                        other.shield = math.min(other.maxShield, (other.shield or 0) + 12 + Game.wave * 0.5)
+                    end
+                end
+                addText(e.x - 30, e.y - e.r - 14, "护盾放大", C.blue)
+                e.ampTimer = 1.25
+            end
+            moveAngle = randomWanderAngle(e, dt, 0.65, 1.35, a, 0.62)
+            spd = spd * (e.enteredArena and 0.50 or 1.00)
+        elseif behavior == "cryo_jammer" then
+            if e.enteredArena and distToPlayer < 230 then
+                p.waveVoidSlowTimer = math.max(p.waveVoidSlowTimer or 0, 0.32)
+                e.jammerTextTimer = (e.jammerTextTimer or 0) - dt
+                if e.jammerTextTimer <= 0 then addText(e.x - 28, e.y - e.r - 12, "冰霜干扰", C.ice); e.jammerTextTimer = 1.1 end
+            end
+            moveAngle = randomWanderAngle(e, dt, 0.60, 1.25, a, 0.55)
+            spd = spd * (e.enteredArena and 0.58 or 1.02)
+        elseif behavior == "repair_drone" then
+            e.repairTimer = (e.repairTimer or 0.8) - dt
+            if e.enteredArena and e.repairTimer <= 0 then
+                local target, missing = nil, 0
+                for _, other in ipairs(Game.enemies or {}) do
+                    local miss = (other.maxHp or other.hp or 0) - (other.hp or 0)
+                    if other ~= e and miss > missing and distance(e.x, e.y, other.x, other.y) < 260 then target, missing = other, miss end
+                end
+                if target then
+                    local heal = math.min(missing, 18 + Game.wave * 1.4)
+                    target.hp = math.min(target.maxHp or target.hp, (target.hp or 0) + heal)
+                    addText(target.x - 18, target.y - target.r - 18, "+" .. math.floor(heal) .. " 修复", C.gold)
+                    burst(target.x, target.y, C.gold, 8, 110)
+                end
+                e.repairTimer = 1.25
+            end
+            moveAngle = randomWanderAngle(e, dt, 0.42, 1.00, a, 0.48)
+            spd = spd * (e.enteredArena and 0.72 or 1.15)
+        elseif behavior == "beacon_summoner" then
+            e.summonTimer = (e.summonTimer or randf(1.2, 2.0)) - dt
+            if e.enteredArena and e.summonTimer <= 0 then
+                addText(e.x - 32, e.y - e.r - 16, "召唤读条", C.purple)
+                local count = Game.wave >= 12 and 3 or 2
+                for _ = 1, count do spawnEnemy(rnd() < 0.55 and enemyDefs.splinter or enemyDefs.drifter, {side = pickSpawnSide(currentWavePlan()), scale = 0.58}) end
+                e.summonTimer = randf(4.2, 5.4)
+            end
+            moveAngle = randomWanderAngle(e, dt, 0.80, 1.60, a, 0.46)
+            spd = spd * (e.enteredArena and 0.42 or 0.96)
+        elseif behavior == "element_elite" then
+            e.shootTimer = (e.shootTimer or 0) - dt
+            local elem = e.elementKind or "arc"
+            if distToPlayer < 600 and e.shootTimer <= 0 then
+                fireEnemyShot(e, a, 245, 7, 0.64, (elements[elem] and elements[elem].color) or e.color, "元素弹幕")
+                e.shootTimer = randf(1.25, 1.75)
+            end
+            moveAngle = randomWanderAngle(e, dt, 0.55, 1.25, a, 0.50)
+            spd = spd * (e.enteredArena and 0.70 or 1.06)
+        elseif behavior == "dual_guard" then
+            spd = spd * 0.58
+            e.armor = math.max(e.armor or 0, 4 + math.floor(Game.wave / 4))
+        elseif behavior == "berserker" then
+            local pct = (e.hp or 0) / math.max(1, e.maxHp or e.hp or 1)
+            if pct < 0.40 then
+                if not e.enraged then e.enraged = true; addText(e.x - 24, e.y - e.r - 16, "狂暴", C.red); burst(e.x, e.y, C.red, 14, 150) end
+                spd = spd * 1.72
+                e.damage = math.max(e.damage or 0, (e.baseDamage or e.damage or 0) * 1.22)
+            end
         elseif behavior == "charger" then
             e.dashTimer = (e.dashTimer or 0) - dt
             if e.dashTimer <= 0 and distToPlayer < 360 then
@@ -3217,7 +3437,8 @@ local function updateEnemies(dt)
                 e.dashTimer = 2.2
                 addText(e.x, e.y - e.r - 8, "突进", C.orange)
             end
-        elseif behavior == "rammer" then
+        elseif behavior == "rammer" or behavior == "rail_charger" then
+            local rail = behavior == "rail_charger"
             e.chargeCooldown = math.max(0, (e.chargeCooldown or randf(0.4, 1.2)) - dt)
             if e.chargeState == "windup" then
                 e.chargeTimer = (e.chargeTimer or 0) - dt
@@ -3225,13 +3446,13 @@ local function updateEnemies(dt)
                 spd = spd * 0.10
                 if e.chargeTimer <= 0 then
                     e.chargeState = "dash"
-                    e.chargeTimer = e.chargeDashTime or 0.44
-                    addText(e.x, e.y - e.r - 10, "冲锋", C.red)
+                    e.chargeTimer = e.chargeDashTime or (rail and 0.52 or 0.44)
+                    addText(e.x, e.y - e.r - 10, rail and "磁轨冲锋" or "冲锋", rail and C.cyan or C.red)
                 end
             elseif e.chargeState == "dash" then
                 e.chargeTimer = (e.chargeTimer or 0) - dt
                 moveAngle = e.chargeAngle or a
-                spd = spd * (e.chargeSpeedMult or 4.4)
+                spd = spd * (e.chargeSpeedMult or (rail and 4.9 or 4.4))
                 if e.chargeTimer <= 0 then
                     e.chargeState = "recover"
                     e.chargeTimer = 0.62
@@ -3243,11 +3464,11 @@ local function updateEnemies(dt)
                 if e.chargeTimer <= 0 then e.chargeState = nil end
             elseif e.enteredArena and e.chargeCooldown <= 0 and distToPlayer < 560 and distToPlayer > 90 then
                 e.chargeState = "windup"
-                e.chargeTimer = 0.74
+                e.chargeTimer = rail and 0.92 or 0.74
                 e.chargeAngle = a
-                e.chargeWarnLength = clamp(distToPlayer + 160, 260, 520)
+                e.chargeWarnLength = clamp(distToPlayer + (rail and 220 or 160), 260, rail and 620 or 520)
                 spd = 0
-                addText(e.x, e.y - e.r - 10, "蓄力", C.red)
+                addText(e.x, e.y - e.r - 10, rail and "磁轨锁线" or "蓄力", rail and C.cyan or C.red)
             else
                 moveAngle = randomWanderAngle(e, dt, 0.60, 1.20, a, 0.42)
                 spd = spd * (e.enteredArena and 0.82 or 1.12)
@@ -3265,8 +3486,9 @@ local function updateEnemies(dt)
         e.y = e.y + math.sin(moveAngle) * spd * dt
         markAndClampEnemyArena(e)
         if distance(e.x, e.y, p.x, p.y) < e.r + p.r then
-            if (e.damage or 0) > 0 then damagePlayer(e.damage * ((e.behavior == "rammer" and e.chargeState == "dash") and 1.45 or 1), (e.behavior == "rammer" and e.chargeState == "dash") and "冲锋撞击" or "敌人碰撞", e.x, e.y, e.color) end
-            if e.behavior == "rammer" and e.chargeState == "dash" then e.chargeState = "recover"; e.chargeTimer = 0.72; e.chargeCooldown = 1.4 end
+            local chargingHit = (e.behavior == "rammer" or e.behavior == "rail_charger") and e.chargeState == "dash"
+            if (e.damage or 0) > 0 then damagePlayer(e.damage * (chargingHit and 1.45 or 1), chargingHit and (e.behavior == "rail_charger" and "磁轨冲锋" or "冲锋撞击") or "敌人碰撞", e.x, e.y, e.color) end
+            if chargingHit then e.chargeState = "recover"; e.chargeTimer = 0.72; e.chargeCooldown = 1.4 end
             e.x = e.x - math.cos(a) * 18
             e.y = e.y - math.sin(a) * 18
             markAndClampEnemyArena(e)
@@ -3318,7 +3540,7 @@ local function updatePlayer(dt)
     if p.shieldDelay > 0 then
         p.shieldDelay = p.shieldDelay - dt
     else
-        p.shield = math.min(p.maxShield, p.shield + p.shieldRegen * bonus.shieldRegenMult * dt)
+        p.shield = math.min(p.maxShield, p.shield + p.shieldRegen * bonus.shieldRegenMult * math.max(0.20, 1 + (p.waveShieldRegenMult or 0)) * dt)
     end
 end
 
@@ -3373,9 +3595,10 @@ local function finalizeWaveReward(reason)
         Game.state = "levelup"
         return
     end
+    local routeAfterReward = finishedWave % CHAPTER_SIZE == 0
     Game.wave = Game.wave + 1
     Game.runStats.highestWave = math.max(Game.runStats.highestWave or 1, Game.wave)
-    Game.pendingRewardNextState = "shop"
+    Game.pendingRewardNextState = routeAfterReward and "route" or "shop"
     Game.state = "levelup"
 end
 
@@ -3442,7 +3665,7 @@ local function updatePlaying(dt)
     Game.spawnTimer = (Game.spawnTimer or 0) - dt
     if Game.spawnTimer <= 0 and not (plan.boss and Game.waveElapsed < 4) then
         spawnPack(plan)
-        local pressure = math.max(0, Game.waveElapsed / SURVIVAL_DURATION)
+        local pressure = math.max(0, Game.waveElapsed / math.max(1, plan.duration or currentSurvivalDuration()))
         local bonus = currentAffixBonuses()
         local curve = survivalEnemyCurve()
         local interval = ((plan.interval or 1.0) * bonus.intervalMult * curve.interval) - pressure * 0.10
@@ -3709,22 +3932,14 @@ function autoplayShouldBuy(item)
         -- 专用测试构筑固定武器/护盾；购物只补模块/战术，避免替换掉测试基线。
         return isPermanentModule(item) or item.kind == "temp"
     end
-    if item.kind == "weapon" and #(Game.player.weapons or {}) >= 4 then return false end
     return true
 end
 
-function autoplayWeaponScore(item, profile)
-    local def = item and (item.weaponDef or (item.id and weaponDefs[item.id]))
+function autoplayWeaponPower(def, profile)
     if not def then return 0 end
+    profile = profile or waveThreatProfile((Game.wave or 1) + 1)
     local total = (def.damage or 0) * math.max(1, def.count or 1)
     local score = 120 + total * 4 + (def.range or 0) * 0.05
-    local weaponCount = #(Game.player.weapons or {})
-    if weaponCount < 3 then
-        -- 自然构筑的前两章先补齐火力骨架；否则自动购买会把材料花到模块槽/消耗品上，Boss 只剩拖时。
-        score = score + 820
-    elseif weaponCount < 4 then
-        score = score + 340
-    end
     if profile.boss > 0 then score = score + total * 5 end
     if (profile.shield or 0) >= 18 and def.element == "arc" then score = score + 210 end
     if (profile.armor or 0) >= 16 and (def.element == "acid" or def.element == "burn") then score = score + 160 end
@@ -3732,6 +3947,36 @@ function autoplayWeaponScore(item, profile)
     if def.brand == "drone" or def.hiveSplit then score = score + 70 end
     if def.pierce and def.pierce > 0 then score = score + def.pierce * 35 end
     if def.bounce and def.bounce > 0 then score = score + def.bounce * 30 end
+    score = score + ((rarityPower and rarityPower[def.rarity]) or 1) * 18 + (def.level or 1) * 9
+    return score
+end
+
+function autoplayWeakestWeapon(profile)
+    local p = Game.player or {}
+    local weakestIndex, weakestWeapon, weakestScore = nil, nil, 999999
+    for i, weapon in ipairs(p.weapons or {}) do
+        local score = autoplayWeaponPower(weapon, profile)
+        if score < weakestScore then weakestIndex, weakestWeapon, weakestScore = i, weapon, score end
+    end
+    return weakestIndex, weakestWeapon, weakestScore
+end
+
+function autoplayWeaponScore(item, profile)
+    local def = item and (item.weaponDef or (item.id and weaponDefs[item.id]))
+    if not def then return 0 end
+    local score = autoplayWeaponPower(def, profile)
+    local weaponCount = #(Game.player.weapons or {})
+    if weaponCount < 3 then
+        -- 自然构筑的前两章先补齐火力骨架；否则自动购买会把材料花到模块槽/消耗品上，Boss 只剩拖时。
+        score = score + 820
+    elseif weaponCount < 4 then
+        score = score + 340
+    else
+        local _, _, weakestScore = autoplayWeakestWeapon(profile)
+        local upgradeDelta = score - (weakestScore or score)
+        if upgradeDelta < 95 then return 0 end
+        score = 240 + upgradeDelta * 2.4
+    end
     return score
 end
 
@@ -3787,6 +4032,24 @@ function autoplayItemScore(item)
     return score
 end
 
+function autoplayPrepareWeaponReplacement(item, score)
+    local p = Game.player or {}
+    if not item or item.kind ~= "weapon" or #(p.weapons or {}) < 4 then return true end
+    local profile = waveThreatProfile((Game.wave or 1) + 1)
+    local def = item.weaponDef or (item.id and weaponDefs[item.id])
+    local candidateScore = autoplayWeaponPower(def, profile)
+    local weakestIndex, weakestWeapon, weakestScore = autoplayWeakestWeapon(profile)
+    if weakestIndex and candidateScore - (weakestScore or 0) >= 95 then
+        local soldName = weakestWeapon and weakestWeapon.name or "旧武器"
+        if sellWeapon(weakestIndex) then
+            Game.autoplayPurchases = Game.autoplayPurchases or {}
+            Game.autoplayPurchases[#Game.autoplayPurchases + 1] = "替换武器：" .. soldName .. "→" .. tostring(item.name or "新武器")
+            return true
+        end
+    end
+    return false
+end
+
 function autoplayUpgradeSlotsIfUseful()
     local p = Game.player
     local cost = itemSlotUpgradeCost()
@@ -3826,7 +4089,7 @@ function autoplayBuyPolicy()
         end
         if not bestIndex or bestScore < 40 then break end
         local name, price = bestItem.name or "商品", bestItem.price or 0
-        if buySlot(bestIndex) then
+        if autoplayPrepareWeaponReplacement(bestItem, bestScore) and buySlot(bestIndex) then
             bought = bought + 1
             Game.autoplayPurchases[#Game.autoplayPurchases + 1] = name .. "@" .. tostring(price) .. "#" .. tostring(math.floor(bestScore + 0.5))
             autoplayUpgradeSlotsIfUseful()
@@ -3844,6 +4107,8 @@ function autoplayUpdate(dt)
         autoplayLine("<!-- start -->")
         return
     end
+    if Game.state == "route_choice" then chooseRoute(1); return end
+    if Game.state == "event_choice" then chooseEvent(1); return end
     if Game.state == "playing" then
         autoplaySetMove()
         Game.autoplayWallClock = (Game.autoplayWallClock or 0) + dt
@@ -4523,14 +4788,15 @@ local function drawWorld()
             love.graphics.setLineWidth(1)
             love.graphics.pop()
         end
-        if e.behavior == "rammer" and e.chargeState == "windup" then
+        if (e.behavior == "rammer" or e.behavior == "rail_charger") and e.chargeState == "windup" then
             local a = e.chargeAngle or angleTo(e.x, e.y, p.x, p.y)
             local len = e.chargeWarnLength or 420
             local x2, y2 = e.x + math.cos(a) * len, e.y + math.sin(a) * len
             local pulse = 0.48 + 0.52 * math.sin((love.timer.getTime() or 0) * 16)
             love.graphics.setBlendMode("add")
             love.graphics.setLineWidth(14)
-            color(C.red, 0.10 + pulse * 0.10)
+            local warnColor = e.behavior == "rail_charger" and C.cyan or C.red
+            color(warnColor, 0.10 + pulse * 0.10)
             love.graphics.line(e.x, e.y, x2, y2)
             love.graphics.setLineWidth(4)
             color(C.red, 0.54 + pulse * 0.28)
@@ -4864,7 +5130,7 @@ function drawMenu()
     drawHeart(cx, cy + 5, 1.22)
     love.graphics.setFont(Game.fonts.normal)
     color(C.white)
-    love.graphics.printf("每小关活过 30 秒，撑完整场战役", cx - 300, cy + 160, 600, "center")
+    love.graphics.printf("开局白板进场，靠局内随机滚出流派", cx - 300, cy + 160, 600, "center")
 
     local deckX, deckY, deckW, deckH = 90, h - 168, w - 180, 126
     love.graphics.setColor(0.012, 0.016, 0.040, 0.78)
@@ -6375,6 +6641,48 @@ function drawClearTransitionOverlay()
     love.graphics.printf("目标完成 · 敌群清空", 0, 168, Game.w, "center")
 end
 
+local function drawChoiceOverlay(kind, title, subtitle, choices)
+    choices = choices or {}
+    local n = math.max(1, #choices)
+    local overlay = kind == "event" and 0.58 or 0.38
+    color(C.bgA, overlay)
+    love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
+    local panelW, panelH = 1480, 430
+    local panelX, panelY = Game.w / 2 - panelW / 2, Game.h / 2 - panelH / 2
+    panel(panelX, panelY, panelW, panelH)
+    love.graphics.setFont(Game.fonts.big)
+    color(C.white)
+    love.graphics.printf(title, panelX + 32, panelY + 28, panelW - 64, "center")
+    love.graphics.setFont(Game.fonts.small)
+    color(C.muted)
+    love.graphics.printf(subtitle, panelX + 60, panelY + 72, panelW - 120, "center")
+    local mx, my = mousePosition()
+    local cardW, cardH, gap = 430, 230, 34
+    local sx, sy = Game.w / 2 - (cardW * n + gap * (n - 1)) / 2, Game.h / 2 - cardH / 2 + 38
+    for i, choice in ipairs(choices) do
+        local x, y = sx + (i - 1) * (cardW + gap), sy
+        local hover = hitRect(mx, my, x, y, cardW, cardH)
+        local accent = i == 1 and C.cyan or (i == 2 and C.gold or C.purple)
+        color(accent, hover and 0.20 or 0.10)
+        love.graphics.rectangle("fill", x, y, cardW, cardH, 18, 18)
+        color(accent, hover and 0.82 or 0.42)
+        love.graphics.setLineWidth(hover and 3 or 2)
+        love.graphics.rectangle("line", x + 0.5, y + 0.5, cardW - 1, cardH - 1, 18, 18)
+        love.graphics.setLineWidth(1)
+        drawCapsule(tostring(i), x + 18, y + 16, 42, 30, {font = Game.fonts.tiny, fg = C.bgA, border = accent, bg = accent, bgAlpha = 0.88, align = "center"})
+        love.graphics.setFont(Game.fonts.small)
+        color(C.white)
+        love.graphics.printf(choice.name or "未知选择", x + 70, y + 18, cardW - 92, "left")
+        love.graphics.setFont(Game.fonts.tiny)
+        color(C.muted)
+        love.graphics.printf(choice.desc or "", x + 24, y + 68, cardW - 48, "left")
+        color(C.red, 0.88)
+        love.graphics.printf("代价：" .. (choice.risk or "无"), x + 24, y + 124, cardW - 48, "left")
+        color(C.gold, 0.92)
+        love.graphics.printf("点击或按 " .. tostring(i) .. " 选择", x + 24, y + cardH - 42, cardW - 48, "center")
+    end
+end
+
 function love.draw()
     love.graphics.clear(C.bgA)
     local scale, vx, vy, sw, sh = viewportTransform()
@@ -6397,12 +6705,14 @@ function love.draw()
     love.graphics.translate(ox, oy)
     drawBackground()
     if Game.state == "menu" then drawMenu(); drawVersion(); love.graphics.pop(); return end
+    if Game.state == "route_choice" then drawChoiceOverlay("route", "选择下一章路线", "Boss 后路线选择：风险与回报一起拿，下一章内生效。", Game.routeChoices); drawVersion(); love.graphics.pop(); return end
     if Game.state == "shop" then drawShop(); drawVersion(); love.graphics.pop(); return end
     if Game.state == "levelup" then drawWorld(); drawHud(); drawLevelUp(); drawVersion(); love.graphics.pop(); return end
     drawWorld()
     drawHud()
     drawCombatWarningOverlay()
     drawClearTransitionOverlay()
+    if Game.state == "event_choice" then drawChoiceOverlay("event", Game.eventChoiceTitle or "中段选择事件", "战斗暂停：选一个本波风险/回报。随机性要让玩家参与，而不是暗箱抽耳光。", Game.eventChoices); drawVersion(); love.graphics.pop(); return end
     if Game.state == "clearing" then drawVersion(); love.graphics.pop(); return end
     if Game.state == "paused" then drawPauseOverlay(); love.graphics.pop(); return end
     if Game.messageTimer > 0 then
@@ -6503,7 +6813,13 @@ function refreshShop()
 end
 
 function handlePointer(x, y)
-    if Game.state == "menu" then
+    if Game.state == "route_choice" then
+        local idx = choiceIndexAt(x, y, #(Game.routeChoices or {}))
+        if idx then chooseRoute(idx); return true end
+    elseif Game.state == "event_choice" then
+        local idx = choiceIndexAt(x, y, #(Game.eventChoices or {}))
+        if idx then chooseEvent(idx); return true end
+    elseif Game.state == "menu" then
         local deckX, deckY, deckW = 90, Game.h - 168, Game.w - 180
         local diffX, diffY, diffW = deckX + deckW - 406, deckY + 18, 378
         if hitRect(x, y, diffX + 18, diffY + 60, 154, 34) then Game.danger = math.max(0, Game.danger - 1); return true end
@@ -6603,6 +6919,19 @@ function love.keypressed(key)
     if key == "space" and Game.state == "playing" then useActiveSkill(); return end
 
     if Game.state == "paused" then return end
+
+    if Game.state == "route_choice" then
+        if key == "1" then chooseRoute(1) end
+        if key == "2" then chooseRoute(2) end
+        if key == "3" then chooseRoute(3) end
+        return
+    end
+    if Game.state == "event_choice" then
+        if key == "1" then chooseEvent(1) end
+        if key == "2" then chooseEvent(2) end
+        if key == "3" then chooseEvent(3) end
+        return
+    end
 
     if Game.state == "menu" then
         if key == "q" then Game.danger = math.max(0, Game.danger - 1); return end
