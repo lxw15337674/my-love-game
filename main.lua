@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.31.86"
+local VERSION = "v2026.05.31.87"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -5240,7 +5240,8 @@ function drawMenu()
     uiButton("‹ Q 降低", diffX + 18, diffY + 60, 154, 34, C.cyan, C.white, Game.fonts.tiny)
     uiButton("E 提高 ›", diffX + diffW - 172, diffY + 60, 154, 34, C.cyan, C.white, Game.fonts.tiny)
 
-    uiButton("开始实验", w / 2 - 140, deckY + 30, 280, 62, C.gold, C.white, Game.fonts.normal)
+    uiButton("开始实验", w / 2 - 140, deckY + 24, 280, 54, C.gold, C.white, Game.fonts.normal)
+    uiButton("图鉴", w / 2 - 90, deckY + 84, 180, 30, C.cyan, C.white, Game.fonts.tiny)
     -- 首页不再提供模式切换，只保留战役模式；难度仍可调整。
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
@@ -5839,16 +5840,14 @@ function drawShopCard(item, i, x, y, w, h)
             {text = rarityText, color = rc, primary = true},
             {text = kindText, color = C.white},
             {text = brand and brand.name or "武器", color = C.white},
-            {text = elem.name, color = elem.color},
-            {text = "羁绊 " .. (synergyTagTextFor and synergyTagTextFor(def) or "无"), color = C.gold}
+            {text = elem.name, color = elem.color}
         }
     else
         local focus = item.mergeKey and ((item.mergeKey:gsub("_core", "")):gsub("_", " ")) or itemLevelText(item)
         cardTags = {
             {text = rarityText, color = rc, primary = true},
             {text = kindText, color = C.white},
-            {text = itemLevelText(item), color = C.white},
-            {text = "羁绊 " .. (synergyTagTextFor and synergyTagTextFor(item) or "无"), color = C.gold}
+            {text = itemLevelText(item), color = C.white}
         }
     end
     love.graphics.setFont(Game.fonts.tiny)
@@ -5869,9 +5868,6 @@ function drawShopCard(item, i, x, y, w, h)
     end
     love.graphics.setFont(Game.fonts.tiny)
     local missing = math.max(0, (item.price or 0) - Game.coins)
-    local statusText = affordable and "状态：可购买" or ("状态：缺材料 " .. missing)
-    color(affordable and C.green or C.red, affordable and 0.92 or 0.88)
-    love.graphics.printf(statusText, x + 18, y + 88, w - 36, "left")
     local reason = itemRecommendationReason(item)
     if reason then
         drawCapsule("推荐", x + w - 74, y + 84, 56, 24, {font = Game.fonts.tiny, fg = C.bgA, border = C.gold, bg = C.gold, bgAlpha = affordable and 0.88 or 0.42, borderAlpha = 0.88, padX = 6})
@@ -5885,43 +5881,28 @@ function drawShopCard(item, i, x, y, w, h)
     love.graphics.rectangle("line", x + 18.5, displayY + 0.5, w - 37, displayH - 1, 12, 12)
 
     love.graphics.setFont(Game.fonts.tiny)
-    local recommendReason = itemRecommendationReason(item)
-    if recommendReason then
-        color(C.gold, 0.92)
-        love.graphics.printf("建议：" .. compactDesc(recommendReason, 28), x + 34, displayY + 8, w - 68, "left")
-    end
     if item.kind == "weapon" and item.id and weaponDefs[item.id] then
         local def = item.weaponDef or weaponDefs[item.id]
         local elem = elements[def.element] or elements.kinetic
         local rows = {
-            {"羁绊", synergyTagTextFor and synergyTagTextFor(def) or "无"},
             {"伤害", tostring(def.damage)},
             {"弹体", tostring(def.count or 1)},
-            {"总伤", tostring((def.damage or 0) * (def.count or 1))},
             {"射程", tostring(math.floor(def.range or 0))},
-            {weaponHasProjectile(def) and "弹速" or "命中", weaponHasProjectile(def) and tostring(math.floor(def.speed or 0)) or weaponDeliveryText(def)},
-            {"元素概率", math.floor(elementStatusChance(def) * 100 + 0.5) .. "% · " .. elem.name},
-            {"元素伤害", elementStatusDamage(def) .. "/s"}
+            {"元素", elem.name}
         }
         for ri, row in ipairs(rows) do
-            local ry = displayY + (recommendReason and 30 or 10) + (ri - 1) * 18
+            local ry = displayY + 10 + (ri - 1) * 20
             if ry + 16 < displayY + displayH then
-                if row[1] == "元素概率" or row[1] == "元素伤害" then
-                    textInBox(row[1], x + 34, ry, 62, 16, Game.fonts.tiny, C.muted, "left")
-                    textInBox(row[2], x + 100, ry, w - 134, 16, Game.fonts.tiny, elem.color, "left")
-                else
-                    textInBox(row[1] .. "  " .. row[2], x + 34, ry, w - 68, 16, Game.fonts.tiny, ri == 1 and C.white or C.muted, "left")
-                end
+                textInBox(row[1], x + 34, ry, 54, 16, Game.fonts.tiny, C.muted, "left")
+                textInBox(row[2], x + 92, ry, w - 126, 16, Game.fonts.tiny, row[1] == "元素" and elem.color or C.white, "left")
             end
         end
     else
-        local effectMode = item.kind == "temp" and "下一波生效" or "永久生效"
-        textInBox(effectMode .. " · " .. kindText .. " · 羁绊 " .. ((synergyTagTextFor and synergyTagTextFor(item)) or "无"), x + 34, displayY + (recommendReason and 30 or 10), w - 68, 18, Game.fonts.tiny, C.white, "left")
         love.graphics.setFont(Game.fonts.tiny)
         local descText = modText(item.desc or "无说明")
         local effectColor = descText:find("%-") and C.red or (descText:find("%+") and C.green or C.muted)
         color(effectColor)
-        love.graphics.printf(descText, x + 34, displayY + (recommendReason and 56 or 36), w - 68, "left")
+        love.graphics.printf(compactDesc(descText, 34), x + 34, displayY + 10, w - 68, "left")
     end
     local buyColor = affordable and C.green or C.red
     local buyBgAlpha = affordable and (hover and 0.34 or 0.18) or 0.10
@@ -6494,8 +6475,7 @@ end
 shopTabs = {
     {id = "shop", label = "商店"},
     {id = "intel", label = "下一波情报"},
-    {id = "slot", label = "补给转轮"},
-    {id = "codex", label = "图鉴"}
+    {id = "slot", label = "补给转轮"}
 }
 
 function drawShopTabs(x, y)
@@ -6664,7 +6644,7 @@ function drawShop()
     love.graphics.setFont(Game.fonts.normal)
     color(C.white)
     local infoX, infoW = 590, actionX - 610
-    love.graphics.printf("商店 / " .. chapterWaveLabel(clearedWave) .. " 战后补给", infoX, 38, infoW, "center")
+    love.graphics.printf("商店 · " .. chapterWaveLabel(clearedWave), infoX, 38, infoW, "center")
     love.graphics.setFont(Game.fonts.tiny)
     color(C.muted)
     local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
@@ -6685,8 +6665,6 @@ function drawShop()
         tip = drawNextWavePanel(marginX, contentY, Game.w - marginX * 2, contentH)
     elseif active == "slot" then
         drawSlotTabContent(marginX, contentY, Game.w - marginX * 2, contentH)
-    elseif active == "codex" then
-        drawCodexPanel(marginX, contentY, Game.w - marginX * 2, contentH)
     else
         local gap = 28
         local sideW = 430
@@ -6712,7 +6690,7 @@ function drawShop()
         color(C.white, 0.16)
         love.graphics.rectangle("fill", marginX, weaponY + cardH + 10, shelfW, 8, 4, 4)
         color(C.white)
-        love.graphics.printf("装备箱 · 模块 / 护盾 / 战术", marginX, supportY - 34, shelfW, "left")
+        love.graphics.printf("装备箱", marginX, supportY - 34, shelfW, "left")
         color(C.white, 0.07)
         love.graphics.rectangle("fill", marginX, supportY - 8, shelfW, 10, 5, 5)
         color(C.white, 0.14)
@@ -6851,6 +6829,7 @@ function love.draw()
     love.graphics.translate(ox, oy)
     drawBackground()
     if Game.state == "menu" then drawMenu(); drawVersion(); love.graphics.pop(); return end
+    if Game.state == "codex" then drawCodexPanel(90, 92, Game.w - 180, Game.h - 170); uiButton("返回主菜单", Game.w / 2 - 130, Game.h - 70, 260, 44, C.cyan, C.white, Game.fonts.small); drawVersion(); love.graphics.pop(); return end
     if Game.state == "route_choice" then drawChoiceOverlay("route", "选择下一章路线", "Boss 后路线选择：风险与回报一起拿，下一章内生效。", Game.routeChoices); drawVersion(); love.graphics.pop(); return end
     if Game.state == "shop" then drawShop(); drawVersion(); love.graphics.pop(); return end
     if Game.state == "levelup" then drawWorld(); drawHud(); drawLevelUp(); drawVersion(); love.graphics.pop(); return end
@@ -6970,7 +6949,10 @@ function handlePointer(x, y)
         local diffX, diffY, diffW = deckX + deckW - 406, deckY + 18, 378
         if hitRect(x, y, diffX + 18, diffY + 60, 154, 34) then Game.danger = math.max(0, Game.danger - 1); return true end
         if hitRect(x, y, diffX + diffW - 172, diffY + 60, 154, 34) then Game.danger = math.min(6, Game.danger + 1); return true end
-        if hitRect(x, y, Game.w / 2 - 140, deckY + 30, 280, 62) then resetRun(); return true end
+        if hitRect(x, y, Game.w / 2 - 140, deckY + 24, 280, 54) then resetRun(); return true end
+        if hitRect(x, y, Game.w / 2 - 90, deckY + 84, 180, 30) then Game.state = "codex"; return true end
+    elseif Game.state == "codex" then
+        if hitRect(x, y, Game.w / 2 - 130, Game.h - 70, 260, 44) then Game.state = "menu"; return true end
     elseif Game.state == "levelup" then
         local w, h, gap = 330, 206, 34
         local sx = Game.w / 2 - (w * 3 + gap * 2) / 2
@@ -7058,6 +7040,7 @@ function love.keypressed(key)
     if key == "escape" then
         if Game.state == "playing" then Game.state = "paused"; toast("已暂停"); return end
         if Game.state == "paused" then Game.state = "playing"; toast("继续战斗"); return end
+        if Game.state == "codex" then Game.state = "menu"; return end
         if Game.state == "gameover" or Game.state == "victory" then Game.state = "menu"; return end
         love.event.quit()
     end
@@ -7093,6 +7076,7 @@ function love.keypressed(key)
 
     if key == "return" or key == "kpenter" then
         if Game.state == "menu" then resetRun()
+        elseif Game.state == "codex" then Game.state = "menu"
         elseif Game.state == "gameover" or Game.state == "victory" then Game.state = "menu"
         elseif Game.state == "shop" then startWave() end
     end
@@ -7103,7 +7087,7 @@ function love.keypressed(key)
         if key == "4" then buySlot(4) end
         if key == "5" then buySlot(5) end
         if key == "6" then buySlot(6) end
-        if key == "tab" then Game.shopTab = Game.shopTab == "codex" and "shop" or "codex"; return end
+        if key == "tab" then Game.shopTab = (Game.shopTab == "shop") and "intel" or ((Game.shopTab == "intel") and "slot" or "shop"); return end
         if key == "e" then recycleWeapon() end
         if key == "u" then upgradeItemSlots() end
         if key == "s" then spinSlotMachine(); return end
