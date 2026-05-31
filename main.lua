@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.31.85"
+local VERSION = "v2026.05.31.86"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -5990,25 +5990,14 @@ local sellWeapon, sellShield, sellItem
 
 function buildAttributeGroups(p)
     local stats = p.stats or {}
-    local extraProjectile = (p.gear and p.gear.extraProjectile) or 0
-    local synergyText = p.synergySummary or "未成型"
-    if #synergyText > 18 then synergyText = compactDesc(synergyText, 18) end
     return {
         {title = "生存", color = C.pink, rows = {
             "生命 " .. math.ceil(p.hp or 0) .. "/" .. tostring(p.maxHp or 0) .. " · 护盾 " .. math.ceil(p.shield or 0) .. "/" .. tostring(p.maxShield or 0),
             "回复 " .. string.format("%.1f", p.shieldRegen or 0) .. "/s · 移速 " .. tostring(math.floor(p.speed or 0))
         }},
-        {title = "输出", color = C.gold, rows = {
+        {title = "攻击", color = C.gold, rows = {
             "伤害 " .. pct(stats.damage or 1) .. " · 射速 " .. pct(stats.fireRate or 1),
             "暴击 " .. pct(stats.crit or 0) .. " · 暴伤 " .. pct(stats.critDamage or 1)
-        }},
-        {title = "手感", color = C.cyan, rows = {
-            "射程 " .. pct(stats.range or 1) .. " · 弹速 " .. pct(stats.projectileSpeed or 1),
-            "弹体 " .. (extraProjectile > 0 and ("+" .. tostring(extraProjectile)) or "基准") .. " · 武器 " .. tostring(#(p.weapons or {})) .. "/" .. tostring(WEAPON_SLOT_MAX)
-        }},
-        {title = "构筑", color = C.green, rows = {
-            "元素 " .. pct(stats.elementDamage or 1) .. " · 附着 " .. pct(stats.elementChance or 0),
-            "爆炸 " .. pct(stats.explosiveDamage or 1) .. " · 羁绊 " .. synergyText
         }}
     }
 end
@@ -6042,6 +6031,33 @@ function drawAttributeSummaryRow(group, x, y, w, h)
     love.graphics.printf(text, x + 54, y + 5, w - 64, "left")
 end
 
+function compactAttributeCards(p)
+    local stats = p.stats or {}
+    return {
+        {label = "生命", value = math.ceil(p.hp or 0) .. "/" .. tostring(p.maxHp or 0), color = C.pink},
+        {label = "护盾", value = math.ceil(p.shield or 0) .. "/" .. tostring(p.maxShield or 0), color = C.cyan},
+        {label = "回复", value = string.format("%.1f/s", p.shieldRegen or 0), color = C.blue},
+        {label = "移速", value = tostring(math.floor(p.speed or 0)), color = C.green},
+        {label = "伤害", value = pct(stats.damage or 1), color = C.gold},
+        {label = "射速", value = pct(stats.fireRate or 1), color = C.orange},
+        {label = "暴击", value = pct(stats.crit or 0), color = C.gold},
+        {label = "暴伤", value = pct(stats.critDamage or 1), color = C.red}
+    }
+end
+
+function drawCompactStatTile(stat, x, y, w, h)
+    local c = stat.color or C.white
+    color(c, 0.12)
+    love.graphics.rectangle("fill", x, y, w, h, 8, 8)
+    color(c, 0.38)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, 8, 8)
+    love.graphics.setFont(Game.fonts.tiny)
+    color(C.muted)
+    love.graphics.printf(stat.label or "属性", x + 8, y + 6, 42, "left")
+    color(C.white)
+    love.graphics.printf(stat.value or "-", x + 54, y + 6, w - 64, "right")
+end
+
 function drawCompactBuildPanel(x, y, w, h, opts)
     local p = Game.player
     opts = opts or {}
@@ -6060,22 +6076,21 @@ function drawCompactBuildPanel(x, y, w, h, opts)
     color(C.muted)
     love.graphics.printf("槽位总览 · 模块在下方滚动", x + 108, y + 13, w - 122, "right")
 
-    local vitalW = (w - 36) / 2
-    color(C.pink, 0.20)
-    love.graphics.rectangle("fill", x + 14, y + 36, vitalW, 28, 10, 10)
-    color(C.cyan, 0.20)
-    love.graphics.rectangle("fill", x + 22 + vitalW, y + 36, vitalW, 28, 10, 10)
-    textInBox("生命 " .. math.ceil(p.hp) .. "/" .. p.maxHp, x + 18, y + 36, vitalW - 8, 28, Game.fonts.tiny, C.white, "center")
-    textInBox("护盾 " .. math.ceil(p.shield) .. "/" .. p.maxShield, x + 26 + vitalW, y + 36, vitalW - 8, 28, Game.fonts.tiny, C.white, "center")
-
-    local groups = buildAttributeGroups(p)
-    for i, group in ipairs(groups) do
-        drawAttributeSummaryRow(group, x + 14, y + 74 + (i - 1) * 24, w - 28, 20)
+    color(C.gold)
+    love.graphics.printf("基础属性", x + 14, y + 38, w - 28, "left")
+    color(C.muted)
+    love.graphics.printf("生存 / 攻击", x + 14, y + 38, w - 28, "right")
+    local stats = compactAttributeCards(p)
+    local tileW, tileH, tileGap = (w - 40 - 10) / 2, 30, 7
+    for i, stat in ipairs(stats) do
+        local sx = x + 14 + ((i - 1) % 2) * (tileW + 10)
+        local sy = y + 66 + math.floor((i - 1) / 2) * (tileH + tileGap)
+        drawCompactStatTile(stat, sx, sy, tileW, tileH)
     end
 
     local slotW = (w - 44) / 2
     local slotGap = 12
-    local weaponLabelY = y + 188
+    local weaponLabelY = y + 224
     color(C.white, 0.12)
     love.graphics.rectangle("fill", x + 14, weaponLabelY - 12, w - 28, 1)
     color(C.orange)
@@ -6115,7 +6130,7 @@ function drawCompactBuildPanel(x, y, w, h, opts)
         end
     end
 
-    local shieldLabelY = y + 276
+    local shieldLabelY = weaponY + 2 * 52 + 22
     color(C.white, 0.12)
     love.graphics.rectangle("fill", x + 14, shieldLabelY - 12, w - 28, 1)
     color(C.cyan)
