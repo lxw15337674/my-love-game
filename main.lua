@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.31.84"
+local VERSION = "v2026.05.31.85"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -117,6 +117,7 @@ local CAMPAIGN_WAVES = CHAPTER_SIZE * #CHAPTER_NAMES
 local AVERAGE_RUN_TARGET_WAVE = Balance.average_run_target_wave or 30
 ITEM_SLOT_BASE = Balance.item_slot_base or 6
 ITEM_SLOT_MAX = Balance.item_slot_max or 12
+WEAPON_SLOT_MAX = 4
 
 local Game = {
     w = VIRTUAL_W,
@@ -1486,7 +1487,7 @@ end
 local function addWeapon(def)
     stampItemLevel(def)
     local p = Game.player
-    if #p.weapons >= 4 then
+    if #p.weapons >= WEAPON_SLOT_MAX then
         toast("武器槽已满：先卖掉一把旧武器")
         return false
     end
@@ -4110,7 +4111,7 @@ end
 
 function autoplayPrepareWeaponReplacement(item, score)
     local p = Game.player or {}
-    if not item or item.kind ~= "weapon" or #(p.weapons or {}) < 4 then return true end
+    if not item or item.kind ~= "weapon" or #(p.weapons or {}) < WEAPON_SLOT_MAX then return true end
     local profile = waveThreatProfile((Game.wave or 1) + 1)
     local def = item.weaponDef or (item.id and weaponDefs[item.id])
     local candidateScore = autoplayWeaponPower(def, profile)
@@ -5959,19 +5960,17 @@ function drawBuildPanel(x, y, w, h)
     love.graphics.printf("当前构筑", x, y + 14, w, "center")
 
     love.graphics.setFont(Game.fonts.tiny)
-    local rows = {
-        {"伤害", pct(p.stats.damage)}, {"射速", pct(p.stats.fireRate)}, {"暴击", pct(p.stats.crit)},
-        {"暴伤", pct(p.stats.critDamage)}, {"射程", pct(p.stats.range)}, {"弹速", pct(p.stats.projectileSpeed)},
-        {"元素", pct(p.stats.elementDamage or 1)}, {"吸血", pct(p.stats.lifesteal)}
-    }
-    for i, row in ipairs(rows) do
-        local rowY = y + 54 + (i - 1) * 32
-        local rowH = 24
-        color(C.white, 0.08)
-        love.graphics.rectangle("fill", x + 14, rowY, w - 28, rowH, 7, 7)
-        centeredText(row[1], x + 26, rowY, 76, rowH, Game.fonts.tiny, C.muted, "left")
-        centeredText(tostring(row[2]), x + 104, rowY, w - 138, rowH, Game.fonts.tiny, C.white, "right")
+    local groups = buildAttributeGroups(p)
+    local groupW, groupH, gap = (w - 42) / 2, 66, 10
+    for i, group in ipairs(groups) do
+        local gx = x + 14 + ((i - 1) % 2) * (groupW + gap)
+        local gy = y + 54 + math.floor((i - 1) / 2) * (groupH + gap)
+        drawAttributeGroupBox(group, gx, gy, groupW, groupH, false)
     end
+    local resourceY = y + 54 + 2 * (groupH + gap) + 8
+    color(C.white, 0.08)
+    love.graphics.rectangle("fill", x + 14, resourceY, w - 28, 34, 8, 8)
+    textInBox("吸血 " .. pct(p.stats.lifesteal or 0) .. " · 经济 " .. pct(p.stats.economy or 1) .. " · 拾取 " .. tostring(math.floor(p.pickup or 0)) .. " · 模块 " .. tostring(#(p.items or {})) .. "/" .. tostring(p.itemSlots or ITEM_SLOT_BASE), x + 24, resourceY, w - 48, 34, Game.fonts.tiny, C.white, "center")
 
     local wy = y + h - 84
     color(C.white, 0.12)
@@ -5982,12 +5981,66 @@ function drawBuildPanel(x, y, w, h)
     local names = {}
     for i, weapon in ipairs(p.weapons) do
         names[#names + 1] = weapon.name
-        if i >= 4 then break end
+        if i >= WEAPON_SLOT_MAX then break end
     end
     love.graphics.printf(table.concat(names, " / "), x + 16, wy + 22, w - 32, "center")
 end
 
 local sellWeapon, sellShield, sellItem
+
+function buildAttributeGroups(p)
+    local stats = p.stats or {}
+    local extraProjectile = (p.gear and p.gear.extraProjectile) or 0
+    local synergyText = p.synergySummary or "未成型"
+    if #synergyText > 18 then synergyText = compactDesc(synergyText, 18) end
+    return {
+        {title = "生存", color = C.pink, rows = {
+            "生命 " .. math.ceil(p.hp or 0) .. "/" .. tostring(p.maxHp or 0) .. " · 护盾 " .. math.ceil(p.shield or 0) .. "/" .. tostring(p.maxShield or 0),
+            "回复 " .. string.format("%.1f", p.shieldRegen or 0) .. "/s · 移速 " .. tostring(math.floor(p.speed or 0))
+        }},
+        {title = "输出", color = C.gold, rows = {
+            "伤害 " .. pct(stats.damage or 1) .. " · 射速 " .. pct(stats.fireRate or 1),
+            "暴击 " .. pct(stats.crit or 0) .. " · 暴伤 " .. pct(stats.critDamage or 1)
+        }},
+        {title = "手感", color = C.cyan, rows = {
+            "射程 " .. pct(stats.range or 1) .. " · 弹速 " .. pct(stats.projectileSpeed or 1),
+            "弹体 " .. (extraProjectile > 0 and ("+" .. tostring(extraProjectile)) or "基准") .. " · 武器 " .. tostring(#(p.weapons or {})) .. "/" .. tostring(WEAPON_SLOT_MAX)
+        }},
+        {title = "构筑", color = C.green, rows = {
+            "元素 " .. pct(stats.elementDamage or 1) .. " · 附着 " .. pct(stats.elementChance or 0),
+            "爆炸 " .. pct(stats.explosiveDamage or 1) .. " · 羁绊 " .. synergyText
+        }}
+    }
+end
+
+function drawAttributeGroupBox(group, x, y, w, h, compact)
+    local c = group.color or C.white
+    color(c, 0.13)
+    love.graphics.rectangle("fill", x, y, w, h, compact and 8 or 10, compact and 8 or 10)
+    color(c, 0.42)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, compact and 8 or 10, compact and 8 or 10)
+    love.graphics.setFont(Game.fonts.tiny)
+    color(c)
+    love.graphics.printf(group.title or "属性", x + 8, y + 5, w - 16, "left")
+    color(C.white)
+    love.graphics.printf(compactDesc(group.rows[1] or "", compact and 21 or 32), x + 8, y + (compact and 20 or 24), w - 16, "left")
+    color(C.muted)
+    love.graphics.printf(compactDesc(group.rows[2] or "", compact and 21 or 32), x + 8, y + (compact and 35 or 42), w - 16, "left")
+end
+
+function drawAttributeSummaryRow(group, x, y, w, h)
+    local c = group.color or C.white
+    color(c, 0.10)
+    love.graphics.rectangle("fill", x, y, w, h, 7, 7)
+    color(c, 0.34)
+    love.graphics.rectangle("line", x + 0.5, y + 0.5, w - 1, h - 1, 7, 7)
+    love.graphics.setFont(Game.fonts.tiny)
+    color(c)
+    love.graphics.printf(group.title or "属性", x + 8, y + 5, 42, "left")
+    color(C.white)
+    local text = compactDesc((group.rows[1] or "") .. " · " .. (group.rows[2] or ""), 38)
+    love.graphics.printf(text, x + 54, y + 5, w - 64, "left")
+end
 
 function drawCompactBuildPanel(x, y, w, h, opts)
     local p = Game.player
@@ -6015,25 +6068,20 @@ function drawCompactBuildPanel(x, y, w, h, opts)
     textInBox("生命 " .. math.ceil(p.hp) .. "/" .. p.maxHp, x + 18, y + 36, vitalW - 8, 28, Game.fonts.tiny, C.white, "center")
     textInBox("护盾 " .. math.ceil(p.shield) .. "/" .. p.maxShield, x + 26 + vitalW, y + 36, vitalW - 8, 28, Game.fonts.tiny, C.white, "center")
 
-    local stats = {{"伤害", pct(p.stats.damage)}, {"射速", pct(p.stats.fireRate)}, {"暴击", pct(p.stats.crit)}, {"元素", pct(p.stats.elementDamage or 1)}}
-    local statW, statGap = (w - 40 - 18) / 2, 6
-    for i, row in ipairs(stats) do
-        local sx = x + 14 + ((i - 1) % 2) * (statW + 18)
-        local sy = y + 76 + math.floor((i - 1) / 2) * (20 + statGap)
-        color(C.white, 0.055)
-        love.graphics.rectangle("fill", sx, sy, statW, 20, 6, 6)
-        textInBox(row[1] .. "  " .. row[2], sx + 8, sy, statW - 16, 20, Game.fonts.tiny, C.white, "center")
+    local groups = buildAttributeGroups(p)
+    for i, group in ipairs(groups) do
+        drawAttributeSummaryRow(group, x + 14, y + 74 + (i - 1) * 24, w - 28, 20)
     end
 
     local slotW = (w - 44) / 2
     local slotGap = 12
-    local weaponLabelY = y + 136
+    local weaponLabelY = y + 188
     color(C.white, 0.12)
     love.graphics.rectangle("fill", x + 14, weaponLabelY - 12, w - 28, 1)
     color(C.orange)
-    love.graphics.printf("武器槽 " .. #p.weapons .. "/4", x + 14, weaponLabelY, w - 28, "left")
+    love.graphics.printf("武器槽 " .. #p.weapons .. "/" .. tostring(WEAPON_SLOT_MAX), x + 14, weaponLabelY, w - 28, "left")
     local weaponY = weaponLabelY + 28
-    for i = 1, 4 do
+    for i = 1, WEAPON_SLOT_MAX do
         local weapon = p.weapons[i]
         local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
         local sy = weaponY + math.floor((i - 1) / 2) * 52
@@ -6171,7 +6219,7 @@ function handleBuildPanelClick(px, py, x, y, w, h)
     local slotW = (w - 44) / 2
     local slotGap = 12
     local weaponY = y + 164
-    for i = 1, 4 do
+    for i = 1, WEAPON_SLOT_MAX do
         local weapon = p.weapons[i]
         local sx = x + 14 + ((i - 1) % 2) * (slotW + slotGap)
         local sy = weaponY + math.floor((i - 1) / 2) * 52
@@ -6606,7 +6654,7 @@ function drawShop()
     color(C.muted)
     local shieldText = Game.player.shieldItem and "护盾槽 1/1" or "护盾槽 0/1"
     local incomeText = Game.lastWaveIncome and ("上波收入 +" .. Game.lastWaveIncome .. " · ") or ""
-    love.graphics.printf("当前材料 ◆" .. Game.coins .. " · " .. incomeText .. shopBudgetHint() .. " · 武器槽 " .. #Game.player.weapons .. "/4 · " .. shieldText .. " · 模块槽 Lv." .. (Game.player.itemSlotLevel or 1) .. " " .. #(Game.player.items or {}) .. "/" .. (Game.player.itemSlots or ITEM_SLOT_BASE), infoX, 74, infoW, "center")
+    love.graphics.printf("当前材料 ◆" .. Game.coins .. " · " .. incomeText .. shopBudgetHint() .. " · 武器槽 " .. #Game.player.weapons .. "/" .. tostring(WEAPON_SLOT_MAX) .. " · " .. shieldText .. " · 模块槽 Lv." .. (Game.player.itemSlotLevel or 1) .. " " .. #(Game.player.items or {}) .. "/" .. (Game.player.itemSlots or ITEM_SLOT_BASE), infoX, 74, infoW, "center")
 
     local rerollCost = 3 + Game.shopRefresh * 2
     uiButton("进入下一波", actionX, actionY, nextW, actionH, C.gold, C.white, Game.fonts.small)
