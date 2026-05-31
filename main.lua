@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.31.83"
+local VERSION = "v2026.05.31.84"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -1524,32 +1524,75 @@ end
 local function addTempBuff(item)
     local buff = item.buff or {}
     Game.tempBuffs[#Game.tempBuffs + 1] = buff
-    playCue("shop"); toast("战术道具已备好：" .. item.name)
+    playCue("shop"); toast("战术模块已备好：" .. item.name)
     return true
+end
+
+synergyTagDefs = {
+    {id = "barrage", name = "弹幕", color = C.cyan},
+    {id = "element", name = "元素", color = C.orange},
+    {id = "shield", name = "护盾", color = C.blue},
+    {id = "drone", name = "召唤", color = C.green},
+    {id = "crit", name = "暴击", color = C.gold},
+    {id = "explosive", name = "爆炸", color = C.red},
+    {id = "void", name = "黑箱", color = C.purple}
+}
+
+local synergyTagById = {}
+for _, tag in ipairs(synergyTagDefs) do synergyTagById[tag.id] = tag end
+
+local function addSynergyTag(tags, id)
+    if id then tags[id] = true end
+end
+
+function tagsForBuildObject(obj)
+    local tags = {}
+    if not obj then return tags end
+    for _, tag in ipairs(obj.tags or {}) do addSynergyTag(tags, tag) end
+    local text = ((obj.name or "") .. " " .. (obj.desc or "") .. " " .. (obj.family or "") .. " " .. (obj.kind or ""))
+    if obj.effects then
+        for _, effect in ipairs(obj.effects or {}) do
+            local label = effect.roll and effect.roll.label or ""
+            if label == "伤害" or label == "射速" or label == "弹速" then addSynergyTag(tags, "barrage") end
+            if label == "元素" or label == "附着" then addSynergyTag(tags, "element") end
+            if label == "暴击" or label == "暴伤" then addSynergyTag(tags, "crit") end
+            if label == "生命" or label == "吸血" then addSynergyTag(tags, "shield") end
+            if label == "回收" or label == "拾取" then addSynergyTag(tags, "void") end
+        end
+    end
+    if obj.brand == "swarm" or (obj.count or 1) >= 3 or text:find("弹幕") or text:find("多弹") or text:find("弹体") or text:find("射速") or text:find("弹速") then addSynergyTag(tags, "barrage") end
+    if (obj.element and obj.element ~= "kinetic") or text:find("元素") or text:find("附着") or text:find("灼烧") or text:find("腐蚀") or text:find("霜冻") or text:find("电弧") or text:find("电击") then addSynergyTag(tags, "element") end
+    if obj.kind == "shield" or text:find("护盾") or text:find("生命") or obj.shieldCap or obj.shieldRegen then addSynergyTag(tags, "shield") end
+    if obj.brand == "drone" or obj.hiveSplit or text:find("无人机") or text:find("蜂群") or text:find("召唤") then addSynergyTag(tags, "drone") end
+    if obj.brand == "starforge" or (obj.critBonus or 0) > 0 or text:find("暴击") or text:find("暴伤") or text:find("弱点") or text:find("瞄准") then addSynergyTag(tags, "crit") end
+    if obj.splash or obj.fireSplash or text:find("爆") or text:find("燃烧") or text:find("熔火") then addSynergyTag(tags, "explosive") end
+    if obj.brand == "blackbox" or obj.element == "void" or obj.voidSlow or obj.aura or text:find("黑箱") or text:find("虚空") or text:find("代价") or text:find("回收") then addSynergyTag(tags, "void") end
+    return tags
+end
+
+function synergyTagTextFor(item)
+    local tags = tagsForBuildObject(item)
+    local out = {}
+    for _, def in ipairs(synergyTagDefs) do if tags[def.id] then out[#out + 1] = def.name end end
+    return #out > 0 and table.concat(out, "/") or "无"
 end
 
 applyBuildSynergies = function()
     local p = Game.player
     if not p or not p.stats then return end
-    local arc, crit, explosive, burn, shield, drone = 0, 0, 0, 0, p.shieldItem and 1 or 0, 0
-    for _, w in ipairs(p.weapons or {}) do
-        if w.element == "arc" or w.brand == "echo" then arc = arc + 1 end
-        if w.brand == "starforge" or (w.crit or 0) > 0 or (w.name or ""):find("星针") then crit = crit + 1 end
-        if w.splash or w.element == "burn" or w.brand == "molten" then explosive = explosive + 1 end
-        if w.element == "burn" then burn = burn + 1 end
-        if w.brand == "drone" or w.hiveSplit then drone = drone + 1 end
-    end
-    local moduleKeys = {}
-    for _, item in ipairs(p.items or {}) do
-        local desc = (item.name or "") .. " " .. (item.desc or "")
-        moduleKeys[mergeKeyForItem(item)] = true
-        if desc:find("电弧") or desc:find("弹射") then arc = arc + 1 end
-        if desc:find("暴击") or desc:find("暴伤") then crit = crit + 1 end
-        if desc:find("爆") or desc:find("燃") then explosive = explosive + 1 end
-        if desc:find("护盾") then shield = shield + 1 end
-        if desc:find("无人机") or desc:find("蜂群") or desc:find("召唤") then drone = drone + 1 end
-    end
     p.synergies = {}
+    p.synergyTags = {barrage = 0, element = 0, shield = p.shieldItem and 1 or 0, drone = 0, crit = 0, explosive = 0, void = 0}
+    local moduleKeys = {}
+    for _, w in ipairs(p.weapons or {}) do
+        for tag in pairs(tagsForBuildObject(w)) do p.synergyTags[tag] = (p.synergyTags[tag] or 0) + 1 end
+    end
+    if p.shieldItem then
+        for tag in pairs(tagsForBuildObject(p.shieldItem)) do p.synergyTags[tag] = (p.synergyTags[tag] or 0) + 1 end
+    end
+    for _, item in ipairs(p.items or {}) do
+        moduleKeys[mergeKeyForItem(item)] = true
+        for tag in pairs(tagsForBuildObject(item)) do p.synergyTags[tag] = (p.synergyTags[tag] or 0) + 1 end
+    end
     for _, combo in ipairs(moduleCombos or {}) do
         local ok = true
         for _, req in ipairs(combo.requires or {}) do
@@ -1560,26 +1603,52 @@ applyBuildSynergies = function()
             p.synergies[#p.synergies + 1] = "模块组合·" .. (combo.name or combo.id or "组合") .. "：" .. comboBonusText(combo)
         end
     end
-    if arc >= 2 then
-        p.gear.autoArc = true
-        p.synergies[#p.synergies + 1] = "电弧2：弹射+1/追踪电弧"
+    local function add(tag, tier, text)
+        local def = synergyTagById[tag]
+        p.synergies[#p.synergies + 1] = (def and def.name or tag) .. tostring(tier) .. "：" .. text
     end
-    if crit >= 3 then
-        p.gear.critRicochet = true
-        p.synergies[#p.synergies + 1] = "暴击3：暴击击杀弹射"
+    local barrage = p.synergyTags.barrage or 0
+    if barrage >= 2 then p.stats.fireRate = p.stats.fireRate + 0.06; add("barrage", 2, "射速+6%") end
+    if barrage >= 4 then p.gear.extraProjectile = (p.gear.extraProjectile or 0) + 1; add("barrage", 4, "弹体+1") end
+    if barrage >= 6 then p.stats.projectileSpeed = p.stats.projectileSpeed + 0.16; add("barrage", 6, "弹速+16%") end
+
+    local element = p.synergyTags.element or 0
+    if element >= 2 then p.stats.elementChance = (p.stats.elementChance or 0) + 0.07; add("element", 2, "附着+7%") end
+    if element >= 4 then p.stats.elementDamage = (p.stats.elementDamage or 1) + 0.15; add("element", 4, "元素伤害+15%") end
+    if element >= 6 then p.gear.elementSpread = true; add("element", 6, "异常击杀扩散") end
+
+    local shield = p.synergyTags.shield or 0
+    if shield >= 2 then p.shieldRegen = p.shieldRegen + 1.0; add("shield", 2, "护盾回复+1") end
+    if shield >= 4 then p.maxShield = p.maxShield + 22; p.shield = math.min(p.maxShield, p.shield + 22); add("shield", 4, "护盾上限+22") end
+    if shield >= 6 then p.gear.shieldBurst = true; p.gear.killShield = true; add("shield", 6, "破盾脉冲+击杀回盾") end
+
+    local drone = p.synergyTags.drone or 0
+    if drone >= 2 then p.gear.droneSwarm = true; add("drone", 2, "周期支援齐射") end
+    if drone >= 4 then p.gear.droneSplit = true; add("drone", 4, "无人机分裂") end
+    if drone >= 6 then p.stats.fireRate = p.stats.fireRate + 0.10; add("drone", 6, "母巢过载") end
+
+    local crit = p.synergyTags.crit or 0
+    if crit >= 2 then p.stats.crit = p.stats.crit + 0.05; add("crit", 2, "暴击+5%") end
+    if crit >= 4 then p.gear.critRicochet = true; add("crit", 4, "暴击击杀弹射") end
+    if crit >= 6 then p.gear.blink = true; add("crit", 6, "暴击击杀蓄必暴") end
+
+    local explosive = p.synergyTags.explosive or 0
+    if explosive >= 2 then p.stats.explosiveDamage = (p.stats.explosiveDamage or 1) + 0.12; add("explosive", 2, "爆炸伤害+12%") end
+    if explosive >= 4 then p.gear.fireSplash = true; add("explosive", 4, "爆炸追加燃烧") end
+    if explosive >= 6 then p.gear.killBurst = true; add("explosive", 6, "击杀爆裂") end
+
+    local void = p.synergyTags.void or 0
+    if void >= 2 then p.stats.range = p.stats.range + 0.08; add("void", 2, "射程+8%") end
+    if void >= 4 then p.stats.economy = p.stats.economy + 0.10; add("void", 4, "材料回收+10%") end
+    if void >= 6 then p.gear.autoArc = true; p.gear.echoOverdrive = true; add("void", 6, "黑箱追踪电弧") end
+
+    if shield >= 1 and element >= 1 then p.gear.shieldArcAura = true end
+    local summary = {}
+    for _, def in ipairs(synergyTagDefs) do
+        local count = p.synergyTags[def.id] or 0
+        if count >= 2 then summary[#summary + 1] = def.name .. count end
     end
-    if shield >= 1 and arc >= 1 then
-        p.gear.shieldArcAura = true
-        p.synergies[#p.synergies + 1] = "护盾+电弧：满盾周期电击"
-    end
-    if explosive >= 2 and burn >= 1 then
-        p.gear.fireSplash = true
-        p.synergies[#p.synergies + 1] = "爆炸+燃烧：爆炸追加灼烧"
-    end
-    if drone >= 2 then
-        p.gear.droneSwarm = true
-        p.synergies[#p.synergies + 1] = "无人机2：周期支援齐射"
-    end
+    p.synergySummary = #summary > 0 and table.concat(summary, " / ") or "未成型"
 end
 
 rebuildPlayerBuildStats = function()
@@ -2491,6 +2560,13 @@ local function killEnemy(e)
         for _, other in ipairs(Game.enemies) do
             if other ~= e and distance(e.x, e.y, other.x, other.y) < 120 then other.corrosion = math.min(6, (other.corrosion or 0) + 2) end
         end
+    end
+    if p.gear.elementSpread and e.lastElement and e.lastElement ~= "kinetic" then
+        local dot = math.max(4, (e.burnDamage or e.shockDamage or e.corrosionDot or e.voidDamage or 4) * 0.55)
+        for _, other in ipairs(Game.enemies) do
+            if other ~= e and distance(e.x, e.y, other.x, other.y) < 135 then applyElementStatus(other, e.lastElement, dot, "元素羁绊扩散", 1.0) end
+        end
+        burst(e.x, e.y, (elements[e.lastElement] and elements[e.lastElement].color) or C.purple, 16, 160)
     end
     if p.gear.critRicochet and e.lastCrit then
         local other = nearestEnemy(e.x, e.y, 180)
@@ -5537,6 +5613,8 @@ function weaponTooltip(weapon, titlePrefix, compareWeapon)
     for _, part in ipairs(weapon.parts or {}) do affixNames[#affixNames + 1] = part.tag or part.name end
     for _, tag in ipairs(weapon.affixTags or {}) do affixNames[#affixNames + 1] = tag end
     if weapon.legendaryDesc then affixNames[#affixNames + 1] = weapon.legendaryTitle or "传说协议" end
+    local tagText = synergyTagTextFor and synergyTagTextFor(weapon) or "无"
+    lines[#lines + 1] = {text = "羁绊标签：" .. tagText, color = C.gold, gap = 6}
     if #affixNames > 0 then lines[#lines + 1] = {text = "词缀：" .. table.concat(affixNames, " / "), color = C.gold, gap = 6} end
     local affixDetails = {}
     if weapon.legendaryDesc then affixDetails[#affixDetails + 1] = weapon.legendaryDesc end
@@ -5674,6 +5752,7 @@ function moduleSlotTooltip(item)
     if not item then return nil end
     local lines = {
         "价格：◆ " .. (item.price or 0),
+        {text = "羁绊标签：" .. ((synergyTagTextFor and synergyTagTextFor(item)) or "无"), color = C.gold, gap = 6},
         {text = "效果：" .. modText(item.desc or "无效果"), color = C.white, gap = 6}
     }
     local combo = moduleComboHintForItem(item)
@@ -5707,6 +5786,7 @@ function itemTooltip(item)
     local lines = {
         "价格：◆ " .. (item.price or 0) .. " · " .. itemLevelText(item),
         {text = "类型：" .. kindText .. " · " .. kindDesc, color = C.muted},
+        {text = "羁绊标签：" .. ((synergyTagTextFor and synergyTagTextFor(item)) or "无"), color = C.gold, gap = 6},
         {text = "效果：" .. modText(item.desc or "无说明"), color = C.white, gap = 6}
     }
     if item.flag then lines[#lines + 1] = {text = "词缀说明：" .. item.flag, color = C.gold, gap = 6} end
@@ -5758,14 +5838,16 @@ function drawShopCard(item, i, x, y, w, h)
             {text = rarityText, color = rc, primary = true},
             {text = kindText, color = C.white},
             {text = brand and brand.name or "武器", color = C.white},
-            {text = elem.name, color = elem.color}
+            {text = elem.name, color = elem.color},
+            {text = "羁绊 " .. (synergyTagTextFor and synergyTagTextFor(def) or "无"), color = C.gold}
         }
     else
         local focus = item.mergeKey and ((item.mergeKey:gsub("_core", "")):gsub("_", " ")) or itemLevelText(item)
         cardTags = {
             {text = rarityText, color = rc, primary = true},
             {text = kindText, color = C.white},
-            {text = itemLevelText(item), color = C.white}
+            {text = itemLevelText(item), color = C.white},
+            {text = "羁绊 " .. (synergyTagTextFor and synergyTagTextFor(item) or "无"), color = C.gold}
         }
     end
     love.graphics.setFont(Game.fonts.tiny)
@@ -5811,6 +5893,7 @@ function drawShopCard(item, i, x, y, w, h)
         local def = item.weaponDef or weaponDefs[item.id]
         local elem = elements[def.element] or elements.kinetic
         local rows = {
+            {"羁绊", synergyTagTextFor and synergyTagTextFor(def) or "无"},
             {"伤害", tostring(def.damage)},
             {"弹体", tostring(def.count or 1)},
             {"总伤", tostring((def.damage or 0) * (def.count or 1))},
@@ -5832,7 +5915,7 @@ function drawShopCard(item, i, x, y, w, h)
         end
     else
         local effectMode = item.kind == "temp" and "下一波生效" or "永久生效"
-        textInBox(effectMode .. " · " .. kindText, x + 34, displayY + (recommendReason and 30 or 10), w - 68, 18, Game.fonts.tiny, C.white, "left")
+        textInBox(effectMode .. " · " .. kindText .. " · 羁绊 " .. ((synergyTagTextFor and synergyTagTextFor(item)) or "无"), x + 34, displayY + (recommendReason and 30 or 10), w - 68, 18, Game.fonts.tiny, C.white, "left")
         love.graphics.setFont(Game.fonts.tiny)
         local descText = modText(item.desc or "无说明")
         local effectColor = descText:find("%-") and C.red or (descText:find("%+") and C.green or C.muted)
@@ -6026,7 +6109,7 @@ function drawCompactBuildPanel(x, y, w, h, opts)
     color(C.gold)
     love.graphics.printf("模块槽 Lv." .. (p.itemSlotLevel or 1) .. "  " .. #items .. "/" .. (p.itemSlots or ITEM_SLOT_BASE), x + 14, moduleY - 36, upX - x - 22, "left")
     color(C.muted)
-    love.graphics.printf("效能 ×" .. string.format("%.2f", itemSlotEffectMultiplier()) .. " · 组合 " .. #(p.synergies or {}), x + 14, moduleY - 16, upX - x - 22, "left")
+    love.graphics.printf("效能 ×" .. string.format("%.2f", itemSlotEffectMultiplier()) .. " · 羁绊 " .. (p.synergySummary or "未成型") .. " · " .. #(p.synergies or {}) .. "项", x + 14, moduleY - 16, upX - x - 22, "left")
     local canUpgradeSlot = slotCost and Game.coins >= slotCost
     local upgradeText = slotCost and (canUpgradeSlot and ("升级 ◆" .. slotCost) or ("缺 " .. (slotCost - Game.coins))) or "满级"
     uiButton(upgradeText, upX, upY, upW, upH, canUpgradeSlot and C.green or (slotCost and C.red or C.muted), C.white, Game.fonts.tiny)
