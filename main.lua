@@ -102,7 +102,7 @@ end
 
 Balance = loadBalanceConfig()
 
-local VERSION = "v2026.05.31.87"
+local VERSION = "v2026.05.31.88"
 local VIRTUAL_W, VIRTUAL_H = 1920, 1080
 local ACTIVE_SKILL_CD = 3.0
 local ACTIVE_SKILL_DURATION = 0.5
@@ -169,6 +169,9 @@ local Game = {
     dynamicEventIndex = 1,
     routeChoices = {},
     eventChoices = {},
+    eventChoiceMode = nil,
+    preBattleEventArmed = false,
+    preBattleEventChoice = nil,
     routeMods = {},
     nextRouteMods = nil,
     blackBoxUsed = false,
@@ -2238,15 +2241,15 @@ function addObjectiveProgress(kind, amount)
 end
 
 dynamicEventPool = {
-    {id = "ambush", name = "侧翼伏击", run = function() beginEventChoice("侧翼伏击") end},
-    {id = "treasure", name = "宝藏空投", run = function() beginEventChoice("宝藏空投") end},
-    {id = "shield_convoy", name = "护盾车队", run = function() beginEventChoice("护盾车队") end},
-    {id = "repair_team", name = "维修小队", run = function() beginEventChoice("维修小队") end},
-    {id = "rift_cut", name = "裂隙切场", run = function() beginEventChoice("裂隙切场") end},
-    {id = "beacon_drop", name = "召唤信标", run = function() beginEventChoice("召唤信标") end},
-    {id = "element_surge", name = "元素涌动", run = function() beginEventChoice("元素涌动") end},
-    {id = "cryo_front", name = "寒潮前线", run = function() beginEventChoice("寒潮前线") end},
-    {id = "rage_pack", name = "狂暴残群", run = function() beginEventChoice("狂暴残群") end}
+    {id = "ambush", name = "侧翼伏击"},
+    {id = "treasure", name = "宝藏空投"},
+    {id = "shield_convoy", name = "护盾车队"},
+    {id = "repair_team", name = "维修小队"},
+    {id = "rift_cut", name = "裂隙切场"},
+    {id = "beacon_drop", name = "召唤信标"},
+    {id = "element_surge", name = "元素涌动"},
+    {id = "cryo_front", name = "寒潮前线"},
+    {id = "rage_pack", name = "狂暴残群"}
 }
 
 function rollDynamicEvents(duration)
@@ -2261,6 +2264,13 @@ end
 
 startWave = function()
     local plan = currentWavePlan()
+    if not plan.boss and not Game.preBattleEventArmed then
+        beginEventChoice("战前随机事件", "prebattle")
+        return
+    end
+    local preBattleEvent = Game.preBattleEventChoice
+    Game.preBattleEventArmed = false
+    Game.preBattleEventChoice = nil
     if plan.boss then
         Game.waveBossId = rollBossIdForWave(Game.wave)
         local boss = selectedBossDef()
@@ -2277,7 +2287,7 @@ startWave = function()
     Game.waveElapsed = 0
     Game.waveEventIndex = 1
     Game.bossDefeated = false
-    Game.dynamicEvents = plan.boss and {} or rollDynamicEvents(waveDuration)
+    Game.dynamicEvents = {}
     Game.dynamicEventIndex = 1
     Game.sideObjective = rollSideObjective()
     Game.waveStartKills = Game.kills
@@ -2316,6 +2326,11 @@ startWave = function()
         if buff.shield then p.maxShield = p.maxShield + buff.shield; p.shield = p.maxShield; p.tempShieldBonus = (p.tempShieldBonus or 0) + buff.shield end
     end
     Game.tempBuffs = {}
+    if preBattleEvent and preBattleEvent.apply then
+        preBattleEvent.apply()
+        Game.waveRewards.event = preBattleEvent.name
+        toast("战前事件：" .. preBattleEvent.name)
+    end
     Game.spawnTimer = 0.25
     Game.player.shieldDelay = 0
     local durationText = plan.boss and "Boss战" or (tostring(waveDuration) .. "秒")
@@ -2369,6 +2384,12 @@ local function chooseRoute(index)
     return true
 end
 
+function beginRouteChoice()
+    Game.routeChoices = pickDistinct(routeChoiceDefs, 3)
+    Game.state = "route_choice"
+    toast("Boss 已击破：选择下一章路线")
+end
+
 local eventChoiceDefs = {
     {id = "blackbox", name = "黑箱交易", desc = "立刻获得材料。", risk = "本章危险 +1", apply = function() addCoins(36 + Game.wave * 2, "event"); Game.danger = math.min(9, (Game.danger or 0) + 1) end},
     {id = "supply", name = "破损补给仓", desc = "获得免费刷新和护盾修复。", risk = "同时引来伏击", apply = function() Game.freeRefresh = (Game.freeRefresh or 0) + 1; Game.player.shield = math.min(Game.player.maxShield, Game.player.shield + 35); for _ = 1, 3 do spawnEnemy(enemyDefs.splinter, {side = pickSpawnSide(currentWavePlan()), scale = 0.86}) end end},
@@ -2378,18 +2399,27 @@ local eventChoiceDefs = {
     {id = "overclock", name = "临时超频", desc = "本波射速提高。", risk = "护盾回复暂时下降", apply = function() Game.player.waveFireRateBonus = (Game.player.waveFireRateBonus or 0) + 0.22; Game.player.waveShieldRegenMult = (Game.player.waveShieldRegenMult or 0) - 0.25 end}
 }
 
-function beginEventChoice(eventName)
+function beginEventChoice(eventName, mode)
     Game.eventChoices = pickDistinct(eventChoiceDefs, 3)
-    Game.eventChoiceTitle = eventName or "中段事件"
+    Game.eventChoiceTitle = eventName or "战前随机事件"
+    Game.eventChoiceMode = mode or "prebattle"
     Game.state = "event_choice"
-    toast("中段选择事件：选择风险与回报")
+    toast("战前事件：先选择本波风险与回报")
 end
 
 local function chooseEvent(index)
     local choice = Game.eventChoices and Game.eventChoices[index]
     if not choice then return false end
-    if choice.apply then choice.apply() end
     Game.eventChoices = {}
+    if (Game.eventChoiceMode or "prebattle") == "prebattle" then
+        Game.eventChoiceMode = nil
+        Game.preBattleEventChoice = choice
+        Game.preBattleEventArmed = true
+        startWave()
+        return true
+    end
+    if choice.apply then choice.apply() end
+    Game.eventChoiceMode = nil
     Game.state = "playing"
     toast("事件选择：" .. choice.name)
     return true
@@ -2397,9 +2427,9 @@ end
 
 local function choiceIndexAt(x, y, count)
     local n = count or 3
-    local w, h, gap = 430, 230, 34
+    local w, h, gap = 430, 250, 34
     local sx = Game.w / 2 - (w * n + gap * (n - 1)) / 2
-    local sy = Game.h / 2 - h / 2 + 38
+    local sy = Game.h / 2 - h / 2 + 86
     for i = 1, n do
         if hitRect(x, y, sx + (i - 1) * (w + gap), sy, w, h) then return i end
     end
@@ -3730,12 +3760,6 @@ local function updatePlaying(dt)
         spawnEnemy(eventDef, {side = event.side, scale = event.enemy == "boss" and 1 or 1.08})
         if event.toast then toast(event.enemy == "boss" and ("目标：打爆 " .. (Game.waveBossName or "Boss")) or event.toast) end
         Game.waveEventIndex = Game.waveEventIndex + 1
-    end
-    local dynamicEvents = Game.dynamicEvents or {}
-    while Game.dynamicEventIndex and dynamicEvents[Game.dynamicEventIndex] and Game.waveElapsed >= dynamicEvents[Game.dynamicEventIndex].time do
-        local event = dynamicEvents[Game.dynamicEventIndex]
-        if event.run then event.run() end
-        Game.dynamicEventIndex = Game.dynamicEventIndex + 1
     end
     objectiveTick(dt)
 
@@ -6771,18 +6795,20 @@ local function drawChoiceOverlay(kind, title, subtitle, choices)
     local overlay = kind == "event" and 0.58 or 0.38
     color(C.bgA, overlay)
     love.graphics.rectangle("fill", 0, 0, Game.w, Game.h)
-    local panelW, panelH = 1480, 430
+    local panelW, panelH = 1480, 500
     local panelX, panelY = Game.w / 2 - panelW / 2, Game.h / 2 - panelH / 2
     panel(panelX, panelY, panelW, panelH)
     love.graphics.setFont(Game.fonts.big)
     color(C.white)
-    love.graphics.printf(title, panelX + 32, panelY + 28, panelW - 64, "center")
+    love.graphics.printf(title, panelX + 32, panelY + 26, panelW - 64, "center")
     love.graphics.setFont(Game.fonts.small)
     color(C.muted)
-    love.graphics.printf(subtitle, panelX + 60, panelY + 72, panelW - 120, "center")
+    love.graphics.printf(subtitle, panelX + 120, panelY + 92, panelW - 240, "center")
+    color(C.white, 0.10)
+    love.graphics.rectangle("fill", panelX + 70, panelY + 136, panelW - 140, 1)
     local mx, my = mousePosition()
-    local cardW, cardH, gap = 430, 230, 34
-    local sx, sy = Game.w / 2 - (cardW * n + gap * (n - 1)) / 2, Game.h / 2 - cardH / 2 + 38
+    local cardW, cardH, gap = 430, 250, 34
+    local sx, sy = Game.w / 2 - (cardW * n + gap * (n - 1)) / 2, Game.h / 2 - cardH / 2 + 86
     for i, choice in ipairs(choices) do
         local x, y = sx + (i - 1) * (cardW + gap), sy
         local hover = hitRect(mx, my, x, y, cardW, cardH)
@@ -6798,12 +6824,20 @@ local function drawChoiceOverlay(kind, title, subtitle, choices)
         color(C.white)
         love.graphics.printf(choice.name or "未知选择", x + 70, y + 18, cardW - 92, "left")
         love.graphics.setFont(Game.fonts.tiny)
-        color(C.muted)
-        love.graphics.printf(choice.desc or "", x + 24, y + 68, cardW - 48, "left")
-        color(C.red, 0.88)
-        love.graphics.printf("代价：" .. (choice.risk or "无"), x + 24, y + 124, cardW - 48, "left")
+        color(C.cyan, 0.92)
+        love.graphics.printf("收益", x + 24, y + 66, cardW - 48, "left")
+        color(C.white)
+        love.graphics.printf(choice.desc or "", x + 24, y + 88, cardW - 48, "left")
+        color(C.red, 0.12)
+        love.graphics.rectangle("fill", x + 20, y + 140, cardW - 40, 48, 10, 10)
+        color(C.red, 0.48)
+        love.graphics.rectangle("line", x + 20.5, y + 140.5, cardW - 41, 47, 10, 10)
+        color(C.red, 0.92)
+        love.graphics.printf("代价", x + 34, y + 150, 48, "left")
+        color(C.white)
+        love.graphics.printf(choice.risk or "无", x + 92, y + 150, cardW - 126, "left")
         color(C.gold, 0.92)
-        love.graphics.printf("点击或按 " .. tostring(i) .. " 选择", x + 24, y + cardH - 42, cardW - 48, "center")
+        love.graphics.printf("点击或按 " .. tostring(i) .. " 选择", x + 24, y + cardH - 38, cardW - 48, "center")
     end
 end
 
@@ -6837,7 +6871,7 @@ function love.draw()
     drawHud()
     drawCombatWarningOverlay()
     drawClearTransitionOverlay()
-    if Game.state == "event_choice" then drawChoiceOverlay("event", Game.eventChoiceTitle or "中段选择事件", "战斗暂停：选一个本波风险/回报。随机性要让玩家参与，而不是暗箱抽耳光。", Game.eventChoices); drawVersion(); love.graphics.pop(); return end
+    if Game.state == "event_choice" then drawChoiceOverlay("event", Game.eventChoiceTitle or "战前随机事件", "战斗前先选本波风险/回报；选完立即开打，不再中途打断。", Game.eventChoices); drawVersion(); love.graphics.pop(); return end
     if Game.state == "clearing" then drawVersion(); love.graphics.pop(); return end
     if Game.state == "paused" then drawPauseOverlay(); love.graphics.pop(); return end
     if Game.messageTimer > 0 then
